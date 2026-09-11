@@ -9,7 +9,8 @@ from search_engine import (
     SearchResult,
     QueryIntent,
     ContextIntelligence,
-    KnowledgeGraph
+    KnowledgeGraph,
+    QueryUnderstanding
 )
 from recommendations import RecommendationEngine, Recommendation
 
@@ -73,23 +74,147 @@ class QuraanApp:
     
     def get_ai_response(self, question, user_id="default"):
         """Generate AI response to a user question about the Quran."""
-        # Perform intelligent search
-        search_result = self.search_engine.search(question, user_id=user_id)
+        # Analyze query intent
+        intent = self.search_engine.query_understanding.analyze_query(question)
+        
+        # Expand query with related terms from knowledge graph and topic keywords
+        expanded_queries = self._expand_query(question, intent)
+        
+        # Search with multiple expanded queries
+        all_results = []
+        for q in expanded_queries:
+            result = self.search_engine.search(q, user_id=user_id, limit=10)
+            all_results.extend(result.get("results", []))
+        
+        # Deduplicate by verse_id and re-rank
+        seen = {}
+        for r in all_results:
+            key = r.verse_id
+            if key not in seen or r.score > seen[key].score:
+                seen[key] = r
+        
+        combined = sorted(seen.values(), key=lambda x: x.score, reverse=True)[:8]
+        
+        # Generate contextual insights
+        insights = self._generate_answer_insights(question, combined, intent)
+        
+        # Generate suggestions
+        suggestions = self._generate_suggestions(question, intent)
         
         # Update context
-        self.context_intelligence.add_to_history(
-            user_id,
-            question,
-            search_result.get("results", [])
-        )
+        self.context_intelligence.add_to_history(user_id, question, combined)
         
         return {
             "query": question,
-            "intent": search_result.get("intent"),
-            "results": search_result.get("results", [])[:5],
-            "insights": search_result.get("insights", []),
-            "suggestions": search_result.get("suggestions", [])
+            "intent": intent,
+            "results": combined,
+            "insights": insights,
+            "suggestions": suggestions
         }
+    
+    def _expand_query(self, question: str, intent) -> list:
+        """Expand query with related terms for better search."""
+        queries = [question]
+        query_lower = question.lower()
+        
+        # Add topic-based expansions from knowledge graph
+        for topic in intent.topics:
+            related = self.search_engine.context_intelligence.knowledge_graph.get_related_concepts(topic, depth=1)
+            for concept in related[:3]:
+                desc = concept.get("data", {}).get("description", "")
+                if desc:
+                    queries.append(f"{question} {desc}")
+        
+        # Add keyword expansions from query understanding topic keywords
+        topic_keywords = getattr(intent, 'topics', [])
+        for topic in topic_keywords[:3]:
+            queries.append(f"Quran {topic}")
+            queries.append(f"Islamic {topic}")
+        
+        # If question looks like a "what are" question, add direct topic search
+        if any(word in query_lower for word in ["what are", "what is", "how should", "responsibilities", "duties", "rights"]):
+            # Extract likely topic words
+            words = query_lower.replace("?", "").replace("what are", "").replace("what is", "").replace("how should", "").replace("the", "").replace("in the quran", "").strip()
+            if words:
+                queries.append(words)
+                # Also try the topic keyword mappings
+                for topic, keywords in self.search_engine.query_understanding.topic_keywords.items():
+                    if any(kw in query_lower for kw in keywords):
+                        queries.append(topic)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique = []
+        for q in queries:
+            q_lower = q.lower()
+            if q_lower not in seen:
+                seen.add(q_lower)
+                unique.append(q)
+        
+        return unique[:6]
+    
+    def _generate_answer_insights(self, question: str, results: list, intent) -> list:
+        """Generate insights that act as an AI answer summary."""
+        insights = []
+        
+        if not results:
+            insights.append({
+                "type": "answer",
+                "message": "I couldn't find direct verses matching that question. Try rephrasing or asking about a specific topic like 'patience', 'prayer', or 'family'."
+            })
+            return insights
+        
+        # Group results by topic similarity
+        topics = set()
+        for r in results[:5]:
+            text = (r.text or "") + " " + (r.translation or "")
+            for topic, keywords in self.search_engine.query_understanding.topic_keywords.items():
+                if any(kw in text.lower() for kw in keywords):
+                    topics.add(topic)
+        
+        if topics:
+            insights.append({
+                "type": "answer",
+                "message": f"Based on Quranic verses, this relates to: {', '.join(list(topics)[:3])}. Here are the most relevant passages."
+            })
+        
+        # Add context about the best match
+        if results:
+            best = results[0]
+            insights.append({
+                "type": "best_match",
+                "message": f"Most relevant: {best.chapter}:{best.verse_number} (score: {best.score:.2f})"
+            })
+        
+        return insights
+    
+    def _generate_suggestions(self, question: str, intent) -> list:
+        """Generate helpful follow-up suggestions."""
+        suggestions = []
+        query_lower = question.lower()
+        
+        # Based on detected topics
+        for topic in intent.topics[:3]:
+            suggestions.append(f"Tell me more about {topic}")
+            suggestions.append(f"Verses about {topic}")
+        
+        # If question is about responsibilities/duties
+        if any(word in query_lower for word in ["responsibilities", "duties", "rights", "should", "must"]):
+            suggestions.append("What does the Quran say about family?")
+            suggestions.append("What are Islamic duties?")
+        
+        # If question is about a specific group
+        if "father" in query_lower or "parent" in query_lower:
+            suggestions.append("What does the Quran say about mothers?")
+            suggestions.append("What does the Quran say about children?")
+            suggestions.append("Family verses in the Quran")
+        
+        # If question is about relationships
+        if any(word in query_lower for word in ["relationship", "marriage", "family", "parents", "children"]):
+            suggestions.append("Quran on marriage")
+            suggestions.append("Quran on parenting")
+        
+        return suggestions[:5]
     
     def search_verses(self, query, language="en", user_id="default"):
         """Search for verses matching a query."""
