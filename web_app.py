@@ -26,8 +26,8 @@ HTML = """<!DOCTYPE html>
   --verse-accent: #0f766e;
   --hadith-accent: #7c3aed;
 }
-body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
-.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+body { background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .topbar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -39,6 +39,7 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; display: fl
   position: sticky;
   top: 0;
   z-index: 20;
+  flex-shrink: 0;
 }
 .brand { font-weight: 800; font-size: 1.15rem; color: var(--primary); letter-spacing: 0.2px; }
 .nav { display: flex; gap: 0.5rem; }
@@ -54,11 +55,11 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; display: fl
 }
 .nav-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .nav-btn.secondary { background: #f1f5f9; }
-.panels { flex: 1; display: flex; flex-direction: column; }
-.panel { display: none; flex: 1; }
-.panel.open { display: flex; flex-direction: column; }
+.panels { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.panel { display: none; flex: 1; min-height: 0; }
+.panel.open { display: flex; flex-direction: column; min-height: 0; }
 .pad { padding: 1rem; max-width: 1100px; margin: 0 auto; width: 100%; }
-.chat-scroll { flex: 1; overflow-y: auto; padding: 1rem; }
+.chat-scroll { flex: 1; overflow-y: auto; padding: 1rem; padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 .bubble {
   margin: 0.5rem 0;
   padding: 0.9rem 1rem;
@@ -96,6 +97,8 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; display: fl
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding: 0.75rem 1rem;
+  flex-shrink: 0;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 .controls-inner { max-width: 1100px; margin: 0 auto; width: 100%; display: flex; gap: 0.5rem; }
 input[type="text"] {
