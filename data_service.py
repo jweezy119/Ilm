@@ -22,6 +22,7 @@ class Verse:
     ruku_number: Optional[int] = None
     manzil_number: Optional[int] = None
     sajdah_number: Optional[int] = None
+    verse_key: Optional[str] = None
 
 
 @dataclass
@@ -92,102 +93,10 @@ class QuranAPIService:
         except Exception as e:
             print(f"Error fetching chapters: {e}")
             return []
-    
-    def get_verse(self, verse_key: str, translation_edition: str = "en.sahih") -> Optional[Verse]:
-        """Get a specific verse by key (e.g., "2:255")."""
-        url = f"{self.BASE_URL}/verses/by_key/{verse_key}"
-        params = {
-            "fields": "text_uthmani,translations,transliteration",
-            "translations": "language:en,text_uthmani"
-        }
-        
-        try:
-            response = self.session.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            verse_data = data.get("verse", {})
-            translations = verse_data.get("translations", [])
-            translation_text = translations[0]["text"] if translations else None
-            
-            return Verse(
-                id=verse_data["id"],
-                verse_number=verse_data["verse_number"],
-                text=verse_data.get("text_uthmani", ""),
-                translation=translation_text,
-                chapter_id=verse_data.get("chapter_id"),
-                juz_number=verse_data.get("juz_number"),
-                hizb_number=verse_data.get("hizb_number"),
-                ruku_number=verse_data.get("ruku_number")
-            )
-        except Exception as e:
-            print(f"Error fetching verse {verse_key}: {e}")
-            return None
-    
-    def get_surah(self, chapter_number: int, translation_edition: str = "en.sahih") -> List[Verse]:
-        """Get all verses of a specific surah."""
-        url = f"{self.BASE_URL}/surah/{chapter_number}"
-        params = {
-            "fields": "text_uthmani,translations,transliteration,audio",
-            "translations": "language:en,text_uthmani"
-        }
-        
-        try:
-            response = self.session.get(url, params=params, timeout=60)
-            response.raise_for_status()
-            data = response.json()
-            
-            verses = []
-            for v in data.get("verses", []):
-                translations = v.get("translations", [])
-                translation_text = translations[0]["text"] if translations else None
-                audio = v.get("audio", {})
-                
-                verses.append(Verse(
-                    id=v["id"],
-                    verse_number=v["verse_number"],
-                    text=v.get("text_uthmani", ""),
-                    translation=translation_text,
-                    transliteration=audio.get("url"),
-                    audio_url=audio.get("url"),
-                    chapter_id=v.get("chapter_id")
-                ))
-            
-            return verses
-        except Exception as e:
-            print(f"Error fetching surah {chapter_number}: {e}")
-            return []
-    
-    def search_verses(self, query: str, language: str = "en") -> List[Dict]:
-        """Search verses by keyword."""
-        url = f"{self.BASE_URL}/search"
-        params = {
-            "q": query,
-            "language": language,
-            "size": 50
-        }
-        
-        try:
-            response = self.session.get(url, params=params, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            results = []
-            for match in data.get("search", {}).get("results", []):
-                results.append({
-                    "verse_key": match.get("verse_key"),
-                    "text": match.get("text", ""),
-                    "translation": match.get("translations", [{}])[0].get("text", ""),
-                    "score": match.get("score", 0)
-                })
-            return results
-        except Exception as e:
-            print(f"Search error: {e}")
-            return []
 
 
 class AlQuranCloudService:
-    """Alternative service using Al Quran Cloud API (api.alquran.cloud)"""
+    """Primary text source using Al Quran Cloud API - reliable for Arabic + translations."""
     
     BASE_URL = "https://api.alquran.cloud/v1"
     
@@ -198,28 +107,91 @@ class AlQuranCloudService:
             "User-Agent": "Ilm-Quran-App/1.0"
         })
     
-    def get_surah(self, surah_number: int, edition: str = "en.sahih") -> Optional[Dict]:
-        """Get a full surah with translations."""
-        url = f"{self.BASE_URL}/surah/{surah_number}/{edition}"
+    def get_surah(self, surah_number: int, arabic_edition: str = "ar.uthmani", translation_edition: str = "en.sahih") -> List[Verse]:
+        """Get a full surah with Arabic text and translation."""
+        verses = []
         
+        # Fetch Arabic text
         try:
+            url = f"{self.BASE_URL}/surah/{surah_number}/{arabic_edition}"
             response = self.session.get(url, timeout=60)
             response.raise_for_status()
-            return response.json().get("data")
+            data = response.json().get("data", {})
+            arabic_ayahs = data.get("ayahs", [])
+            
+            # Fetch translation if different from Arabic edition
+            translation_map = {}
+            if translation_edition and translation_edition != arabic_edition:
+                try:
+                    trans_url = f"{self.BASE_URL}/surah/{surah_number}/{translation_edition}"
+                    trans_resp = self.session.get(trans_url, timeout=60)
+                    trans_resp.raise_for_status()
+                    trans_data = trans_resp.json().get("data", {})
+                    for ta in trans_data.get("ayahs", []):
+                        translation_map[ta.get("numberInSurah")] = ta.get("text", "")
+                except Exception as e:
+                    print(f"Translation fetch error: {e}")
+            
+            for a in arabic_ayahs:
+                verses.append(Verse(
+                    id=a.get("number", 0),
+                    verse_number=a.get("numberInSurah", 0),
+                    text=a.get("text", ""),
+                    translation=translation_map.get(a.get("numberInSurah")),
+                    audio_url=a.get("audio"),
+                    chapter_id=surah_number,
+                    juz_number=a.get("juz"),
+                    hizb_number=a.get("hizbQuarter"),
+                    ruku_number=a.get("ruku"),
+                    verse_key=f"{surah_number}:{a.get('numberInSurah')}"
+                ))
         except Exception as e:
-            print(f"Error fetching surah {surah_number} from Al Quran Cloud: {e}")
-            return None
+            print(f"Error fetching surah {surah_number}: {e}")
+        
+        return verses
     
-    def get_verse(self, verse_number: int, edition: str = "en.sahih") -> Optional[Dict]:
-        """Get a specific verse by global number."""
-        url = f"{self.BASE_URL}/ayah/{verse_number}/{edition}"
+    def get_verse(self, verse_key: str, arabic_edition: str = "ar.uthmani", translation_edition: str = "en.sahih") -> Optional[Verse]:
+        """Get a specific verse with Arabic and translation."""
+        # verse_key format: "2:255"
+        parts = verse_key.split(":")
+        if len(parts) != 2:
+            return None
+        
+        chapter = int(parts[0])
+        verse_num = int(parts[1])
         
         try:
+            # Get Arabic
+            url = f"{self.BASE_URL}/ayah/{verse_key}/{arabic_edition}"
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
-            return response.json().get("data")
+            data = response.json().get("data", {})
+            
+            # Get translation if different
+            translation = None
+            if translation_edition and translation_edition != arabic_edition:
+                try:
+                    trans_url = f"{self.BASE_URL}/ayah/{verse_key}/{translation_edition}"
+                    trans_resp = self.session.get(trans_url, timeout=30)
+                    trans_resp.raise_for_status()
+                    translation = trans_resp.json().get("data", {}).get("text")
+                except Exception:
+                    pass
+            
+            return Verse(
+                id=data.get("number", 0),
+                verse_number=data.get("numberInSurah", verse_num),
+                text=data.get("text", ""),
+                translation=translation,
+                audio_url=data.get("audio"),
+                chapter_id=chapter,
+                juz_number=data.get("juz"),
+                hizb_number=data.get("hizbQuarter"),
+                ruku_number=data.get("ruku"),
+                verse_key=verse_key
+            )
         except Exception as e:
-            print(f"Error fetching verse {verse_number}: {e}")
+            print(f"Error fetching verse {verse_key}: {e}")
             return None
     
     def search(self, query: str, surah: str = "all") -> Optional[Dict]:
@@ -259,8 +231,11 @@ class HadithAPIService:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             data = response.json()
-            self._collections_cache = data.get("collections", [])
-            return self._collections_cache
+            collections = data.get("collections", [])
+            if isinstance(collections, dict):
+                collections = list(collections.keys())
+            self._collections_cache = collections
+            return collections
         except Exception as e:
             print(f"Error fetching hadith collections: {e}")
             return []
@@ -276,13 +251,13 @@ class HadithAPIService:
             h = data.get("data", {})
             
             return Hadith(
-                id=f"{collection}:{hadith_number}",
+                id=h.get("id", f"{collection}:{hadith_number}"),
                 collection=collection,
-                book=h.get("book", ""),
+                book=h.get("collection_name", ""),
                 chapter=h.get("chapter", ""),
-                hadith_number=str(hadith_number),
-                arabic_text=h.get("hadith_arabic"),
-                english_text=h.get("hadith_english"),
+                hadith_number=str(h.get("hadithnumber", hadith_number)),
+                arabic_text=h.get("arabic"),
+                english_text=h.get("english"),
                 narrator=h.get("narrator"),
                 grade=h.get("grade"),
                 reference=h.get("reference")
@@ -302,18 +277,20 @@ class HadithAPIService:
         try:
             response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
-            data = response.json()
+            payload = response.json()
+            inner = payload.get("data", {})
+            hadith_list = inner.get("hadiths", []) if isinstance(inner, dict) else []
             
             hadiths = []
-            for h in data.get("data", []):
+            for h in hadith_list:
                 hadiths.append(Hadith(
                     id=h.get("id", ""),
                     collection=h.get("collection", ""),
-                    book=h.get("book", ""),
+                    book=h.get("collection_name", ""),
                     chapter=h.get("chapter", ""),
-                    hadith_number=str(h.get("number", "")),
-                    arabic_text=h.get("hadith_arabic"),
-                    english_text=h.get("hadith_english"),
+                    hadith_number=str(h.get("hadithnumber", "")),
+                    arabic_text=h.get("arabic"),
+                    english_text=h.get("english"),
                     narrator=h.get("narrator"),
                     grade=h.get("grade"),
                     reference=h.get("reference")
@@ -326,11 +303,12 @@ class HadithAPIService:
     def get_random_hadith(self, collection: Optional[str] = None) -> Optional[Hadith]:
         """Get a random hadith, optionally from a specific collection."""
         url = f"{self.BASE_URL}/random"
+        params = {}
         if collection:
-            url += f"/{collection}"
+            params["collection"] = collection
         
         try:
-            response = self.session.get(url, timeout=30)
+            response = self.session.get(url, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             h = data.get("data", {})
@@ -338,11 +316,11 @@ class HadithAPIService:
             return Hadith(
                 id=h.get("id", ""),
                 collection=h.get("collection", ""),
-                book=h.get("book", ""),
+                book=h.get("collection_name", ""),
                 chapter=h.get("chapter", ""),
-                hadith_number=str(h.get("number", "")),
-                arabic_text=h.get("hadith_arabic"),
-                english_text=h.get("hadith_english"),
+                hadith_number=str(h.get("hadithnumber", "")),
+                arabic_text=h.get("arabic"),
+                english_text=h.get("english"),
                 narrator=h.get("narrator"),
                 grade=h.get("grade"),
                 reference=h.get("reference")
@@ -361,21 +339,64 @@ class DataService:
         self.fallback_service = AlQuranCloudService()
     
     def get_quran_verse(self, verse_key: str, language: str = "en") -> Optional[Verse]:
-        """Get a Quran verse with translation."""
-        return self.quran_service.get_verse(verse_key, f"{language}.sahih")
+        """Get a Quran verse with Arabic text and translation."""
+        arabic_edition = "ar.uthmani"
+        translation_edition = f"{language}.sahih" if language != "ar" else None
+        return self.fallback_service.get_verse(verse_key, arabic_edition, translation_edition)
     
     def get_quran_surah(self, chapter: int, language: str = "en") -> List[Verse]:
-        """Get a full surah with translation."""
-        return self.quran_service.get_surah(chapter, f"{language}.sahih")
+        """Get a full surah with Arabic text and translation."""
+        arabic_edition = "ar.uthmani"
+        translation_edition = f"{language}.sahih" if language != "ar" else None
+        return self.fallback_service.get_surah(chapter, arabic_edition, translation_edition)
     
     def search_quran(self, query: str, language: str = "en") -> List[Dict]:
         """Search the Quran."""
-        results = self.quran_service.search_verses(query, language)
+        results = []
+        
+        # Use api.quran.com search for Arabic text matches
+        try:
+            url = f"{self.quran_service.BASE_URL}/search"
+            params = {"q": query, "language": language, "size": 20}
+            response = self.quran_service.session.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            for match in data.get("search", {}).get("results", []):
+                results.append({
+                    "verse_key": match.get("verse_key"),
+                    "text": match.get("text", ""),
+                    "translation": None,
+                    "score": match.get("score", 0)
+                })
+        except Exception as e:
+            print(f"Quran search error: {e}")
+        
+        # Fallback to alquran cloud search
         if not results:
-            # Fallback to Al Quran Cloud
-            data = self.fallback_service.search(query)
-            if data:
-                results = data.get("matches", [])
+            try:
+                data = self.fallback_service.search(query)
+                if data and isinstance(data, dict):
+                    for match in data.get("matches", []):
+                        results.append({
+                            "verse_key": match.get("verseKey"),
+                            "text": match.get("text", ""),
+                            "translation": match.get("translation"),
+                            "score": 1.0
+                        })
+            except Exception as e:
+                print(f"Fallback search error: {e}")
+        
+        # Enhance results with translations for top matches
+        for r in results[:5]:
+            if not r.get("translation") and r.get("verse_key"):
+                try:
+                    v = self.get_quran_verse(r["verse_key"], language)
+                    if v:
+                        r["translation"] = v.translation
+                except Exception:
+                    pass
+        
         return results
     
     def get_hadith(self, collection: str, hadith_number: int) -> Optional[Hadith]:
