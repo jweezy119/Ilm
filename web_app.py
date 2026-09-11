@@ -248,10 +248,12 @@ async function send() {
     if(data.suggestions && data.suggestions.length) {
       html += '<div class="section-title">Suggestions</div><div class="chips">' + data.suggestions.map(s=>`<div class="chip" onclick="document.getElementById(\'query\').value='${s}';send()">${s}</div>`).join('') + '</div>';
     }
+    if(data.expanded_query && data.expanded_query !== data.query) {
+      html += '<div class="meta">Interpreted as: ' + data.expanded_query + '</div>';
+    }
     addMsg('ai', html || '<div class="error">No results.</div>');
-    const hadiths = data.hadiths || [];
-    if(hadiths.length) {
-      addMsg('ai', renderHadiths(hadiths));
+    if(data.hadiths && data.hadiths.length) {
+      addMsg('ai', renderHadiths(data.hadiths));
     }
   } catch(e) { addMsg('ai', '<div class="error">Error: '+e.message+'</div>'); }
 }
@@ -352,8 +354,10 @@ def chat():
         })
     
     return jsonify({
-        "query": query,
+        "query": response.get("query") or query,
+        "expanded_query": response.get("expanded_query"),
         "results": results,
+        "hadiths": response.get("hadiths", []),
         "insights": insights,
         "suggestions": response.get("suggestions", [])
     })
