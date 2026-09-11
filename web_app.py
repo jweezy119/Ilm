@@ -164,7 +164,7 @@ select {
 <body>
 <div class="app-shell">
   <header class="topbar">
-    <div class="brand">Ilm - Quran AI</div>
+    <div class="brand" style="cursor:pointer;" onclick="switchTab('chat')">Ilm - Quran AI</div>
     <nav class="nav" aria-label="Primary">
       <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
       <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
