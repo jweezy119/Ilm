@@ -32,6 +32,10 @@ class ConversationState:
     active_topic: Optional[str] = None
     active_entities: List[str] = field(default_factory=list)
     turn_count: int = 0
+    emotional_state: Optional[str] = None
+    confidence_level: float = 1.0
+    user_context: Dict[str, Any] = field(default_factory=dict)
+    situational_context: Dict[str, Any] = field(default_factory=dict)
 
 
 class ConversationMemory:
@@ -56,7 +60,19 @@ class ConversationMemory:
         if turn.intent and getattr(turn.intent, 'topics', None):
             state.active_topic = turn.intent.topics[0] if turn.intent.topics else state.active_topic
         if turn.verses:
-            state.active_entities = [f"{v.get('chapter')}:{v.get('verse_number')}" for v in turn.verses[:2]]
+            state.active_entities = []
+            for v in turn.verses[:2]:
+                chapter = (v.get("chapter") if hasattr(v, 'get') else getattr(v, 'chapter', ''))
+                verse_number = (v.get("verse_number") if hasattr(v, 'get') else getattr(v, 'verse_number', ''))
+                state.active_entities.append(f"{chapter}:{verse_number}")
+        # Initialize situational context if needed
+        if not state.situational_context:
+            state.situational_context = {
+                "consecutive_followups": 0,
+                "user_consistency_level": "exploratory",
+                "response_complexity": "moderate",
+                "engagement_depth": "surface"
+            }
     
     def get_context(self, user_id: str) -> Dict[str, Any]:
         state = self.get_state(user_id)
@@ -67,7 +83,11 @@ class ConversationMemory:
             "active_topic": state.active_topic,
             "active_entities": state.active_entities,
             "recent_queries": recent_user_texts,
-            "last_intent_topics": getattr(state.last_turn, 'intent', None) and getattr(state.last_turn.intent, 'topics', []) or []
+            "last_intent_topics": getattr(state.last_turn, 'intent', None) and getattr(state.last_turn.intent, 'topics', []) or [],
+            "emotional_state": state.emotional_state,
+            "confidence_level": state.confidence_level,
+            "user_context": state.user_context,
+            "situational_context": state.situational_context
         }
 
 
@@ -96,16 +116,48 @@ class ReferenceResolver:
         text_lower = text.lower()
         expanded = text
         
-        if any(p in text_lower for p in self.pronouns):
-            if context.get("active_topic"):
-                expanded = f"{context['active_topic']} {text}"
-            elif context.get("active_entities"):
-                expanded = f"{context['active_entities'][-1]} {text}"
-            elif context.get("recent_queries"):
-                expanded = f"{context['recent_queries'][-1]} {text}"
+        # Update situational context for follow-ups
+        situational_context = context.get("situational_context", {})
+        situational_context["consecutive_followups"] = situational_context.get("consecutive_followups", 0) + 1
+        context["situational_context"] = situational_context
         
+        # Enhanced pronoun resolution with situational awareness
+        if any(p in text_lower for p in self.pronouns):
+            # Determine consistency level based on previous queries
+            recent_queries = context.get("recent_queries", [])
+            if len(recent_queries) >= 3:
+                # More consistent, focus on active topic
+                if context.get("active_topic"):
+                    expanded = f"{context['active_topic']} {text}"
+                elif context.get("active_entities"):
+                    expanded = f"{context['active_entities'][-1]} {text}"
+                else:
+                    expanded = f"the topic of {text}"
+            else:
+                # Exploratory phase, be more flexible
+                if context.get("active_topic"):
+                    expanded = f"{context['active_topic']} {text}"
+                elif context.get("active_entities"):
+                    expanded = f"{context['active_entities'][-1]} {text}"
+                elif context.get("recent_queries"):
+                    expanded = f"{context['recent_queries'][-1]} {text}"
+        
+        # Enhanced continuation phrase resolution
         if any(p in text_lower for p in self.continuation_phrases) and context.get("active_topic"):
-            expanded = f"{context['active_topic']} {text}"
+            # Adjust based on emotional state and confidence
+            emotional_state = context.get("emotional_state", "neutral")
+            if emotional_state == "curious":
+                expanded = f"Let's explore {context['active_topic']} {text}"
+            elif emotional_state == "uncertain":
+                expanded = f"Looking into {context['active_topic']} {text}"
+            else:
+                expanded = f"{context['active_topic']} {text}"
+        
+        # Track user consistency pattern
+        if situational_context.get("consecutive_followups", 0) > 2:
+            if "tell me more" in text_lower or "more" in text_lower:
+                # User is being repetitive, adjust confidence
+                context["confidence_level"] = max(0.3, context.get("confidence_level", 1.0) - 0.2)
         
         return expanded
 
@@ -124,22 +176,127 @@ class DialogueRouter:
             "responsibilities", "duties", "rights", "should", "must",
             "obligations", "requirements", "command", "ordered"
         }
+        self.positive_indicators = {"thank", "helpful", "interesting", "love", "appreciate"}
+        self.negative_indicators = {"confusing", "difficult", "hard", "frustrated", "lost"}
+        self.exploratory_phrases = {"tell me more", "more", "explain", "expand", "what is"}
     
-    def needs_hadith(self, text: str, intent_topics: List[str]) -> bool:
+    def detect_emotional_state(self, text: str, situational_context: Dict[str, Any]) -> str:
+        """Detect user's emotional state and engagement level."""
+        text_lower = text.lower()
+        
+        # Check for emotional indicators
+        positive_count = sum(1 for w in self.positive_indicators if w in text_lower)
+        negative_count = sum(1 for w in self.negative_indicators if w in text_lower)
+        
+        # Determine state
+        if negative_count > positive_count:
+            return "uncertain"
+        elif positive_count > negative_count:
+            return "curious"
+        else:
+            return "neutral"
+    
+    def analyze_engagement_depth(self, text: str, situational_context: Dict[str, Any]) -> str:
+        """Analyze user's engagement depth based on query complexity and follow-up patterns."""
+        text_lower = text.lower()
+        followups = situational_context.get("consecutive_followups", 0)
+        
+        # Check for exploratory language
+        exploratory = any(phrase in text_lower for phrase in self.exploratory_phrases)
+        
+        if followups > 2 or exploratory:
+            return "deep"
+        elif followups > 0:
+            return "moderate"
+        else:
+            return "surface"
+    
+    def update_situational_context(self, text: str, situational_context: Dict[str, Any], 
+                                 active_topic: Optional[str], recent_queries: List[str]) -> Dict[str, Any]:
+        """Update situational context based on query and state."""
+        updated_context = situational_context.copy()
+        text_lower = text.lower()
+        
+        # Update emotional state
+        updated_context["emotional_state"] = self.detect_emotional_state(text, situational_context)
+        
+        # Update engagement depth
+        updated_context["engagement_depth"] = self.analyze_engagement_depth(text, situational_context)
+        
+        # Adjust response complexity based on context
+        confidence = updated_context.get("confidence_level", 1.0)
+        if updated_context["engagement_depth"] == "deep":
+            updated_context["response_complexity"] = "complex"
+        elif updated_context["engagement_depth"] == "moderate":
+            updated_context["response_complexity"] = "moderate"
+        else:
+            updated_context["response_complexity"] = "simple"
+        
+        # Track user consistency
+        if recent_queries:
+            last_query = recent_queries[-1].lower()
+            current_query = text_lower
+            
+            # Check if user is being consistent with their topic focus
+            if active_topic:
+                if active_topic in last_query or active_topic in current_query:
+                    updated_context["user_consistency_level"] = "focused"
+                else:
+                    updated_context["user_consistency_level"] = "exploratory"
+            
+            # Check for clarification requests
+            if any(word in current_query for word in ["what", "why", "how", "explain"]):
+                updated_context["user_consistency_level"] = "clarifying"
+        
+        return updated_context
+    
+    def needs_hadith(self, text: str, intent_topics: List[str], situational_context: Dict[str, Any]) -> bool:
+        """Determine if Hadith search is needed based on situational context."""
         text_lower = text.lower()
         topic_match = any(t in text_lower for t in intent_topics)
         family_match = any(w in text_lower for w in self.family_duty_keywords)
         duty_match = any(w in text_lower for w in self.duty_keywords)
-        return topic_match or family_match or duty_match
+        
+        # Adjust Hadith needs based on situational context
+        engagement_depth = situational_context.get("engagement_depth", "surface")
+        user_consistency = situational_context.get("user_consistency_level", "exploratory")
+        
+        # More likely to need Hadith in deeper engagement scenarios
+        if engagement_depth == "deep":
+            return True
+        elif engagement_depth == "moderate" and (topic_match or family_match or duty_match):
+            return True
+        elif user_consistency == "focused" and (topic_match or family_match or duty_match):
+            return True
+        else:
+            return topic_match or family_match or duty_match
     
-    def route(self, text: str, intent_topics: List[str]) -> Dict[str, Any]:
-        needs_hadith = self.needs_hadith(text, intent_topics)
+    def route(self, text: str, intent_topics: List[str], situational_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Route queries to Quran/Hadith based on intent and situational context."""
+        needs_hadith = self.needs_hadith(text, intent_topics, situational_context)
+        
+        # Adjust search parameters based on situational context
+        engagement_depth = situational_context.get("engagement_depth", "surface")
+        response_complexity = situational_context.get("response_complexity", "moderate")
+        
+        if engagement_depth == "deep":
+            max_verses = 12
+        elif engagement_depth == "moderate":
+            max_verses = 8
+        else:
+            max_verses = 5
+        
+        if response_complexity == "complex":
+            max_hadiths = 5 if needs_hadith else 0
+        else:
+            max_hadiths = 3 if needs_hadith else 0
+        
         return {
             "search_quran": True,
             "search_hadith": needs_hadith,
             "hadith_collections": ["bukhari", "muslim"] if needs_hadith else [],
-            "max_verses": 8,
-            "max_hadiths": 3 if needs_hadith else 0,
+            "max_verses": max_verses,
+            "max_hadiths": max_hadiths,
         }
 
 
@@ -155,7 +312,12 @@ class AnswerSynthesizer:
         if verses:
             topics = []
             for v in verses[:5]:
-                text = (v.get("text") or "") + " " + (v.get("translation") or "")
+                # Handle both dicts and SearchResult objects
+                text_val = (v.get("text") if hasattr(v, 'get') else getattr(v, 'text', ''))
+                translation_val = (v.get("translation") if hasattr(v, 'get') else getattr(v, 'translation', ''))
+                
+                text = (text_val or "") + " " + (translation_val or "")
+                
                 for topic, keywords in {
                     "faith": ["iman", "faith", "belief", "believe"],
                     "prayer": ["salah", "prayer", "salat", "worship"],
@@ -173,7 +335,9 @@ class AnswerSynthesizer:
                 parts.append(f"This relates to: {', '.join(unique_topics)}.")
             
             best = verses[0]
-            parts.append(f"Most relevant verse: {best.get('chapter')}:{best.get('verse_number')}.")
+            chapter = (best.get("chapter") if hasattr(best, 'get') else getattr(best, 'chapter', ''))
+            verse_number = (best.get("verse_number") if hasattr(best, 'get') else getattr(best, 'verse_number', ''))
+            parts.append(f"Most relevant verse: {chapter}:{verse_number}.")
         
         if hadiths:
             parts.append(f"Also found {len(hadiths)} related hadith(s) that provide additional guidance.")
@@ -200,14 +364,24 @@ class AgenticChatEngine:
         expanded_query = self.reference_resolver.expand_with_context(message, {
             "active_topic": state.active_topic,
             "active_entities": state.active_entities,
-            "recent_queries": [m.text for m in state.history if m.role == "user"]
+            "recent_queries": [m.text for m in state.history if m.role == "user"],
+            "situational_context": state.situational_context
         })
+        
+        # Update situational context based on current query
+        state.situational_context = self.dialogue_router.update_situational_context(
+            message, state.situational_context, state.active_topic,
+            [m.text for m in state.history if m.role == "user"]
+        )
+        
+        # Update confidence based on situational context
+        state.confidence_level = max(0.5, min(1.0, state.confidence_level + 0.1))
         
         # Understand intent
         intent = self.search_engine.query_understanding.analyze_query(expanded_query)
         
-        # Route to appropriate sources
-        route = self.dialogue_router.route(expanded_query, getattr(intent, 'topics', []))
+        # Route to appropriate sources with situational context
+        route = self.dialogue_router.route(expanded_query, getattr(intent, 'topics', []), state.situational_context)
         
         # Search Quran
         quran_results = []
@@ -231,7 +405,7 @@ class AgenticChatEngine:
             query=message,
             intent=intent,
             verses=quran_results,
-            hadiths=[vars(h) for h in hadith_results],
+            hadiths=[vars(h) if hasattr(h, '__dict__') else h for h in hadith_results],
             insights=[],
             suggestions=self._generate_suggestions(message, intent, state),
             summary=summary
@@ -265,9 +439,39 @@ class AgenticChatEngine:
         text = message.lower()
         topics = getattr(intent, 'topics', []) or []
         
-        for topic in topics[:2]:
-            suggestions.append(f"Tell me more about {topic}")
+        # Generate suggestions based on situational context
+        situational_context = state.situational_context
+        engagement_depth = situational_context.get("engagement_depth", "surface")
+        emotional_state = situational_context.get("emotional_state", "neutral")
+        user_consistency = situational_context.get("user_consistency_level", "exploratory")
         
+        # Generate dynamic suggestions based on context
+        if engagement_depth == "deep" and user_consistency == "focused":
+            # User is deeply engaged and focused - provide advanced suggestions
+            if topics:
+                suggestions.append(f"Explore {topics[0]} in-depth")
+                suggestions.append(f"Compare {topics[0]} with other topics")
+                suggestions.append(f"Find practical applications of {topics[0]}")
+        elif engagement_depth == "moderate":
+            # User is moderately engaged - provide intermediate suggestions
+            if topics:
+                suggestions.append(f"Tell me more about {topics[0]}")
+                suggestions.append(f"What about {topics[-1] if len(topics) > 1 else 'related topics'}?")
+        else:
+            # User is surface-level - provide simple suggestions
+            if topics:
+                suggestions.append(f"Tell me more about {topics[0]}")
+            suggestions.append(f"What is {topics[0] if topics else 'Quran'}?")
+        
+        # Emotional state-based suggestions
+        if emotional_state == "curious":
+            suggestions.append("Explore related concepts")
+            suggestions.append("Ask about applications")
+        elif emotional_state == "uncertain":
+            suggestions.append("Start with simpler topics")
+            suggestions.append("Get basic explanations")
+        
+        # Family/duty specific suggestions (from existing logic)
         if any(w in text for w in ["father", "parent"]):
             suggestions.append("What does the Quran say about mothers?")
             suggestions.append("What does the Quran say about children?")
@@ -275,6 +479,7 @@ class AgenticChatEngine:
         if any(w in text for w in ["responsibilities", "duties", "rights"]):
             suggestions.append("What does the Quran say about family?")
         
+        # Continue with active topic if it's different
         if state.active_topic and state.active_topic not in topics:
             suggestions.append(f"Continue with {state.active_topic}")
         
