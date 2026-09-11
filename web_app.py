@@ -411,7 +411,7 @@ def hadith_collections():
 
 @app.route("/api/hadith/collection/<collection>")
 def hadith_by_collection(collection):
-    hadiths = ilm_app.data_service.hadith_service.search_hadiths("", [collection])
+    hadiths = ilm_app.data_service.hadith_service.search_hadiths("the", [collection])
     return jsonify(hadiths)
 
 

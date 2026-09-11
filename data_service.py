@@ -230,12 +230,19 @@ class HadithAPIService:
         try:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
-            data = response.json()
-            collections = data.get("collections", [])
+            payload = response.json()
+            inner = payload.get("data", {})
+            collections = inner.get("collections", [])
             if isinstance(collections, dict):
                 collections = list(collections.keys())
-            self._collections_cache = collections
-            return collections
+            elif isinstance(collections, list):
+                collections = [
+                    c.get("key") or c.get("name") or str(c)
+                    for c in collections
+                    if isinstance(c, dict)
+                ]
+            self._collections_cache = [c for c in collections if c]
+            return self._collections_cache
         except Exception as e:
             print(f"Error fetching hadith collections: {e}")
             return []
