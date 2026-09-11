@@ -265,7 +265,3 @@ class RecommendationEngine:
                             ))
         
         return recommendations
-
-
-# Export
-from .recommendations import Recommendation, RecommendationEngine

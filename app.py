@@ -3,15 +3,15 @@
 import os
 from pathlib import Path
 
-from .data_service import DataService, Verse, Chapter, Hadith
-from .search_engine import (
+from data_service import DataService, Verse, Chapter, Hadith
+from search_engine import (
     IntelligentSearchEngine,
     SearchResult,
     QueryIntent,
     ContextIntelligence,
     KnowledgeGraph
 )
-from .recommendations import RecommendationEngine, Recommendation
+from recommendations import RecommendationEngine, Recommendation
 
 
 class QuraanApp:
@@ -151,9 +151,12 @@ class QuraanApp:
         return [vars(ch) for ch in self.data_service.get_all_quran_chapters(language)]
 
 
-# Import after defining classes to avoid circular imports
-from .api import QuraanApi
-from .models import QuranModel, HadithInference
-from .views import ChatView, SearchView, RecommendationView
+# Optional imports for package compatibility
+try:
+    from api.quran_api import QuraanApi
+    from models.quran_model import QuranModel, HadithInference
+    from views.chat_view import ChatView, SearchView, RecommendationView
+except ImportError:
+    pass
 
 app = QuraanApp()

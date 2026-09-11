@@ -637,16 +637,3 @@ class IntelligentSearchEngine:
             suggestions.append(f"Explore {interest} further")
         
         return suggestions[:5]
-
-
-# Export
-from .search_engine import (
-    InvertedIndex,
-    SemanticSearchEngine,
-    QueryUnderstanding,
-    ContextIntelligence,
-    KnowledgeGraph,
-    IntelligentSearchEngine,
-    SearchResult,
-    QueryIntent
-)

@@ -1,7 +1,7 @@
 """API layer for Ilm - Quran AI App"""
 
 from typing import List, Dict, Optional
-from .data_service import DataService, Verse, Chapter, Hadith
+from data_service import DataService, Verse, Chapter, Hadith
 
 
 class QuraanApi:

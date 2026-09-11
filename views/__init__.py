@@ -1,10 +1,6 @@
-"""Recommendation views for Ilm - Quran AI App"""
+"""Views for Ilm - Quran AI App"""
 
-from .chat_view import ChatView
-from .search_view import SearchView
-from .recommendation_view import RecommendationView
+from chat_view import ChatView, SearchView, RecommendationView, HadithInferenceView
 
 # Export for easy access
-from .chat_view import ChatView
-from .search_view import SearchView
-from .recommendation_view import RecommendationView
+__all__ = ["ChatView", "SearchView", "RecommendationView", "HadithInferenceView"]
