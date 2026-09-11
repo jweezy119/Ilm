@@ -10,7 +10,7 @@ CORS(app)
 HTML = """<!DOCTYPE html>
 <html>
 <head>
-<title>Ilm - Quran AI</title>
+<title>Ilm</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -41,7 +41,9 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; min-height:
   z-index: 20;
   flex-shrink: 0;
 }
-.brand { font-weight: 800; font-size: 1.15rem; color: var(--primary); letter-spacing: 0.2px; }
+.brand { font-weight: 800; font-size: 1.15rem; color: var(--primary); letter-spacing: 0.2px; display: flex; align-items: center; gap: 0.5rem; }
+.brand-arabic { font-family: 'Traditional Arabic', 'Amiri', 'serif'; font-size: 1.4rem; font-weight: 900; color: var(--primary-strong); line-height: 1; direction: rtl; }
+.brand-english { font-family: inherit; font-weight: inherit; font-size: inherit; color: inherit; }
 .nav { display: flex; gap: 0.5rem; }
 .nav-btn {
   border: 1px solid var(--border);
@@ -167,7 +169,10 @@ select {
 <body>
 <div class="app-shell">
   <header class="topbar">
-    <div class="brand" style="cursor:pointer;" onclick="switchTab('chat')">Ilm - Quran AI</div>
+    <div class="brand" style="cursor:pointer;" onclick="switchTab('chat')">
+      <span class="brand-arabic">العلم</span>
+      <span class="brand-english">Ilm</span>
+    </div>
     <nav class="nav" aria-label="Primary">
       <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
       <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
