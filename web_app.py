@@ -47,6 +47,10 @@ button:hover { background: #115e59; }
 .suggestions-title { font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: #0f766e; }
 .error { color: #dc2626; background: #fef2f2; padding: 1rem; border-radius: 0.5rem; border: 1px solid #fecaca; }
 .loading { color: #64748b; font-style: italic; }
+.hadith-panel { background: #ffffff; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 0.75rem; margin: 1rem 0; }
+.hadith-panel h2 { color: #7c3aed; margin-bottom: 0.5rem; }
+.hadith-collection { padding: 0.5rem 0.75rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 0.5rem; margin: 0.25rem 0; cursor: pointer; color: #1e293b; }
+.hadith-collection:hover { border-color: #7c3aed; background: #f5f3ff; }
 </style>
 </head>
 <body>
@@ -60,6 +64,7 @@ button:hover { background: #115e59; }
 <div class="suggestions" id="suggestions"></div>
 <div class="chat-container" id="chat"></div>
 <div id="quran-panel" class="hidden" style="padding: 2rem; max-width: 900px; margin: 0 auto; width: 100%;"></div>
+<div id="hadith-panel" class="hidden" style="padding: 2rem; max-width: 900px; margin: 0 auto; width: 100%;"></div>
 <div class="controls">
   <input id="query" placeholder="Ask about the Quran..." onkeydown="if(event.key==='Enter')send()">
   <button onclick="send()">Ask</button>
@@ -102,7 +107,55 @@ async function loadHadith(q) {
     if(hadithHtml) addMsg('ai', hadithHtml);
   } catch(e) {}
 }
-function toggleHadith() { showHadith=!showHadith; }
+function toggleHadith() {
+  showHadith = !showHadith;
+  const panel = document.getElementById('hadith-panel');
+  const chat = document.getElementById('chat');
+  const suggestions = document.getElementById('suggestions');
+  const quranPanel = document.getElementById('quran-panel');
+  if(showHadith) {
+    panel.classList.remove('hidden');
+    chat.classList.add('hidden');
+    suggestions.classList.add('hidden');
+    quranPanel.classList.add('hidden');
+    loadHadithPanel();
+  } else {
+    panel.classList.add('hidden');
+    chat.classList.remove('hidden');
+    suggestions.classList.remove('hidden');
+  }
+}
+async function loadHadithPanel() {
+  const panel = document.getElementById('hadith-panel');
+  panel.innerHTML = '<div class="hadith-panel"><h2>Hadith Collections</h2><div class="disclaimer">These hadiths are separate from the Quran and provided as best-effort references. Check grades like Sahih/Hasan/Da\'if.</div><div id="hadith-collections"><div class="loading">Loading collections...</div></div><div id="hadith-content"></div></div>';
+  try {
+    const res = await fetch('/api/hadith/collections');
+    const collections = await res.json();
+    const container = document.getElementById('hadith-collections');
+    if(!collections||!collections.length) {
+      container.innerHTML = '<div class="error">No collections available.</div>';
+      return;
+    }
+    container.innerHTML = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem">' + collections.map(c=>`<div class="hadith-collection" onclick="loadHadithCollection('${c}')">${c}</div>`).join('') + '</div>';
+  } catch(e) {
+    document.getElementById('hadith-collections').innerHTML = '<div class="error">Error loading collections.</div>';
+  }
+}
+async function loadHadithCollection(collection) {
+  const container = document.getElementById('hadith-content');
+  container.innerHTML = '<div class="loading">Loading hadiths...</div>';
+  try {
+    const res = await fetch(`/api/hadith/collection/${encodeURIComponent(collection)}`);
+    const hadiths = await res.json();
+    if(!hadiths||!hadiths.length) {
+      container.innerHTML = '<div class="error">No hadiths found in this collection.</div>';
+      return;
+    }
+    container.innerHTML = '<div style="margin-top:1rem"><b>Hadiths from ' + collection + ':</b></div>' + renderHadiths(hadiths.slice(0,10));
+  } catch(e) {
+    container.innerHTML = '<div class="error">Error loading hadiths.</div>';
+  }
+}
 async function loadQuranReader() {
   const panel = document.getElementById('quran-panel');
   panel.innerHTML = '<div class="quran-reader"><h2>Quran Reader</h2><div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div><select id="surah-select" onchange="loadSurah(this.value)"><option value="">Select a Surah</option></select><div id="surah-content"></div></div>';
@@ -137,10 +190,12 @@ function toggleQuranReader() {
   const panel = document.getElementById('quran-panel');
   const chat = document.getElementById('chat');
   const suggestions = document.getElementById('suggestions');
+  const hadithPanel = document.getElementById('hadith-panel');
   if(showQuranReader) {
     panel.classList.remove('hidden');
     chat.classList.add('hidden');
     suggestions.classList.add('hidden');
+    hadithPanel.classList.add('hidden');
     loadQuranReader();
   } else {
     panel.classList.add('hidden');
@@ -257,6 +312,17 @@ def get_surah(chapter):
         "translation": v.translation,
         "audio_url": v.audio_url
     } for v in verses])
+
+
+@app.route("/api/hadith/collections")
+def hadith_collections():
+    return jsonify(ilm_app.data_service.hadith_service.get_collections())
+
+
+@app.route("/api/hadith/collection/<collection>")
+def hadith_by_collection(collection):
+    hadiths = ilm_app.data_service.hadith_service.search_hadiths("", [collection])
+    return jsonify(hadiths)
 
 
 @app.route("/api/hadith")
