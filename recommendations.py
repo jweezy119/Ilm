@@ -2,6 +2,7 @@
 
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
+from dataclasses import dataclass
 from search_engine import ContextIntelligence, QueryUnderstanding
 from data_service import DataService, Verse, Hadith
 
