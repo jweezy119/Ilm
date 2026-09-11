@@ -43,6 +43,12 @@ class ConversationMemory:
     
     def __init__(self):
         self.sessions: Dict[str, ConversationState] = {}
+        # New: Store interaction data for training/learning
+        self.training_data: List[Dict] = []
+        # New: Pattern learning
+        self.query_patterns: Dict[str, Dict] = {}
+        # New: Response effectiveness tracking
+        self.response_metrics: Dict[str, Dict] = {}
     
     def get_state(self, user_id: str) -> ConversationState:
         if user_id not in self.sessions:
@@ -53,6 +59,9 @@ class ConversationMemory:
         state = self.get_state(user_id)
         state.history.append(UserMessage(role="user", text=text))
         state.turn_count += 1
+        
+        # Learn from user's query patterns
+        self._learn_from_user_query(user_id, text)
     
     def add_agent_turn(self, user_id: str, turn: AgentTurn):
         state = self.get_state(user_id)
@@ -73,6 +82,124 @@ class ConversationMemory:
                 "response_complexity": "moderate",
                 "engagement_depth": "surface"
             }
+    
+    def _learn_from_user_query(self, user_id: str, query: str):
+        """Analyze and learn from user query patterns."""
+        query_lower = query.lower()
+        
+        # Track query types and frequency
+        if user_id not in self.query_patterns:
+            self.query_patterns[user_id] = {
+                "query_types": {},
+                "topics": {},
+                "common_phrases": [],
+                "follow_up_patterns": {},
+                "effective_responses": []
+            }
+        
+        patterns = self.query_patterns[user_id]
+        
+        # Classify query type
+        if any(word in query_lower for word in ["what", "why", "how", "explain"]):
+            query_type = "clarification"
+        elif any(word in query_lower for word in ["tell me more", "more", "expand"]):
+            query_type = "follow_up"
+        elif any(word in query_lower for word in ["compare", "difference", "similar"]):
+            query_type = "comparison"
+        elif any(word in query_lower for word in ["application", "example", "practical"]):
+            query_type = "application"
+        else:
+            query_type = "general"
+        
+        patterns["query_types"][query_type] = patterns["query_types"].get(query_type, 0) + 1
+        
+        # Extract topics from query
+        if hasattr(self, 'search_engine') and hasattr(self.search_engine, 'query_understanding'):
+            try:
+                intent = self.search_engine.query_understanding.analyze_query(query)
+                if intent.topics:
+                    for topic in intent.topics:
+                        patterns["topics"][topic] = patterns["topics"].get(topic, 0) + 1
+            except:
+                pass
+        
+        # Track follow-up patterns
+        if any(word in query_lower for word in ["tell me more", "more", "also", "and", "another"]):
+            patterns["follow_up_patterns"]["continuation"] = patterns["follow_up_patterns"].get("continuation", 0) + 1
+        
+        # Update most common phrases (last 5 queries)
+        if len(patterns["common_phrases"]) >= 5:
+            patterns["common_phrases"].pop(0)
+        patterns["common_phrases"].append(query)
+    
+    def save_interaction_for_learning(self, user_id: str, interaction_data: Dict[str, Any]):
+        """Save interaction data for potential future training.
+        
+        This allows the system to learn from actual user interactions,
+        improving responses over time based on real usage patterns.
+        """
+        # Store interaction with metadata
+        saved_interaction = {
+            "timestamp": datetime.now(),
+            "user_id": user_id,
+            "interaction": interaction_data,
+            "session_context": {
+                "active_topic": self.get_state(user_id).active_topic,
+                "turn_count": self.get_state(user_id).turn_count,
+                "emotional_state": self.get_state(user_id).emotional_state,
+                "user_consistency": self.get_state(user_id).situational_context.get("user_consistency_level"),
+                "engagement_depth": self.get_state(user_id).situational_context.get("engagement_depth"),
+            }
+        }
+        
+        self.training_data.append(saved_interaction)
+        
+        # Update response effectiveness metrics
+        self._update_response_effectiveness(user_id, interaction_data)
+        
+        # Keep training data manageable (last 1000 interactions)
+        if len(self.training_data) > 1000:
+            self.training_data = self.training_data[-1000:]
+    
+    def _update_response_effectiveness(self, user_id: str, interaction_data: Dict[str, Any]):
+        """Track which responses are most effective."""
+        user_metrics = self.response_metrics.setdefault(user_id, {
+            "successful_patterns": {},
+            "improvement_areas": {},
+            "topic_preferences": {},
+            "response_quality_scores": []
+        })
+        
+        # Analyze what worked
+        query = interaction_data.get("user_message", "")
+        response_summary = interaction_data.get("response_summary", "")
+        route_used = interaction_data.get("route_used", {})
+        
+        # Track successful response patterns
+        if response_summary and "I couldn't find direct guidance" not in response_summary:
+            # Response was helpful - record the pattern
+            if route_used.get("search_hadith"):
+                user_metrics["successful_patterns"]["hadith_relevant"] = user_metrics["successful_patterns"].get("hadith_relevant", 0) + 1
+            if route_used.get("search_quran"):
+                user_metrics["successful_patterns"]["quran_relevant"] = user_metrics["successful_patterns"].get("quran_relevant", 0) + 1
+        
+        # Track topics user asks about frequently
+        intent = interaction_data.get("intent", {})
+        for topic in intent.get("topics", []):
+            user_metrics["topic_preferences"][topic] = user_metrics["topic_preferences"].get(topic, 0) + 1
+        
+        # Record response quality (simplified - based on length and content)
+        if response_summary:
+            score = min(10, len(response_summary) / 50)  # Simple heuristic
+            user_metrics["response_quality_scores"].append(score)
+    
+    def get_training_data(self, limit: int = 100) -> List[Dict]:
+        """Retrieve recent interaction data for training purposes."""
+        return self.training_data[-limit:] if self.training_data else []
+    
+    def get_user_patterns(self, user_id: str) -> Dict[str, Any]:
+        """Get learned patterns for a specific user."""
+        return self.query_patterns.get(user_id, {})
     
     def get_context(self, user_id: str) -> Dict[str, Any]:
         state = self.get_state(user_id)
@@ -414,6 +541,21 @@ class AgenticChatEngine:
         # Update memory
         self.memory.add_user_message(user_id, message)
         self.memory.add_agent_turn(user_id, turn)
+        
+        # Save interaction for learning
+        self.memory.save_interaction_for_learning(user_id, {
+            "user_message": message,
+            "expanded_query": expanded_query,
+            "intent": {
+                "intent_type": intent.intent_type,
+                "topics": intent.topics,
+                "confidence": intent.confidence
+            },
+            "route_used": route,
+            "verses_found": len(quran_results),
+            "hadiths_found": len(hadith_results),
+            "response_summary": summary
+        })
         
         # Also update legacy context
         self.context_intelligence.add_to_history(user_id, message, quran_results)
