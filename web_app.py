@@ -249,6 +249,10 @@ async function send() {
       html += '<div class="section-title">Suggestions</div><div class="chips">' + data.suggestions.map(s=>`<div class="chip" onclick="document.getElementById(\'query\').value='${s}';send()">${s}</div>`).join('') + '</div>';
     }
     addMsg('ai', html || '<div class="error">No results.</div>');
+    const hadiths = data.hadiths || [];
+    if(hadiths.length) {
+      addMsg('ai', renderHadiths(hadiths));
+    }
   } catch(e) { addMsg('ai', '<div class="error">Error: '+e.message+'</div>'); }
 }
 async function loadQuranReader() {

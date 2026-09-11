@@ -35,30 +35,33 @@ class QueryIntent:
 
 
 class InvertedIndex:
-    """Inverted index for fast keyword-based verse lookup."""
+    """Inverted index for fast keyword-based verse lookup with TF-IDF scoring."""
     
     def __init__(self):
-        self.index: Dict[str, Set[int]] = defaultdict(set)
+        self.index: Dict[str, Dict[int, int]] = defaultdict(dict)  # token -> {verse_id: count}
         self.verse_texts: Dict[int, str] = {}
         self.verse_metadata: Dict[int, Dict] = {}
+        self.document_count = 0
+        self._idf_cache: Dict[str, float] = {}
     
     def add_verse(self, verse_id: int, text: str, metadata: Dict = None):
         """Add a verse to the index."""
         self.verse_texts[verse_id] = text
         self.verse_metadata[verse_id] = metadata or {}
         
-        # Tokenize and index
         tokens = self._tokenize(text)
+        self.document_count += 1
+        
         for token in tokens:
-            self.index[token].add(verse_id)
+            if verse_id not in self.index[token]:
+                self.index[token][verse_id] = 0
+            self.index[token][verse_id] += 1
     
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text into searchable terms."""
-        # Remove punctuation, lowercase, split
         text = re.sub(r'[^\w\s]', ' ', text.lower())
         tokens = text.split()
-        # Filter stop words (simplified)
-        stop_words = {'the', 'and', 'or', 'in', 'of', 'to', 'a', 'is', 'for', 'on', 'with', 'as', 'by', 'at', 'an'}
+        stop_words = {'the', 'and', 'or', 'in', 'of', 'to', 'a', 'is', 'for', 'on', 'with', 'as', 'by', 'at', 'an', 'it', 'that', 'this', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'do', 'does', 'did', 'not', 'no', 'yes', 'but', 'if', 'then', 'else', 'when', 'where', 'who', 'whom', 'whose', 'why', 'how', 'what', 'which', 'there', 'here', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'only', 'own', 'same', 'than', 'too', 'very', 'just', 'because', 'as', 'until', 'while', 'about', 'against', 'between', 'through', 'during', 'before', 'after', 'above', 'below', 'up', 'down', 'out', 'off', 'over', 'under', 'again', 'further', 'then', 'once'}
         return [t for t in tokens if t not in stop_words and len(t) > 1]
     
     def search(self, query: str, limit: int = 50) -> List[int]:
@@ -67,31 +70,50 @@ class InvertedIndex:
         if not tokens:
             return []
         
-        # Find verses containing all tokens (AND logic)
-        matching_verses = None
+        # Score each verse
+        scores = {}
         for token in tokens:
             if token in self.index:
-                if matching_verses is None:
-                    matching_verses = self.index[token].copy()
-                else:
-                    matching_verses &= self.index[token]
-            else:
-                return []
+                idf = self._idf(token)
+                for verse_id, count in self.index[token].items():
+                    tf = count / max(sum(self.index[token].values()), 1)
+                    scores[verse_id] = scores.get(verse_id, 0) + tf * idf
         
-        return list(matching_verses)[:limit] if matching_verses else []
+        # Sort by score
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [vid for vid, _ in ranked[:limit]]
+    
+    def _idf(self, token: str) -> float:
+        """Compute IDF for a token."""
+        if token in self._idf_cache:
+            return self._idf_cache[token]
+        
+        doc_freq = len(self.index.get(token, {}))
+        if doc_freq == 0:
+            idf = 0.0
+        else:
+            import math
+            idf = math.log((self.document_count + 1) / (doc_freq + 1)) + 1
+        
+        self._idf_cache[token] = idf
+        return idf
     
     def search_or(self, query: str, limit: int = 50) -> List[int]:
-        """Search index for verses matching any query term (OR logic)."""
+        """Search index for verses matching any query term."""
         tokens = self._tokenize(query)
         if not tokens:
             return []
         
-        matching_verses = set()
+        scores = {}
         for token in tokens:
             if token in self.index:
-                matching_verses.update(self.index[token])
+                idf = self._idf(token)
+                for verse_id, count in self.index[token].items():
+                    tf = count / max(sum(self.index[token].values()), 1)
+                    scores[verse_id] = scores.get(verse_id, 0) + tf * idf
         
-        return list(matching_verses)[:limit]
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return [vid for vid, _ in ranked[:limit]]
 
 
 class SemanticSearchEngine:
@@ -480,18 +502,54 @@ class IntelligentSearchEngine:
         self.query_understanding = QueryUnderstanding()
         self.context_intelligence = ContextIntelligence()
         self.data_service = data_service
+        self._index_loaded = False
+        self._index_loading = False
+        self._load_error = None
+    
+    def _ensure_indexed(self):
+        """Lazy-load Quran verses into the index if not already loaded."""
+        if self._index_loaded or self._index_loading or not self.data_service:
+            return
+        
+        self._index_loading = True
+        try:
+            chapters = self.data_service.get_all_quran_chapters("en")
+            for chapter in chapters[:30]:  # Start with first 30 chapters for speed
+                try:
+                    verses = self.data_service.get_quran_surah(chapter.id, "en")
+                    for v in verses:
+                        self.index_verse(
+                            v.id,
+                            v.text or "",
+                            v.translation,
+                            {
+                                "chapter": chapter.name_simple,
+                                "verse_number": v.verse_number,
+                                "verse_key": v.verse_key
+                            }
+                        )
+                except Exception as e:
+                    print(f"Indexing error for chapter {chapter.id}: {e}")
+                    continue
+            
+            self._index_loaded = True
+        except Exception as e:
+            self._load_error = str(e)
+            print(f"Quran indexing error: {e}")
+        finally:
+            self._index_loading = False
     
     def index_verse(self, verse_id: int, text: str, translation: str = None, metadata: Dict = None):
         """Add verse to all search indexes."""
-        # Add to inverted index
         full_text = text + " " + (translation or "")
         self.inverted_index.add_verse(verse_id, full_text, metadata)
-        
-        # Add to semantic index
         self.semantic_engine.add_verse(verse_id, full_text)
     
     def search(self, query: str, user_id: str = None, limit: int = 20) -> Dict:
         """Perform intelligent multi-strategy search."""
+        # Ensure index is loaded
+        self._ensure_indexed()
+        
         # Understand query intent
         intent = self.query_understanding.analyze_query(query)
         
@@ -547,6 +605,9 @@ class IntelligentSearchEngine:
     
     def _keyword_search(self, query: str, limit: int) -> List[SearchResult]:
         """Keyword-based search using inverted index."""
+        if not self._index_loaded:
+            return []
+        
         verse_ids = self.inverted_index.search_or(query, limit * 2)
         results = []
         
@@ -554,8 +615,8 @@ class IntelligentSearchEngine:
             text = self.inverted_index.verse_texts.get(verse_id, "")
             metadata = self.inverted_index.verse_metadata.get(verse_id, {})
             
-            # Calculate keyword match score
-            score = self._calculate_keyword_score(query, text)
+            # Calculate TF-IDF score
+            score = self._calculate_tfidf_score(query, text)
             
             results.append(SearchResult(
                 verse_id=verse_id,
@@ -571,50 +632,43 @@ class IntelligentSearchEngine:
         results.sort(key=lambda x: x.score, reverse=True)
         return results[:limit]
     
-    def _calculate_keyword_score(self, query: str, text: str) -> float:
-        """Calculate keyword match score."""
+    def _calculate_tfidf_score(self, query: str, text: str) -> float:
+        """Calculate TF-IDF score for a query against text."""
         query_tokens = set(self.inverted_index._tokenize(query))
-        text_tokens = set(self.inverted_index._tokenize(text))
+        text_tokens = self.inverted_index._tokenize(text)
         
         if not query_tokens:
             return 0.0
         
-        intersection = query_tokens & text_tokens
-        return len(intersection) / len(query_tokens)
+        score = 0.0
+        for token in query_tokens:
+            if token in text_tokens:
+                tf = text_tokens.count(token) / max(len(text_tokens), 1)
+                idf = self.inverted_index._idf(token)
+                score += tf * idf
+        
+        return score / max(len(query_tokens), 1)
     
     def _combine_results(self, keyword_results: List[SearchResult], 
                         semantic_results: List[SearchResult],
                         intent: QueryIntent, limit: int) -> List[SearchResult]:
         """Combine and re-rank results from different strategies."""
-        # Create combined dict by verse_id
         combined = {}
         
-        # Weight factors based on intent
-        weights = {
-            "verse_lookup": {"keyword": 0.8, "semantic": 0.2},
-            "topic_search": {"keyword": 0.4, "semantic": 0.6},
-            "concept_exploration": {"keyword": 0.3, "semantic": 0.7},
-            "comparison": {"keyword": 0.5, "semantic": 0.5},
-            "explanation": {"keyword": 0.4, "semantic": 0.6}
-        }
-        
-        intent_weights = weights.get(intent.intent_type, weights["topic_search"])
-        
-        # Add keyword results
+        # Add keyword results with TF-IDF scores
         for result in keyword_results:
             combined[result.verse_id] = result
-            result.score *= intent_weights["keyword"]
         
-        # Add semantic results
+        # Add semantic results as boost
         for result in semantic_results:
             if result.verse_id in combined:
-                combined[result.verse_id].score += result.score * intent_weights["semantic"]
+                combined[result.verse_id].score += result.score * 0.2
                 combined[result.verse_id].match_type = "hybrid"
             else:
-                result.score *= intent_weights["semantic"]
+                result.score *= 0.3
                 combined[result.verse_id] = result
         
-        # Sort by combined score
+        # Sort by score
         sorted_results = sorted(combined.values(), key=lambda x: x.score, reverse=True)
         return sorted_results[:limit]
     
