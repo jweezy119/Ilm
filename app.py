@@ -30,7 +30,7 @@ class QuraanApp:
         
         # Initialize services
         self.data_service = DataService()
-        self.search_engine = IntelligentSearchEngine()
+        self.search_engine = IntelligentSearchEngine(data_service=self.data_service)
         self.context_intelligence = ContextIntelligence()
         self.recommendation_engine = RecommendationEngine(
             self.data_service,

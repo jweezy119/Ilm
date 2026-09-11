@@ -34,6 +34,13 @@ button:hover { background: #f59e0b; }
 .chip:hover { border-color: #3b82f6; }
 .meta { font-size: 0.8rem; opacity: 0.7; margin-top: 0.3rem; }
 .source { font-size: 0.75rem; color: #94a3b8; margin-top: 0.3rem; }
+.disclaimer { background: #451a03; border: 1px solid #f97316; color: #ffedd5; padding: 0.75rem 1rem; border-radius: 0.5rem; margin: 0.5rem 0; font-size: 0.85rem; }
+.quran-reader { background: #0f172a; border: 1px solid #334155; padding: 1.5rem; border-radius: 0.75rem; margin: 1rem 0; }
+.quran-reader h2 { color: #fbbf24; margin-bottom: 0.5rem; }
+.quran-arabic { font-size: 1.5rem; line-height: 2; text-align: right; direction: rtl; margin: 1rem 0; color: #fff; }
+.quran-translation { margin-top: 0.75rem; color: #cbd5e1; font-style: italic; }
+.verse-nav { display: flex; justify-content: space-between; margin-top: 1rem; gap: 0.5rem; }
+.hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -41,20 +48,23 @@ button:hover { background: #f59e0b; }
   <h1>Ilm - Quran AI</h1>
   <div>
     <button class="secondary" onclick="toggleHadith()">Toggle Hadith</button>
+    <button class="secondary" onclick="toggleQuranReader()">Quran Reader</button>
   </div>
 </header>
 <div class="suggestions" id="suggestions"></div>
 <div class="chat-container" id="chat"></div>
+<div id="quran-panel" class="hidden" style="padding: 2rem; max-width: 900px; margin: 0 auto; width: 100%;"></div>
 <div class="controls">
   <input id="query" placeholder="Ask about the Quran..." onkeydown="if(event.key==='Enter')send()">
   <button onclick="send()">Ask</button>
 </div>
 <script>
 let showHadith = false;
+let showQuranReader = false;
 function addMsg(role, html) { const d=document.getElementById('chat'); const m=document.createElement('div'); m.className='message '+role; m.innerHTML=html; d.appendChild(m); d.scrollTop=d.scrollHeight; }
 function renderVerses(results) {
   if(!results||!results.length) return '<div>No verses found. Try rephrasing.</div>';
-  return results.map(r=>`<div class="verse"><div><b>${r.chapter||''}:${r.verse_number}</b> <span class="meta">Score: ${(r.score||0).toFixed(2)} | ${r.match_type}</span></div><div>${r.text||''}</div>${r.translation?`<div style="margin-top:0.5rem;color:#86efac"><em>${r.translation}</em></div>`:''}<div class="source">Source: Quran (api.quran.com)</div></div>`).join('');
+  return results.map(r=>`<div class="verse"><div><b>${r.chapter||''}:${r.verse_number}</b> <span class="meta">Score: ${(r.score||0).toFixed(2)} | ${r.match_type}</span></div><div>${r.text||''}</div>${r.translation?`<div class="quran-translation"><em>${r.translation}</em><div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div></div>`:''}<div class="source">Source: Quran (api.quran.com)</div></div>`).join('');
 }
 function renderHadiths(hadiths) {
   if(!hadiths||!hadiths.length) return '<div>No hadiths found.</div>';
@@ -87,6 +97,43 @@ async function loadHadith(q) {
   } catch(e) {}
 }
 function toggleHadith() { showHadith=!showHadith; }
+async function loadQuranReader() {
+  const panel = document.getElementById('quran-panel');
+  panel.innerHTML = '<div class="quran-reader"><h2>Quran Reader</h2><select id="surah-select" onchange="loadSurah(this.value)"><option value="">Select a Surah</option></select><div id="surah-content"></div></div>';
+  const res = await fetch('/api/chapters');
+  const chapters = await res.json();
+  const select = document.getElementById('surah-select');
+  chapters.forEach(ch => {
+    const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
+    select.appendChild(opt);
+  });
+}
+async function loadSurah(chapter) {
+  if(!chapter) return;
+  const container = document.getElementById('surah-content');
+  container.innerHTML = '<div>Loading...</div>';
+  try {
+    const res = await fetch(`/api/surah/${chapter}?lang=en`);
+    const verses = await res.json();
+    container.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="verse"><div><b>${v.verse_number}</b></div><div>${v.text||''}</div><div class="quran-translation"><em>${v.translation||''}</em></div></div>`).join('');
+  } catch(e) { container.innerHTML = '<div>Error loading surah.</div>'; }
+}
+function toggleQuranReader() {
+  showQuranReader = !showQuranReader;
+  const panel = document.getElementById('quran-panel');
+  const chat = document.getElementById('chat');
+  const suggestions = document.getElementById('suggestions');
+  if(showQuranReader) {
+    panel.classList.remove('hidden');
+    chat.classList.add('hidden');
+    suggestions.classList.add('hidden');
+    loadQuranReader();
+  } else {
+    panel.classList.add('hidden');
+    chat.classList.remove('hidden');
+    suggestions.classList.remove('hidden');
+  }
+}
 async function init() {
   const res = await fetch('/api/chapters');
   const chapters = await res.json();

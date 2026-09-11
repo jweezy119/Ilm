@@ -474,11 +474,12 @@ class KnowledgeGraph:
 class IntelligentSearchEngine:
     """Main intelligent search engine combining all search strategies."""
     
-    def __init__(self):
+    def __init__(self, data_service=None):
         self.inverted_index = InvertedIndex()
         self.semantic_engine = SemanticSearchEngine()
         self.query_understanding = QueryUnderstanding()
         self.context_intelligence = ContextIntelligence()
+        self.data_service = data_service
     
     def index_verse(self, verse_id: int, text: str, translation: str = None, metadata: Dict = None):
         """Add verse to all search indexes."""
@@ -504,6 +505,11 @@ class IntelligentSearchEngine:
         # Combine and rank results
         combined_results = self._combine_results(keyword_results, semantic_results, intent, limit)
         
+        # Fallback to live API if index is empty
+        if not combined_results and self.data_service:
+            api_results = self._api_search(query, limit)
+            combined_results = api_results
+        
         # Add contextual insights
         insights = self._generate_insights(query, combined_results, intent)
         
@@ -518,6 +524,26 @@ class IntelligentSearchEngine:
             "insights": insights,
             "suggestions": self._generate_suggestions(query, intent, context)
         }
+    
+    def _api_search(self, query: str, limit: int) -> List[SearchResult]:
+        """Fallback search using live Quran API."""
+        results = []
+        try:
+            api_results = self.data_service.search_quran(query, "en")
+            for i, r in enumerate(api_results[:limit]):
+                results.append(SearchResult(
+                    verse_id=i,
+                    chapter=r.get("verse_key", "").split(":")[0] if r.get("verse_key") else "",
+                    verse_number=int(r.get("verse_key", "").split(":")[1]) if r.get("verse_key") and ":" in r.get("verse_key") else 0,
+                    text=r.get("text", ""),
+                    translation=r.get("translation"),
+                    score=float(r.get("score", 0.5)),
+                    match_type="api",
+                    context_snippet=r.get("text", "")[:200]
+                ))
+        except Exception as e:
+            print(f"API search fallback error: {e}")
+        return results
     
     def _keyword_search(self, query: str, limit: int) -> List[SearchResult]:
         """Keyword-based search using inverted index."""
