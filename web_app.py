@@ -14,76 +14,229 @@ HTML = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-body { background: #f8fafc; color: #1e293b; min-height: 100vh; display: flex; flex-direction: column; }
-header { background: #ffffff; padding: 1rem 2rem; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-h1 { font-size: 1.5rem; color: #0f766e; }
-.chat-container { flex: 1; overflow-y: auto; padding: 2rem; max-width: 900px; margin: 0 auto; width: 100%; }
-.message { margin-bottom: 1rem; padding: 1rem; border-radius: 0.75rem; max-width: 85%; }
-.user { background: #0f766e; color: white; margin-left: auto; }
-.ai { background: #ffffff; border: 1px solid #e2e8f0; color: #1e293b; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-.verse { background: #ffffff; border-left: 4px solid #0f766e; padding: 1rem; margin: 0.5rem 0; border-radius: 0.5rem; font-size: 0.95rem; border: 1px solid #e2e8f0; }
-.hadith { background: #ffffff; border-left: 4px solid #7c3aed; padding: 1rem; margin: 0.5rem 0; border-radius: 0.5rem; font-size: 0.95rem; border: 1px solid #e2e8f0; }
-.controls { background: #ffffff; padding: 1rem 2rem; border-top: 1px solid #e2e8f0; display: flex; gap: 0.5rem; max-width: 900px; margin: 0 auto; width: 100%; }
-input { flex: 1; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 1rem; }
-input:focus { outline: none; border-color: #0f766e; }
-button { padding: 0.75rem 1.25rem; border-radius: 0.5rem; border: none; background: #0f766e; color: white; font-weight: 600; cursor: pointer; }
-button:hover { background: #115e59; }
-.secondary { background: #e2e8f0; color: #1e293b; }
-.secondary:hover { background: #cbd5e1; }
-.suggestions { padding: 0 2rem 1rem; max-width: 900px; margin: 0 auto; width: 100%; display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.chip { padding: 0.4rem 0.8rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 999px; font-size: 0.85rem; cursor: pointer; color: #1e293b; }
-.chip:hover { border-color: #0f766e; background: #f0fdfa; }
-.meta { font-size: 0.8rem; color: #64748b; margin-top: 0.3rem; }
-.source { font-size: 0.75rem; color: #94a3b8; margin-top: 0.3rem; }
-.disclaimer { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; padding: 0.75rem 1rem; border-radius: 0.5rem; margin: 0.5rem 0; font-size: 0.85rem; }
-.quran-reader { background: #ffffff; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 0.75rem; margin: 1rem 0; }
-.quran-reader h2 { color: #0f766e; margin-bottom: 0.5rem; }
-.quran-arabic { font-size: 1.5rem; line-height: 2; text-align: right; direction: rtl; margin: 1rem 0; color: #1e293b; }
-.quran-translation { margin-top: 0.75rem; color: #475569; font-style: italic; }
-.verse-nav { display: flex; justify-content: space-between; margin-top: 1rem; gap: 0.5rem; }
-.hidden { display: none !important; }
-.insights { margin-top: 1rem; padding: 1rem; background: #f0fdfa; border-radius: 0.5rem; border: 1px solid #99f6e4; }
-.insights b { color: #0f766e; }
-.suggestions-title { font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: #0f766e; }
-.error { color: #dc2626; background: #fef2f2; padding: 1rem; border-radius: 0.5rem; border: 1px solid #fecaca; }
-.loading { color: #64748b; font-style: italic; }
-.hadith-panel { background: #ffffff; border: 1px solid #e2e8f0; padding: 1.5rem; border-radius: 0.75rem; margin: 1rem 0; }
-.hadith-panel h2 { color: #7c3aed; margin-bottom: 0.5rem; }
-.hadith-collection { padding: 0.5rem 0.75rem; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 0.5rem; margin: 0.25rem 0; cursor: pointer; color: #1e293b; }
-.hadith-collection:hover { border-color: #7c3aed; background: #f5f3ff; }
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #64748b;
+  --primary: #0f766e;
+  --primary-strong: #115e59;
+  --accent: #fbbf24;
+  --verse-accent: #0f766e;
+  --hadith-accent: #7c3aed;
+}
+body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.brand { font-weight: 800; font-size: 1.15rem; color: var(--primary); letter-spacing: 0.2px; }
+.nav { display: flex; gap: 0.5rem; }
+.nav-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.nav-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.nav-btn.secondary { background: #f1f5f9; }
+.panels { flex: 1; display: flex; flex-direction: column; }
+.panel { display: none; flex: 1; }
+.panel.open { display: flex; flex-direction: column; }
+.pad { padding: 1rem; max-width: 1100px; margin: 0 auto; width: 100%; }
+.chat-scroll { flex: 1; overflow-y: auto; padding: 1rem; }
+.bubble {
+  margin: 0.5rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  max-width: 92%;
+  line-height: 1.45;
+  font-size: 0.98rem;
+}
+.bubble.user { background: var(--primary); color: #fff; margin-left: auto; border-bottom-right-radius: 0.25rem; }
+.bubble.ai { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 0.25rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 0.6rem 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.card.verse { border-left: 4px solid var(--verse-accent); }
+.card.hadith { border-left: 4px solid var(--hadith-accent); }
+.meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+.source { font-size: 0.75rem; color: #94a3b8; margin-top: 0.35rem; }
+.disclaimer {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.6rem;
+  margin: 0.6rem 0;
+  font-size: 0.85rem;
+}
+.arabic { font-size: 1.35rem; line-height: 2; text-align: right; direction: rtl; margin: 0.75rem 0; color: var(--text); }
+.translation { margin-top: 0.6rem; color: #475569; font-style: italic; }
+.controls {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+.controls-inner { max-width: 1100px; margin: 0 auto; width: 100%; display: flex; gap: 0.5rem; }
+input[type="text"] {
+  flex: 1;
+  padding: 0.8rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: var(--text);
+  font-size: 1rem;
+}
+input[type="text"]:focus { outline: none; border-color: var(--primary); }
+button.primary { padding: 0.8rem 1.2rem; border-radius: 0.6rem; border: none; background: var(--primary); color: #fff; font-weight: 700; cursor: pointer; }
+button.primary:hover { background: var(--primary-strong); }
+.chips { display: flex; gap: 0.5rem; flex-wrap: wrap; padding: 0.6rem 1rem; max-width: 1100px; margin: 0 auto; width: 100%; }
+.chip {
+  padding: 0.35rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.chip:hover { border-color: var(--primary); background: #f0fdfa; }
+.insights { margin-top: 0.75rem; padding: 0.9rem; background: #f0fdfa; border-radius: 0.6rem; border: 1px solid #99f6e4; }
+.insights b { color: var(--primary); }
+.error { color: #dc2626; background: #fef2f2; padding: 0.9rem; border-radius: 0.6rem; border: 1px solid #fecaca; }
+.loading { color: var(--muted); font-style: italic; padding: 0.5rem 0; }
+.section-title { font-weight: 700; margin: 0.5rem 0 0.35rem; color: var(--text); }
+.grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+@media (min-width: 768px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .pad { padding: 1.5rem 2rem; }
+  .chat-scroll { padding: 1.5rem 2rem; }
+  .arabic { font-size: 1.6rem; }
+}
+@media (min-width: 1024px) {
+  .grid { grid-template-columns: repeat(3, 1fr); }
+}
+.hadith-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+@media (min-width: 768px) { .hadith-grid { grid-template-columns: repeat(2, 1fr); } }
+.collection-btn {
+  padding: 0.7rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+}
+.collection-btn:hover { border-color: var(--hadith-accent); background: #f5f3ff; }
+.reader-header { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.6rem 0; }
+select {
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+  color: var(--text);
+  font-size: 1rem;
+}
+.back { padding: 0.5rem 0.8rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #f1f5f9; color: var(--text); cursor: pointer; font-weight: 700; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Ilm - Quran AI</h1>
-  <div>
-    <button class="secondary" onclick="toggleHadith()">Toggle Hadith</button>
-    <button class="secondary" onclick="toggleQuranReader()">Quran Reader</button>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand">Ilm - Quran AI</div>
+    <nav class="nav" aria-label="Primary">
+      <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
+      <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
+      <button class="nav-btn" id="nav-hadith" onclick="switchTab('hadith')">Hadith</button>
+    </nav>
+  </header>
+
+  <div class="panels">
+    <section id="tab-chat" class="panel open" aria-label="Chat">
+      <div class="chips" id="chips"></div>
+      <div class="chat-scroll" id="chat"></div>
+      <div class="controls">
+        <div class="controls-inner">
+          <input id="query" placeholder="Ask about the Quran..." onkeydown="if(event.key==='Enter')send()">
+          <button class="primary" onclick="send()">Ask</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-reader" class="panel" aria-label="Quran Reader">
+      <div class="pad">
+        <div class="reader-header">
+          <button class="back" onclick="switchTab('chat')">Back to Chat</button>
+          <select id="surah-select" onchange="loadSurah(this.value)" aria-label="Select a Surah">
+            <option value="">Select a Surah</option>
+          </select>
+        </div>
+        <div id="reader-content"></div>
+      </div>
+    </section>
+
+    <section id="tab-hadith" class="panel" aria-label="Hadith">
+      <div class="pad">
+        <div class="reader-header">
+          <button class="back" onclick="switchTab('chat')">Back to Chat</button>
+        </div>
+        <div id="hadith-content"></div>
+      </div>
+    </section>
   </div>
-</header>
-<div class="suggestions" id="suggestions"></div>
-<div class="chat-container" id="chat"></div>
-<div id="quran-panel" class="hidden" style="padding: 2rem; max-width: 900px; margin: 0 auto; width: 100%;"></div>
-<div id="hadith-panel" class="hidden" style="padding: 2rem; max-width: 900px; margin: 0 auto; width: 100%;"></div>
-<div class="controls">
-  <input id="query" placeholder="Ask about the Quran..." onkeydown="if(event.key==='Enter')send()">
-  <button onclick="send()">Ask</button>
 </div>
+
 <script>
-let showHadith = false;
-let showQuranReader = false;
-function addMsg(role, html) { const d=document.getElementById('chat'); const m=document.createElement('div'); m.className='message '+role; m.innerHTML=html; d.appendChild(m); d.scrollTop=d.scrollHeight; }
+let currentTab = 'chat';
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('open');
+  document.getElementById('nav-' + tab).classList.add('active');
+  if(tab === 'reader') loadQuranReader();
+  if(tab === 'hadith') loadHadithHome();
+}
+function addMsg(role, html) {
+  const d=document.getElementById('chat');
+  const m=document.createElement('div');
+  m.className='bubble ' + role;
+  m.innerHTML=html;
+  d.appendChild(m);
+  d.scrollTop = d.scrollHeight;
+}
 function renderVerses(results) {
   if(!results||!results.length) return '<div class="error">No verses found. Try rephrasing.</div>';
-  return results.map(r=>`<div class="verse"><div><b>${r.chapter||''}:${r.verse_number}</b> <span class="meta">Score: ${(r.score||0).toFixed(2)} | ${r.match_type}</span></div><div>${r.text||''}</div>${r.translation?`<div class="quran-translation"><em>${r.translation}</em><div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div></div>`:''}<div class="source">Source: Quran (api.alquran.cloud / api.quran.com)</div></div>`).join('');
+  return results.map(r=>`<div class="card verse"><div><b>${r.chapter||''}:${r.verse_number}</b> <span class="meta">Score: ${(r.score||0).toFixed(2)} | ${r.match_type}</span></div><div>${r.text||''}</div>${r.translation?`<div class="translation"><em>${r.translation}</em><div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div></div>`:''}<div class="source">Source: Quran</div></div>`).join('');
 }
 function renderHadiths(hadiths) {
   if(!hadiths||!hadiths.length) return '<div class="error">No hadiths found.</div>';
-  return hadiths.map(h=>`<div class="hadith"><div><b>${h.collection_name||h.collection||'Hadith'} ${h.hadith_number||''}</b> <span class="meta">${h.grade||''}</span></div>${h.english_text?`<div>${h.english_text}</div>`:''}${h.arabic_text?`<div dir="rtl" style="margin-top:0.5rem">${h.arabic_text}</div>`:''}<div class="source">Source: ${h.book||h.collection||'Hadith'}</div></div>`).join('');
+  return hadiths.map(h=>`<div class="card hadith"><div><b>${h.collection_name||h.collection||'Hadith'} ${h.hadith_number||''}</b> <span class="meta">${h.grade||''}</span></div>${h.english_text?`<div>${h.english_text}</div>`:''}${h.arabic_text?`<div class="arabic">${h.arabic_text}</div>`:''}<div class="source">Source: ${h.book||h.collection||'Hadith'}</div></div>`).join('');
 }
 function renderInsights(insights) {
   if(!insights||!insights.length) return '';
-  return '<div class="insights"><b>Insights</b>' + insights.map(i=>`<div style="margin-top:0.5rem">${i.type}: ${i.message||JSON.stringify(i.concepts||i.topic||i)}</div>`).join('') + '</div>';
+  return '<div class="insights"><b>Insights</b>' + insights.map(i=>`<div style="margin-top:0.4rem">${i.type}: ${i.message||JSON.stringify(i.concepts||i.topic||i)}</div>`).join('') + '</div>';
 }
 async function send() {
   const q = document.getElementById('query').value.trim(); if(!q) return;
@@ -93,125 +246,62 @@ async function send() {
     const data = await res.json();
     let html = renderVerses(data.results) + renderInsights(data.insights);
     if(data.suggestions && data.suggestions.length) {
-      html += '<div class="suggestions-title">Suggestions:</div><div class="suggestions">' + data.suggestions.map(s=>`<div class="chip" onclick="document.getElementById(\'query\').value='${s}';send()">${s}</div>`).join('') + '</div>';
+      html += '<div class="section-title">Suggestions</div><div class="chips">' + data.suggestions.map(s=>`<div class="chip" onclick="document.getElementById(\'query\').value='${s}';send()">${s}</div>`).join('') + '</div>';
     }
     addMsg('ai', html || '<div class="error">No results.</div>');
-    if(showHadith) loadHadith(q);
   } catch(e) { addMsg('ai', '<div class="error">Error: '+e.message+'</div>'); }
 }
-async function loadHadith(q) {
-  try {
-    const res = await fetch(`/api/hadith?q=${encodeURIComponent(q)}`);
-    const data = await res.json();
-    const hadithHtml = renderHadiths(data);
-    if(hadithHtml) addMsg('ai', hadithHtml);
-  } catch(e) {}
-}
-function toggleHadith() {
-  showHadith = !showHadith;
-  const panel = document.getElementById('hadith-panel');
-  const chat = document.getElementById('chat');
-  const suggestions = document.getElementById('suggestions');
-  const quranPanel = document.getElementById('quran-panel');
-  if(showHadith) {
-    panel.classList.remove('hidden');
-    chat.classList.add('hidden');
-    suggestions.classList.add('hidden');
-    quranPanel.classList.add('hidden');
-    loadHadithPanel();
-  } else {
-    panel.classList.add('hidden');
-    chat.classList.remove('hidden');
-    suggestions.classList.remove('hidden');
+async function loadQuranReader() {
+  const content = document.getElementById('reader-content');
+  const select = document.getElementById('surah-select');
+  if(!select || !select.children.length) {
+    try {
+      const res = await fetch('/api/chapters');
+      const chapters = await res.json();
+      chapters.forEach(ch => {
+        const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
+        select.appendChild(opt);
+      });
+    } catch(e) {}
   }
+  if(!select.value) return;
+  content.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    const res = await fetch(`/api/surah/${select.value}?lang=en`);
+    const verses = await res.json();
+    if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
+    content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div>`).join('');
+  } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
 }
-async function loadHadithPanel() {
-  const panel = document.getElementById('hadith-panel');
-  panel.innerHTML = '<div class="hadith-panel"><h2>Hadith Collections</h2><div class="disclaimer">These hadiths are separate from the Quran and provided as best-effort references. Check grades like Sahih/Hasan/Da\'if.</div><div id="hadith-collections"><div class="loading">Loading collections...</div></div><div id="hadith-content"></div></div>';
+async function loadHadithHome() {
+  const content = document.getElementById('hadith-content');
+  content.innerHTML = '<div class="loading">Loading collections...</div>';
   try {
     const res = await fetch('/api/hadith/collections');
     const collections = await res.json();
-    const container = document.getElementById('hadith-collections');
-    if(!collections||!collections.length) {
-      container.innerHTML = '<div class="error">No collections available.</div>';
-      return;
-    }
-    container.innerHTML = '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.5rem">' + collections.map(c=>`<div class="hadith-collection" onclick="loadHadithCollection('${c}')">${c}</div>`).join('') + '</div>';
-  } catch(e) {
-    document.getElementById('hadith-collections').innerHTML = '<div class="error">Error loading collections.</div>';
-  }
+    if(!collections||!collections.length) { content.innerHTML = '<div class="error">No collections available.</div>'; return; }
+    content.innerHTML = '<div class="section-title">Collections</div><div class="hadith-grid">' + collections.map(c=>`<button class="collection-btn" onclick="loadHadithCollection('${c}')">${c}</button>`).join('') + '</div>';
+  } catch(e) { content.innerHTML = '<div class="error">Error loading collections.</div>'; }
 }
 async function loadHadithCollection(collection) {
-  const container = document.getElementById('hadith-content');
-  container.innerHTML = '<div class="loading">Loading hadiths...</div>';
+  const content = document.getElementById('hadith-content');
+  content.innerHTML = '<div class="loading">Loading hadiths...</div>';
   try {
     const res = await fetch(`/api/hadith/collection/${encodeURIComponent(collection)}`);
     const hadiths = await res.json();
-    if(!hadiths||!hadiths.length) {
-      container.innerHTML = '<div class="error">No hadiths found in this collection.</div>';
-      return;
-    }
-    container.innerHTML = '<div style="margin-top:1rem"><b>Hadiths from ' + collection + ':</b></div>' + renderHadiths(hadiths.slice(0,10));
-  } catch(e) {
-    container.innerHTML = '<div class="error">Error loading hadiths.</div>';
-  }
-}
-async function loadQuranReader() {
-  const panel = document.getElementById('quran-panel');
-  panel.innerHTML = '<div class="quran-reader"><h2>Quran Reader</h2><div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div><select id="surah-select" onchange="loadSurah(this.value)"><option value="">Select a Surah</option></select><div id="surah-content"></div></div>';
-  try {
-    const res = await fetch('/api/chapters');
-    const chapters = await res.json();
-    const select = document.getElementById('surah-select');
-    chapters.forEach(ch => {
-      const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
-      select.appendChild(opt);
-    });
-  } catch(e) {
-    document.getElementById('surah-content').innerHTML = '<div class="error">Error loading chapters.</div>';
-  }
-}
-async function loadSurah(chapter) {
-  if(!chapter) return;
-  const container = document.getElementById('surah-content');
-  container.innerHTML = '<div class="loading">Loading...</div>';
-  try {
-    const res = await fetch(`/api/surah/${chapter}?lang=en`);
-    const verses = await res.json();
-    if(!verses||!verses.length) {
-      container.innerHTML = '<div class="error">No verses found for this surah.</div>';
-      return;
-    }
-    container.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="verse"><div><b>Verse ${v.verse_number}</b></div><div class="quran-arabic">${v.text||''}</div>${v.translation?`<div class="quran-translation"><em>${v.translation}</em></div>`:''}</div>`).join('');
-  } catch(e) { container.innerHTML = '<div class="error">Error loading surah.</div>'; }
-}
-function toggleQuranReader() {
-  showQuranReader = !showQuranReader;
-  const panel = document.getElementById('quran-panel');
-  const chat = document.getElementById('chat');
-  const suggestions = document.getElementById('suggestions');
-  const hadithPanel = document.getElementById('hadith-panel');
-  if(showQuranReader) {
-    panel.classList.remove('hidden');
-    chat.classList.add('hidden');
-    suggestions.classList.add('hidden');
-    hadithPanel.classList.add('hidden');
-    loadQuranReader();
-  } else {
-    panel.classList.add('hidden');
-    chat.classList.remove('hidden');
-    suggestions.classList.remove('hidden');
-  }
+    if(!hadiths||!hadiths.length) { content.innerHTML = '<div class="error">No hadiths found in this collection.</div>'; return; }
+    content.innerHTML = '<div class="section-title">Hadiths from ' + collection + '</div><div class="hadith-grid">' + renderHadiths(hadiths.slice(0,20)) + '</div>';
+  } catch(e) { content.innerHTML = '<div class="error">Error loading hadiths.</div>'; }
 }
 async function init() {
   try {
     const res = await fetch('/api/chapters');
     const chapters = await res.json();
-    const sug = document.getElementById('suggestions');
-    chapters.slice(0,10).forEach(ch => {
+    const chips = document.getElementById('chips');
+    chapters.slice(0,12).forEach(ch => {
       const btn = document.createElement('div'); btn.className='chip'; btn.textContent=ch.name_simple||ch.id;
       btn.onclick=()=>{ document.getElementById('query').value=`Read ${ch.name_simple} (${ch.id})`; send(); };
-      sug.appendChild(btn);
+      chips.appendChild(btn);
     });
   } catch(e) {}
 }
