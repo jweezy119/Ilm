@@ -27,6 +27,18 @@ HTML = """<!DOCTYPE html>
   --verse-accent: #0f766e;
   --hadith-accent: #7c3aed;
 }
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --border: #334155;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --primary: #60a5fa;
+  --primary-strong: #3b82f6;
+  --accent: #fbbf24;
+  --verse-accent: #60a5fa;
+  --hadith-accent: #a78bfa;
+}
 body { background: var(--bg); color: var(--text); min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
 .app-shell { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .topbar {
@@ -348,17 +360,20 @@ select {
 </head>
 <body>
 <div class="app-shell">
-  <header class="topbar">
-    <div class="brand" style="cursor:pointer;" onclick="switchTab('chat')">
-      <span class="brand-arabic">العلم</span>
-      <span class="brand-english">Ilm</span>
-    </div>
-    <nav class="nav" aria-label="Primary">
-      <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
-      <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
-      <button class="nav-btn" id="nav-hadith" onclick="switchTab('hadith')">Hadith</button>
-    </nav>
-  </header>
+<header class="topbar">
+  <div class="brand" style="cursor:pointer;" onclick="switchTab('chat')">
+    <span class="brand-arabic">العلم</span>
+    <span class="brand-english">Ilm</span>
+  </div>
+  <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light theme">
+    <span id="theme-toggle-icon">🌙</span>
+  </button>
+  <nav class="nav" aria-label="Primary">
+    <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
+    <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
+    <button class="nav-btn" id="nav-hadith" onclick="switchTab('hadith')">Hadith</button>
+  </nav>
+</header>
 
   <div class="panels">
     <section id="tab-chat" class="panel open" aria-label="Chat">
@@ -425,8 +440,68 @@ function renderHadiths(hadiths) {
   return hadiths.map(h=>`<div class="card hadith"><div><b>${h.collection_name||h.collection||'Hadith'} ${h.hadith_number||''}</b> <span class="meta">${h.grade||''}</span></div>${h.english_text?`<div>${h.english_text}</div>`:''}${h.arabic_text?`<div class="arabic">${h.arabic_text}</div>`:''}<div class="source">Source: ${h.book||h.collection||'Hadith'}</div></div>`).join('');
 }
 function renderInsights(insights) {
-  if(!insights||!insights.length) return '';
-  return '<div class="insights"><b>Insights</b>' + insights.map(i=>`<div style="margin-top:0.4rem">${i.type}: ${i.message||JSON.stringify(i.concepts||i.topic||i)}</div>`).join('') + '</div>';
+  if (!insights || !insights.length) return '';
+  
+  // Group insights by type for better organization
+  const groupedInsights = {};
+  insights.forEach(insight => {
+    const type = insight.type || 'general';
+    if (!groupedInsights[type]) groupedInsights[type] = [];
+    groupedInsights[type].push(insight);
+  });
+  
+  let html = '<div class="insights-container">';
+  html += '<div class="insights-header"><b>Insights</b></div>';
+  
+  // Define icons and colors for different insight types
+  const insightTypes = {
+    'answer': { icon: '💡', color: 'var(--primary)' },
+    'context': { icon: '📖', color: 'var(--hadith-accent)' },
+    'relation': { icon: '🔗', color: 'var(--verse-accent)' },
+    'practical': { icon: '🎯', color: 'var(--primary-strong)' },
+    'reflection': { icon: '🤔', color: 'var(--muted)' },
+    'historical': { icon: '🏛️', color: 'var(--muted)' },
+    'linguistic': { icon: '🔤', color: 'var(--muted)' },
+    'theological': { icon: '🕋', color: 'var(--hadith-accent)' },
+    'general': { icon: '✨', color: 'var(--text)' }
+  };
+  
+  // Process each insight type
+  Object.keys(groupedInsights).forEach(type => {
+    const typeInfo = insightTypes[type] || insightTypes['general'];
+    const insightsOfType = groupedInsights[type];
+    
+    html += `<div class="insights-type-section">`;
+    html += `<div class="insights-type-title" style="color: ${typeInfo.color};">${typeInfo.icon} ${type.charAt(0).toUpperCase() + type.slice(1)} Insights</div>`;
+    
+    insightsOfType.forEach(insight => {
+      // Build insight content
+      let content = insight.message || '';
+      if (!content && insight.concepts) {
+        content = Array.isArray(insight.concepts) 
+          ? insight.concepts.join(', ') 
+          : String(insight.concepts);
+      }
+      if (!content && insight.topic) {
+        content = insight.topic;
+      }
+      if (!content && insight.i) {
+        content = JSON.stringify(insight.i);
+      }
+      if (!content) {
+        content = 'No details available';
+      }
+      
+      html += `<div class="insight-item">
+                <div class="insight-content">${content}</div>
+              </div>`;
+    });
+    
+    html += `</div>`; // Close insights-type-section
+  });
+  
+  html += '</div>'; // Close insights-container
+  return html;
 }
 async function send() {
   const q = document.getElementById('query').value.trim(); if(!q) return;
@@ -532,10 +607,34 @@ async function clearChat() {
   }
   // Reset query input
   const queryInput = document.getElementById('query');
-  if (queryInput) {
-    queryInput.value = '';
 }
 }
+function toggleTheme() {
+  const html = document.documentElement;
+  const currentTheme = html.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', newTheme);
+  
+  // Update icon
+  const icon = document.getElementById('theme-toggle-icon');
+  icon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+  
+  // Save preference
+  localStorage.setItem('theme', newTheme);
+}
+
+// Initialize theme on page load
+document.addEventListener('DOMContentLoaded', () => {
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  
+  // Set initial icon
+  const icon = document.getElementById('theme-toggle-icon');
+  if (icon) {
+    icon.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+  }
+});
+
 init();
 </script>
 </body>
