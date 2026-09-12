@@ -372,6 +372,7 @@ select {
   color: white;
   transform: scale(1.05);
 }
+.icon-btn:hover { color: var(--text); transform: scale(1.1); }
 </style>
 </head>
 <body>
@@ -400,13 +401,20 @@ select {
 
   <div class="panels">
     <section id="tab-chat" class="panel open" aria-label="Chat">
-      <div class="chips" id="chips"></div>
-<br>
-<button class="clear-chat" onclick="clearChat()">Clear Chat</button>
-      <div class="chat-scroll" id="chat"></div>
+      <div class="chat-scroll" id="chat">
+        <div class="welcome-container" id="welcome-screen">
+          <div style="text-align:center; padding: 2rem 1rem;">
+            <div class="brand-arabic" style="font-size: 3rem; margin-bottom: 0.5rem;">العلم</div>
+            <h2 style="margin-bottom: 0.5rem; color: var(--text);">Welcome to Ilm</h2>
+            <p style="color: var(--muted); margin-bottom: 2rem;">Your AI companion for Quran and Hadith exploration.</p>
+            <div class="chips" id="chips"></div>
+          </div>
+        </div>
+      </div>
       <div class="controls">
         <div class="controls-inner">
-          <input id="query" placeholder="Ask about the Quran..." onkeydown="if(event.key==='Enter')send()">
+          <button class="icon-btn" onclick="clearChat()" title="Clear Chat" style="background:transparent; border:none; cursor:pointer; font-size:1.2rem; padding:0.5rem; color:var(--muted);">🔄</button>
+          <input id="query" placeholder="Ask about the Quran or Hadith..." onkeydown="if(event.key==='Enter')send()">
           <button class="primary" onclick="send()">Ask</button>
         </div>
       </div>
@@ -447,6 +455,8 @@ function switchTab(tab) {
   if(tab === 'hadith') loadHadithHome();
 }
 function addMsg(role, html) {
+  const ws = document.getElementById('welcome-screen');
+  if(ws) ws.style.display = 'none';
   const d=document.getElementById('chat');
   const m=document.createElement('div');
   m.className='bubble ' + role;
@@ -632,8 +642,11 @@ async function init() {
 async function clearChat() {
   const chatDiv = document.getElementById('chat');
   if (chatDiv) {
-    chatDiv.innerHTML = '';
+    const bubbles = chatDiv.querySelectorAll('.bubble');
+    bubbles.forEach(b => b.remove());
   }
+  const ws = document.getElementById('welcome-screen');
+  if (ws) ws.style.display = 'block';
   // Reset query input
   const queryInput = document.getElementById('query');
   if (queryInput) {
@@ -843,8 +856,8 @@ def hadith_collections():
 
 @app.route("/api/hadith/collection/<collection>")
 def hadith_by_collection(collection):
-    hadiths = ilm_app.data_service.hadith_service.search_hadiths("the", [collection])
-    return jsonify(hadiths)
+    hadiths = ilm_app.data_service.get_hadiths_by_collection(collection, limit=50)
+    return jsonify([vars(h) for h in hadiths] if hadiths else [])
 
 
 @app.route("/api/hadith")

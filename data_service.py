@@ -306,6 +306,37 @@ class HadithAPIService:
         except Exception as e:
             print(f"Hadith search error: {e}")
             return []
+
+    def get_hadiths_by_collection(self, collection: str, limit: int = 20) -> List[Hadith]:
+        """Get hadiths for a specific collection (paginated)."""
+        url = f"{self.BASE_URL}/{collection}"
+        params = {"limit": limit}
+        
+        try:
+            response = self.session.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            payload = response.json()
+            inner = payload.get("data", {})
+            hadith_list = inner.get("hadiths", []) if isinstance(inner, dict) else []
+            
+            hadiths = []
+            for h in hadith_list:
+                hadiths.append(Hadith(
+                    id=h.get("id", ""),
+                    collection=h.get("collection", ""),
+                    book=h.get("collection_name", ""),
+                    chapter=h.get("chapter", ""),
+                    hadith_number=str(h.get("hadithnumber", "")),
+                    arabic_text=h.get("arabic"),
+                    english_text=h.get("english"),
+                    narrator=h.get("narrator"),
+                    grade=h.get("grade"),
+                    reference=h.get("reference")
+                ))
+            return hadiths
+        except Exception as e:
+            print(f"Error fetching collection {collection}: {e}")
+            return []
     
     def get_random_hadith(self, collection: Optional[str] = None) -> Optional[Hadith]:
         """Get a random hadith, optionally from a specific collection."""
@@ -413,6 +444,10 @@ class DataService:
     def search_hadiths(self, query: str, collections: Optional[List[str]] = None) -> List[Hadith]:
         """Search hadiths."""
         return self.hadith_service.search_hadiths(query, collections)
+
+    def get_hadiths_by_collection(self, collection: str, limit: int = 20) -> List[Hadith]:
+        """Get hadiths by collection."""
+        return self.hadith_service.get_hadiths_by_collection(collection, limit)
     
     def get_random_hadith(self, collection: Optional[str] = None) -> Optional[Hadith]:
         """Get a random hadith."""
