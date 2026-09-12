@@ -356,6 +356,22 @@ select {
   font-size: 1rem;
 }
 .back { padding: 0.5rem 0.8rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #f1f5f9; color: var(--text); cursor: pointer; font-weight: 700; }
+.copy-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0.25rem 0.5rem;
+  margin-left: 0.5rem;
+  transition: all 0.2s;
+}
+.copy-btn:hover {
+  background: var(--primary);
+  color: white;
+  transform: scale(1.05);
+}
 </style>
 </head>
 <body>
@@ -373,6 +389,13 @@ select {
     <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
     <button class="nav-btn" id="nav-hadith" onclick="switchTab('hadith')">Hadith</button>
   </nav>
+  
+  <!-- Keyboard shortcuts help -->
+  <div class="keyboard-help" style="position:fixed;bottom:1rem;right:1rem;background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.5rem;font-size:0.85rem;color:var(--muted);z-index:1000;">
+    <div>⌨️ Shortcuts:</div>
+    <div>Enter: Send</div>
+    <div>Esc: Clear chat</div>
+  </div>
 </header>
 
   <div class="panels">
@@ -393,7 +416,7 @@ select {
       <div class="pad">
         <div class="reader-header">
           <button class="back" onclick="switchTab('chat')">Back to Chat</button>
-          <select id="surah-select" onchange="loadQuranReader()" aria-label="Select a Surah">
+          <select id="surah-select" onchange="localStorage.setItem('lastSelectedSurah', this.value); loadQuranReader()" aria-label="Select a Surah">
             <option value="">Select a Surah</option>
           </select>
         </div>
@@ -526,6 +549,12 @@ async function loadQuranReader() {
   const content = document.getElementById('reader-content');
   const select = document.getElementById('surah-select');
   
+  // Restore last selected surah if available
+  const lastSurah = localStorage.getItem('lastSelectedSurah');
+  if (lastSurah) {
+    select.value = lastSurah;
+  }
+  
   // Always load chapters first
   try {
     const res = await fetch('/api/chapters');
@@ -560,12 +589,12 @@ async function loadQuranReader() {
   // If a surah is selected, load its verses
   if(select && select.value) {
     content.innerHTML = '<div class="loading">Loading...</div>';
-    try {
-      const res = await fetch(`/api/surah/${select.value}?lang=en`);
-      const verses = await res.json();
-      if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
-      content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div>`).join('');
-    } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
+try {
+       const res = await fetch(`/api/surah/${select.value}?lang=en`);
+       const verses = await res.json();
+       if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
+       content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div><button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.previousElementSibling.textContent + (this.previousElementSibling.textContent ? '\\n' + this.previousElementSibling.textContent : ''))" title="Copy verse">📋</button></div>`).join('');
+     } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
   }
 }
 async function loadHadithHome() {
@@ -607,6 +636,23 @@ async function clearChat() {
   }
   // Reset query input
   const queryInput = document.getElementById('query');
+  if (queryInput) {
+    queryInput.value = '';
+  }
+}
+
+function copyToClipboard(text) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    // Show temporary success message
+    const originalText = this.textContent;
+    this.textContent = 'Copied!';
+    setTimeout(() => {
+      this.textContent = originalText;
+    }, 1500);
+  }).catch(err => {
+    console.error('Failed to copy: ', err);
+  });
 }
 }
 function toggleTheme() {
@@ -633,6 +679,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (icon) {
     icon.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
   }
+  
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      clearChat();
+    }
+  });
 });
 
 init();

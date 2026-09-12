@@ -297,15 +297,36 @@ class DialogueRouter:
             "father", "mother", "parent", "child", "children", "family",
             "marriage", "spouse", "husband", "wife", "responsibilities",
             "duties", "rights", "treatment", "obedience", "kindness",
-            "parents", "father", "mother"
+            "parents", "father", "mother", "guardian", "caregiver",
+            "nurturing", "raising", "education", "guidance",
+            "support", "protect", "teach", "guide", "mentor"
         }
         self.duty_keywords = {
             "responsibilities", "duties", "rights", "should", "must",
-            "obligations", "requirements", "command", "ordered"
+            "obligations", "requirements", "command", "ordered",
+            "debt", "payment", "financial", "legal", "moral"
         }
-        self.positive_indicators = {"thank", "helpful", "interesting", "love", "appreciate"}
-        self.negative_indicators = {"confusing", "difficult", "hard", "frustrated", "lost"}
-        self.exploratory_phrases = {"tell me more", "more", "explain", "expand", "what is"}
+        self.positive_indicators = {"thank", "helpful", "interesting", "love", "appreciate",
+                                   "grateful", "wonderful", "beautiful", "peaceful", "joyful"}
+        self.negative_indicators = {"confusing", "difficult", "hard", "frustrated", "lost",
+                                   "overwhelmed", "anxious", "stressed", "boring", "tedious"}
+        self.exploratory_phrases = {"tell me more", "more", "explain", "expand", "what is",
+                                   "why", "how", "what about", "also", "further"}
+        
+        # Context tracking for personalized responses
+        self.context_prefs = {}  # user_id -> preferred topics
+        self.previous_questions = {}  # user_id -> list of recent questions
+        self.learning_history = []  # track successful/unsuccessful responses
+        
+        # Enhanced topic categorization
+        self.family_topics = ["family", "parents", "children", "marriage", "spouse", "kids",
+                              "nurturing", "raising", "education", "guidance"]
+        self.duty_topics = ["responsibilities", "duties", "obligations", "rights", "ethics",
+                            "morality", "commitment", "accountability"]
+        self.positive_topics = ["faith", "belief", "spirituality", "meaning", "purpose",
+                                "growth", "progress", "inspiration", "hope"]
+        self.negative_topics = ["conflict", "dispute", "argument", "failure", "loss",
+                                "pain", "sorrow", "regret", "mistake"]
     
     def detect_emotional_state(self, text: str, situational_context: Dict[str, Any]) -> str:
         """Detect user's emotional state and engagement level."""
@@ -315,26 +336,43 @@ class DialogueRouter:
         positive_count = sum(1 for w in self.positive_indicators if w in text_lower)
         negative_count = sum(1 for w in self.negative_indicators if w in text_lower)
         
-        # Determine state
+        # Determine state with more nuanced classification
         if negative_count > positive_count:
             return "uncertain"
         elif positive_count > negative_count:
             return "curious"
-        else:
+        elif positive_count == negative_count:
             return "neutral"
+        else:
+            # Tie-breaker: look for stronger signals
+            strongest = max([(positive_count, "positive"), (negative_count, "negative")], key=lambda x: x[0])
+            return "curious" if strongest[1] == "positive" else "uncertain"
     
     def analyze_engagement_depth(self, text: str, situational_context: Dict[str, Any]) -> str:
-        """Analyze user's engagement depth based on query complexity and follow-up patterns."""
+        """Analyze user's engagement depth based on query complexity, follow-up patterns, and context."""
         text_lower = text.lower()
         followups = situational_context.get("consecutive_followups", 0)
+        recent_queries = situational_context.get("recent_queries", [])
+        
+        # Count distinct topics in recent queries
+        recent_topics = set()
+        for query in recent_queries:
+            if any(word in query.lower() for word in ["patience", "prayer", "family", "charity", "fasting", "prayer", "quran", "hadith"]):
+                recent_topics.add(query)
         
         # Check for exploratory language
         exploratory = any(phrase in text_lower for phrase in self.exploratory_phrases)
         
-        if followups > 2 or exploratory:
+        # Consider user consistency level
+        consistency = situational_context.get("user_consistency_level", "exploratory")
+        
+        # Deep engagement: multiple follow-ups OR exploratory language OR consistent focus on deep topics
+        if followups > 2 or exploratory or consistency == "focused":
             return "deep"
-        elif followups > 0:
+        # Moderate engagement: some follow-ups OR consistent focus
+        elif followups > 0 or consistency == "focused":
             return "moderate"
+        # Surface engagement: simple queries with no follow-up patterns
         else:
             return "surface"
     
