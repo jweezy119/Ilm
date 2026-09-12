@@ -525,16 +525,7 @@ async function init() {
     });
   } catch(e) {}
 }
-def init():
-    # Initialize Quran reader module
-    qr = QuranReader()
-    
-    # Display surahs on initial page load
-    qr.display_surahs()
-    
-    # Start the Flask app
-    app.run(host="0.0.0.0", port=8000, debug=True)
-
+async function clearChat() {
   const chatDiv = document.getElementById('chat');
   if (chatDiv) {
     chatDiv.innerHTML = '';
@@ -543,8 +534,9 @@ def init():
   const queryInput = document.getElementById('query');
   if (queryInput) {
     queryInput.value = '';
-  }
 }
+}
+init();
 </script>
 </body>
 </html>
