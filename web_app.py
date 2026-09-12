@@ -387,6 +387,7 @@ select {
   </button>
   <nav class="nav" aria-label="Primary">
     <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
+    <button class="nav-btn" id="nav-discover" onclick="switchTab('discover')">Discover</button>
     <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
     <button class="nav-btn" id="nav-hadith" onclick="switchTab('hadith')">Hadith</button>
   </nav>
@@ -417,6 +418,17 @@ select {
           <input id="query" placeholder="Ask about the Quran or Hadith..." onkeydown="if(event.key==='Enter')send()">
           <button class="primary" onclick="send()">Ask</button>
         </div>
+      </div>
+    </section>
+
+    <section id="tab-discover" class="panel" aria-label="Discover">
+      <div class="pad">
+        <div class="reader-header">
+          <h2 style="margin: 0; color: var(--text);">Recommended for You</h2>
+          <button class="icon-btn" onclick="loadDiscover()" title="Refresh Recommendations" style="background:transparent; border:none; cursor:pointer; font-size:1.2rem; padding:0.5rem; color:var(--muted);">🔄</button>
+        </div>
+        <p style="color: var(--muted); margin-bottom: 1rem;">Personalized verses and Hadiths based on your interests and time of day.</p>
+        <div id="discover-content"></div>
       </div>
     </section>
 
@@ -453,7 +465,59 @@ function switchTab(tab) {
   document.getElementById('nav-' + tab).classList.add('active');
   if(tab === 'reader') loadQuranReader();
   if(tab === 'hadith') loadHadithHome();
+  if(tab === 'discover') loadDiscover();
 }
+
+async function loadDiscover() {
+  const content = document.getElementById('discover-content');
+  content.innerHTML = '<div class="loading">Loading recommendations...</div>';
+  try {
+    const res = await fetch('/api/recommendations?user_id=web-default');
+    const recs = await res.json();
+    if(!recs || !recs.length) {
+      content.innerHTML = '<div class="error">No recommendations available at this time.</div>';
+      return;
+    }
+    
+    let html = '<div class="recommendations-grid" style="display:grid; gap:1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
+    recs.forEach(r => {
+      let icon = r.type === 'verse' ? '📖' : (r.type === 'hadith' ? '📜' : '✨');
+      let cardColor = r.type === 'verse' ? 'var(--verse-accent)' : (r.type === 'hadith' ? 'var(--hadith-accent)' : 'var(--primary)');
+      
+      html += `
+        <div class="card" style="border-top: 4px solid ${cardColor}; display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <span style="font-size:1.5rem;">${icon}</span>
+            <span class="meta" style="background:#f1f5f9; padding:0.2rem 0.5rem; border-radius:1rem;">${r.tags ? r.tags[0] : r.type}</span>
+          </div>
+          <h3 style="margin-bottom:0.5rem; color:var(--text);">${r.title}</h3>
+          <p style="color:var(--muted); font-size:0.9rem; margin-bottom:1rem;">${r.reason}</p>
+          <div style="flex-grow:1;"></div>
+      `;
+      
+      if (r.type === 'verse' && r.content && r.content.text) {
+          html += `
+            <div class="arabic" style="font-size:1.2rem; margin-bottom:0.5rem;">${r.content.text}</div>
+            ${r.content.translation ? `<div class="translation" style="font-size:0.9rem;">${r.content.translation}</div>` : ''}
+          `;
+      } else if (r.type === 'hadith' && r.content) {
+          if(r.content.arabic_text) {
+             html += `<div class="arabic" style="font-size:1.1rem; margin-bottom:0.5rem;">${r.content.arabic_text.substring(0, 150)}...</div>`;
+          }
+          if(r.content.english_text) {
+             html += `<div style="font-size:0.9rem; color:var(--text);">${r.content.english_text.substring(0, 150)}...</div>`;
+          }
+      }
+      
+      html += `</div>`;
+    });
+    html += '</div>';
+    content.innerHTML = html;
+  } catch(e) {
+    content.innerHTML = '<div class="error">Failed to load recommendations. Please try again.</div>';
+  }
+}
+
 function addMsg(role, html) {
   const ws = document.getElementById('welcome-screen');
   if(ws) ws.style.display = 'none';
