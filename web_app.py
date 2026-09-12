@@ -393,7 +393,7 @@ select {
       <div class="pad">
         <div class="reader-header">
           <button class="back" onclick="switchTab('chat')">Back to Chat</button>
-          <select id="surah-select" onchange="loadSurah(this.value)" aria-label="Select a Surah">
+          <select id="surah-select" onchange="loadQuranReader()" aria-label="Select a Surah">
             <option value="">Select a Surah</option>
           </select>
         </div>
@@ -545,7 +545,7 @@ async function loadQuranReader() {
     
     // Display all surahs as a list
     content.innerHTML = '<div class="section-title">All Surahs (Chapters)</div><div class="surahs-grid">' + chapters.map(ch => 
-      `<div class="surah-card" style="background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;" onclick="loadSurah(${ch.id})">
+      `<div class="surah-card" style="background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('surah-select').value=${ch.id}; loadQuranReader()">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="font-weight:700;color:var(--primary);">${ch.id}</span>
           <span style="font-weight:600;">${ch.name_simple||ch.id}</span>
