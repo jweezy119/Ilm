@@ -593,7 +593,7 @@ try {
        const res = await fetch(`/api/surah/${select.value}?lang=en`);
        const verses = await res.json();
        if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
-       content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div><button class="copy-btn" onclick="copyToClipboard(this.previousElementSibling.previousElementSibling.textContent + (this.previousElementSibling.textContent ? '\\n' + this.previousElementSibling.textContent : ''))" title="Copy verse">📋</button></div>`).join('');
+       content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div><button class="copy-btn" onclick="copyToClipboard(this)" title="Copy verse">📋</button></div>`).join('');
      } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
   }
 }
@@ -641,19 +641,32 @@ async function clearChat() {
   }
 }
 
-function copyToClipboard(text) {
+function copyToClipboard(button) {
+  if (!button) return;
+  const card = button.parentElement;
+  if (!card) return;
+  const arabicDiv = card.querySelector('.arabic');
+  const translationDiv = card.querySelector('.translation');
+  let text = '';
+  if (arabicDiv) {
+    text = arabicDiv.textContent.trim();
+  }
+  if (translationDiv) {
+    if (text) text += '\n';
+    text += translationDiv.textContent.trim();
+  }
   if (!text) return;
+  
   navigator.clipboard.writeText(text).then(() => {
     // Show temporary success message
-    const originalText = this.textContent;
-    this.textContent = 'Copied!';
+    const originalText = button.textContent;
+    button.textContent = 'Copied!';
     setTimeout(() => {
-      this.textContent = originalText;
+      button.textContent = originalText;
     }, 1500);
   }).catch(err => {
     console.error('Failed to copy: ', err);
   });
-}
 }
 function toggleTheme() {
   const html = document.documentElement;
