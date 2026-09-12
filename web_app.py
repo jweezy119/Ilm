@@ -3,6 +3,7 @@
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from app import app as ilm_app
+from quran_reader import QuranReader, SurahInfo
 
 app = Flask(__name__)
 CORS(app)
@@ -360,6 +361,8 @@ select {
   <div class="panels">
     <section id="tab-chat" class="panel open" aria-label="Chat">
       <div class="chips" id="chips"></div>
+<br>
+<button class="clear-chat" onclick="clearChat()">Clear Chat</button>
       <div class="chat-scroll" id="chat"></div>
       <div class="controls">
         <div class="controls-inner">
@@ -496,7 +499,26 @@ async function init() {
     });
   } catch(e) {}
 }
-init();
+def init():
+    # Initialize Quran reader module
+    qr = QuranReader()
+    
+    # Display surahs on initial page load
+    qr.display_surahs()
+    
+    # Start the Flask app
+    app.run(host="0.0.0.0", port=8000, debug=True)
+
+  const chatDiv = document.getElementById('chat');
+  if (chatDiv) {
+    chatDiv.innerHTML = '';
+  }
+  // Reset query input
+  const queryInput = document.getElementById('query');
+  if (queryInput) {
+    queryInput.value = '';
+  }
+}
 </script>
 </body>
 </html>
@@ -545,6 +567,40 @@ def chat():
         "hadiths": response.get("hadiths", []),
         "insights": insights,
         "suggestions": response.get("suggestions", [])
+    })
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    """Authenticate a user with Pabandi credentials."""
+    body = request.get_json(force=True)
+    username = body.get("username")
+    password = body.get("password")
+    
+    # TODO: Implement Pabandi authentication
+    # For now, return a success response with a placeholder token
+    # In production, this would validate against the Pabandi service
+    
+    return jsonify({
+        "success": True,
+        "token": "placeholder-token",
+        "message": "Login successful (placeholder - implement Pabandi auth)"
+    })
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    """Register a new user."""
+    body = request.get_json(force=True)
+    username = body.get("username")
+    password = body.get("password")
+    
+    # TODO: Implement user registration
+    # In production, this would create a new user in the database
+    
+    return jsonify({
+        "success": True,
+        "message": "Registration successful (placeholder - implement user registration)"
     })
 
 
