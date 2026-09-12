@@ -448,24 +448,44 @@ async function send() {
 async function loadQuranReader() {
   const content = document.getElementById('reader-content');
   const select = document.getElementById('surah-select');
-  if(!select || !select.children.length) {
-    try {
-      const res = await fetch('/api/chapters');
-      const chapters = await res.json();
+  
+  // Always load chapters first
+  try {
+    const res = await fetch('/api/chapters');
+    const chapters = await res.json();
+    
+    // Populate dropdown if empty
+    if(!select || !select.children.length) {
       chapters.forEach(ch => {
         const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
         select.appendChild(opt);
       });
-    } catch(e) {}
+    }
+    
+    // Display all surahs as a list
+    content.innerHTML = '<div class="section-title">All Surahs (Chapters)</div><div class="surahs-grid">' + chapters.map(ch => 
+      `<div class="surah-card" style="background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;" onclick="loadSurah(${ch.id})">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:700;color:var(--primary);">${ch.id}</span>
+          <span style="font-weight:600;">${ch.name_simple||ch.id}</span>
+          <span style="color:var(--muted);font-size:0.85rem;">${ch.verses||'?'}</span>
+        </div>
+        ${ch.name_arabic?`<div class="arabic" style="font-size:1.1rem;margin-top:0.25rem;">${ch.name_arabic}</div>`:''}
+        ${ch.revelation?`<div class="meta" style="margin-top:0.25rem;">${ch.revelation} order</div>`:''}
+      </div>`
+    ).join('') + '</div>';
+  } catch(e) { content.innerHTML = '<div class="error">Error loading surahs.</div>'; }
+  
+  // If a surah is selected, load its verses
+  if(select && select.value) {
+    content.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+      const res = await fetch(`/api/surah/${select.value}?lang=en`);
+      const verses = await res.json();
+      if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
+      content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div>`).join('');
+    } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
   }
-  if(!select.value) return;
-  content.innerHTML = '<div class="loading">Loading...</div>';
-  try {
-    const res = await fetch(`/api/surah/${select.value}?lang=en`);
-    const verses = await res.json();
-    if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
-    content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div>`).join('');
-  } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
 }
 async function loadHadithHome() {
   const content = document.getElementById('hadith-content');
