@@ -454,8 +454,12 @@ async function loadQuranReader() {
     const res = await fetch('/api/chapters');
     const chapters = await res.json();
     
-    // Populate dropdown if empty
-    if(!select || !select.children.length) {
+    // Populate dropdown if it only has the placeholder option
+    if(!select || select.children.length <= 1) {
+      // Remove placeholder if present
+      if(select && select.children.length === 1 && select.children[0].value === '') {
+        select.innerHTML = '';
+      }
       chapters.forEach(ch => {
         const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
         select.appendChild(opt);
