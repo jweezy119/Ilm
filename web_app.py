@@ -470,16 +470,53 @@ function switchTab(tab) {
 
 async function loadDiscover() {
   const content = document.getElementById('discover-content');
-  content.innerHTML = '<div class="loading">Loading recommendations...</div>';
+  content.innerHTML = '<div class="loading">Loading personalized content...</div>';
   try {
-    const res = await fetch('/api/recommendations?user_id=web-default');
-    const recs = await res.json();
+    const [recsRes, planRes] = await Promise.all([
+        fetch('/api/recommendations?user_id=web-default'),
+        fetch('/api/reading-plan?user_id=web-default&days=7')
+    ]);
+    
+    const recs = await recsRes.json();
+    const plan = await planRes.json();
+    
+    let html = '';
+    
+    // Render Reading Plan Section
+    if (plan && plan.length) {
+        html += '<h3 style="margin: 1.5rem 0 0.5rem 0; color: var(--primary-strong);">Your 7-Day Reading Plan</h3>';
+        html += '<div style="display:flex; overflow-x:auto; gap:1rem; padding-bottom:1rem; margin-bottom:1rem; scroll-snap-type: x mandatory;">';
+        
+        plan.forEach((p, idx) => {
+            let dayText = p.title || `Day ${idx + 1}`;
+            html += `
+              <div class="card" style="min-width:280px; max-width:300px; flex-shrink:0; border-top:4px solid var(--primary); scroll-snap-align: start; display:flex; flex-direction:column;">
+                <div style="font-weight:700; color:var(--primary); margin-bottom:0.25rem;">${dayText}</div>
+                <div style="font-size:0.85rem; color:var(--muted); margin-bottom:0.75rem;">${p.reason}</div>
+            `;
+            if (p.content && p.content.text) {
+                html += `<div class="arabic" style="font-size:1.1rem; margin-bottom:0.5rem;">${p.content.text.substring(0, 80)}...</div>`;
+                if(p.content.translation) {
+                   html += `<div class="translation" style="font-size:0.85rem;">${p.content.translation.substring(0, 100)}...</div>`;
+                }
+            }
+            html += `
+                <div style="flex-grow:1;"></div>
+                <button class="nav-btn secondary" style="margin-top:1rem; align-self:flex-start;" onclick="document.getElementById('query').value='Tell me about ${p.content && p.content.verse_key ? p.content.verse_key : p.tags[1]}'; switchTab('chat'); send();">Explore</button>
+              </div>
+            `;
+        });
+        html += '</div>';
+    }
+    
     if(!recs || !recs.length) {
-      content.innerHTML = '<div class="error">No recommendations available at this time.</div>';
+      if(!html) content.innerHTML = '<div class="error">No recommendations available at this time.</div>';
+      else content.innerHTML = html;
       return;
     }
     
-    let html = '<div class="recommendations-grid" style="display:grid; gap:1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
+    html += '<h3 style="margin: 1.5rem 0 0.5rem 0; color: var(--text);">For You</h3>';
+    html += '<div class="recommendations-grid" style="display:grid; gap:1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
     recs.forEach(r => {
       let icon = r.type === 'verse' ? '📖' : (r.type === 'hadith' ? '📜' : '✨');
       let cardColor = r.type === 'verse' ? 'var(--verse-accent)' : (r.type === 'hadith' ? 'var(--hadith-accent)' : 'var(--primary)');
@@ -636,28 +673,28 @@ async function loadQuranReader() {
     
     // Populate dropdown if it only has the placeholder option
     if(!select || select.children.length <= 1) {
-      // Remove placeholder if present
-      if(select && select.children.length === 1 && select.children[0].value === '') {
-        select.innerHTML = '';
-      }
+      select.innerHTML = '<option value="">All Surahs</option>';
       chapters.forEach(ch => {
         const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
         select.appendChild(opt);
       });
     }
     
-    // Display all surahs as a list
-    content.innerHTML = '<div class="section-title">All Surahs (Chapters)</div><div class="surahs-grid">' + chapters.map(ch => 
-      `<div class="surah-card" style="background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('surah-select').value=${ch.id}; loadQuranReader()">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-weight:700;color:var(--primary);">${ch.id}</span>
-          <span style="font-weight:600;">${ch.name_simple||ch.id}</span>
-          <span style="color:var(--muted);font-size:0.85rem;">${ch.verses||'?'}</span>
-        </div>
-        ${ch.name_arabic?`<div class="arabic" style="font-size:1.1rem;margin-top:0.25rem;">${ch.name_arabic}</div>`:''}
-        ${ch.revelation?`<div class="meta" style="margin-top:0.25rem;">${ch.revelation} order</div>`:''}
-      </div>`
-    ).join('') + '</div>';
+    // If no surah is selected, show the grid of all surahs
+    if (!select || !select.value) {
+      content.innerHTML = '<div class="section-title">All Surahs (Chapters)</div><div class="surahs-grid">' + chapters.map(ch => 
+        `<div class="surah-card" style="background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('surah-select').value=${ch.id}; loadQuranReader()">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:700;color:var(--primary);">${ch.id}</span>
+            <span style="font-weight:600;">${ch.name_simple||ch.id}</span>
+            <span style="color:var(--muted);font-size:0.85rem;">${ch.verses||'?'} verses</span>
+          </div>
+          ${ch.name_arabic?`<div class="arabic" style="font-size:1.1rem;margin-top:0.25rem;">${ch.name_arabic}</div>`:''}
+          ${ch.revelation?`<div class="meta" style="margin-top:0.25rem;">${ch.revelation} order</div>`:''}
+        </div>`
+      ).join('') + '</div>';
+      return;
+    }
   } catch(e) { content.innerHTML = '<div class="error">Error loading surahs.</div>'; }
   
   // If a surah is selected, load its verses
@@ -692,16 +729,23 @@ async function loadHadithCollection(collection) {
   } catch(e) { content.innerHTML = '<div class="error">Error loading hadiths.</div>'; }
 }
 async function init() {
-  try {
-    const res = await fetch('/api/chapters');
-    const chapters = await res.json();
-    const chips = document.getElementById('chips');
-    chapters.slice(0,12).forEach(ch => {
-      const btn = document.createElement('div'); btn.className='chip'; btn.textContent=ch.name_simple||ch.id;
-      btn.onclick=()=>{ document.getElementById('query').value=`Read ${ch.name_simple} (${ch.id})`; send(); };
-      chips.appendChild(btn);
-    });
-  } catch(e) {}
+  const chips = document.getElementById('chips');
+  const questions = [
+    "What does the Quran say about patience?",
+    "Show me a hadith about charity.",
+    "Read Surah Al-Kahf",
+    "How should we treat our parents?",
+    "Verses about mercy and forgiveness",
+    "What is the importance of prayer?"
+  ];
+  
+  questions.forEach(q => {
+    const btn = document.createElement('div'); 
+    btn.className='chip'; 
+    btn.textContent=q;
+    btn.onclick=()=>{ document.getElementById('query').value=q; send(); };
+    chips.appendChild(btn);
+  });
 }
 async function clearChat() {
   const chatDiv = document.getElementById('chat');
