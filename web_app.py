@@ -652,7 +652,7 @@ function copyToClipboard(button) {
     text = arabicDiv.textContent.trim();
   }
   if (translationDiv) {
-    if (text) text += '\n';
+    if (text) text += String.fromCharCode(10);
     text += translationDiv.textContent.trim();
   }
   if (!text) return;
