@@ -1,0 +1,32 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  min-height: 100vh;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% 14%, rgba(42, 112, 88, 0.14), transparent 30%),
+    linear-gradient(135deg, #f7f1e4 0%, #ede5d5 48%, #e5ddc9 100%);
+  color: #17231c;
+  font-family: var(--font-plus-jakarta), "Avenir Next", Avenir, sans-serif;
+  line-height: 1.45;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
