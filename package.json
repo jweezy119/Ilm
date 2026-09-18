@@ -1,7 +1,6 @@
 {
   "name": "my-quran-app",
   "version": "0.1.0",
-  "private": true,
   "scripts": {
     "dev": "node ./scripts/next-run.cjs dev",
     "build": "node ./scripts/next-run.cjs build",
