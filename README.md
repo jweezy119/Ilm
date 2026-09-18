@@ -10,6 +10,7 @@ app should keep:
 - `CLIENT_SECRET`, access tokens, refresh tokens, and session secrets stay server-side
 - content/search use an app-token backend path
 - notes/bookmarks/collections/goals/preferences/reflections use the logged-in user session
+- chat uses `/api/chat` with contextual Quranic synthesis
 
 ## Quick Start
 
@@ -36,6 +37,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 UI:
 - `/`
+- `/chat`
 - `/read/[chapterId]`
 - `/search`
 - `/library`
@@ -48,6 +50,7 @@ Auth and data:
 - `/callback`
 - `/api/auth/logout`
 - `/api/bootstrap`
+- `/api/chat`
 - `/api/search`
 - `/api/reader/[chapterId]`
 - `/api/notes`
@@ -56,6 +59,24 @@ Auth and data:
 - `/api/goals`
 - `/api/preferences`
 - `/api/reflections`
+
+## Deploy on Render
+
+1. Push this repo to GitHub/GitLab
+2. Create a new **Web Service** on [Render](https://dashboard.render.com)
+3. Connect your repo and branch `main`
+4. Set:
+   - **Build Command:** `npm run build`
+   - **Start Command:** `npm start`
+5. Add environment variables in the Render dashboard:
+   - `APP_BASE_URL` = `https://<your-service-name>.onrender.com`
+   - `CLIENT_ID` = your Quran Foundation client ID
+   - `CLIENT_SECRET` = your Quran Foundation client secret
+   - `SESSION_SECRET` = generate with `openssl rand -hex 32`
+   - `SCOPES` = `openid offline_access user note collection bookmark goal preference post comment`
+   - `TRANSLATION_IDS` = `131`
+   - `DEFAULT_READER_CHAPTER` = `1`
+6. Deploy
 
 ## SDK Source Switching
 
