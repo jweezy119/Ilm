@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 16 42 67; /* ilm-900 */
+  }
+
+  .dark {
+    --background: 12 30 51; /* ilm-950 */
+    --foreground: 240 244 248; /* ilm-50 */
+  }
+
+  * {
+    @apply border-ilm-200 dark:border-ilm-800;
+  }
+
+  body {
+    @apply bg-white dark:bg-ilm-950 text-ilm-900 dark:text-ilm-50 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-ilm-700 text-white hover:bg-ilm-800 focus:ring-ilm-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-ilm-100 text-ilm-700 hover:bg-ilm-200 focus:ring-ilm-400 dark:bg-ilm-800 dark:text-ilm-200 dark:hover:bg-ilm-700;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-ilm-600 hover:bg-ilm-100 focus:ring-ilm-400 dark:text-ilm-300 dark:hover:bg-ilm-800;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-ilm-300 bg-white px-4 py-2 text-sm placeholder:text-ilm-400 focus:border-ilm-500 focus:outline-none focus:ring-2 focus:ring-ilm-500/20 dark:border-ilm-700 dark:bg-ilm-900 dark:text-ilm-100 dark:placeholder:text-ilm-500;
+  }
+
+  .card {
+    @apply rounded-xl border border-ilm-200 bg-white shadow-sm dark:border-ilm-800 dark:bg-ilm-900;
+  }
+
+  .card-hover {
+    @apply card transition-shadow hover:shadow-md;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-quran { @apply badge bg-quran-light text-quran-dark dark:bg-quran-dark/30 dark:text-quran-light; }
+  .badge-talmud { @apply badge bg-talmud-light text-talmud-dark dark:bg-talmud-dark/30 dark:text-talmud-light; }
+  .badge-torah { @apply badge bg-torah-light text-torah-dark dark:bg-torah-dark/30 dark:text-torah-light; }
+  .badge-ot { @apply badge bg-ot-light text-ot-dark dark:bg-ot-dark/30 dark:text-ot-light; }
+  .badge-nt { @apply badge bg-nt-light text-nt-dark dark:bg-nt-dark/30 dark:text-nt-light; }
+
+  .text-rtl { direction: rtl; text-align: right; }
+  .text-ltr { direction: ltr; text-align: left; }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.ilm.300') transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.ilm.300');
+    border-radius: 3px;
+  }
+
+  .dark .scrollbar-thin {
+    scrollbar-color: theme('colors.ilm.700') transparent;
+  }
+
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: theme('colors.ilm.700');
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .animate-in {
+    animation: fadeIn 0.3s ease-out, slideUp 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(10px); }
+    to { transform: translateY(0); }
+  }
+}
+
+/* RTL text support */
+[dir="rtl"] .rtl\:text-right { text-align: right; }
+[dir="rtl"] .rtl\:text-left { text-align: left; }
+[dir="rtl"] .rtl\:mr-auto { margin-left: auto; margin-right: 0; }
+[dir="rtl"] .rtl\:ml-auto { margin-right: auto; margin-left: 0; }
+
+/* Comparison view synchronized scrolling */
+.comparison-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .comparison-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.comparison-panel {
+  @apply card overflow-y-auto scrollbar-thin max-h-[70vh];
+}
+
+/* Passage text rendering */
+.passage-text {
+  @apply prose prose-ilm max-w-none;
+}
+
+.passage-text .verse-number {
+  @apply inline-block w-6 text-right pr-2 text-ilm-400 font-mono text-xs select-none;
+}
+
+.passage-text .verse-text {
+  @apply inline leading-relaxed;
+}
+
+.passage-text .original-text {
+  @apply text-lg leading-loose;
+}
+
+.passage-text .translation-text {
+  @apply text-base leading-relaxed text-ilm-700 dark:text-ilm-300;
+}
+
+/* Recommendation panel */
+.recommendation-card {
+  @apply card-hover p-4 transition-all hover:border-ilm-300 dark:hover:border-ilm-700;
+}
+
+.recommendation-score {
+  @apply inline-flex items-center gap-1 text-xs font-mono;
+}
+
+/* Search highlighting */
+mark {
+  @apply bg-yellow-200 dark:bg-yellow-800 px-1 rounded;
+}
+
+/* Theme selector */
+.theme-pill {
+  @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition-colors cursor-pointer;
+}
+
+/* Loading skeletons */
+.skeleton {
+  @apply animate-pulse bg-ilm-200 dark:bg-ilm-800 rounded;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  @apply outline-none ring-2 ring-ilm-500 ring-offset-2 ring-offset-white dark:ring-offset-ilm-950;
+}

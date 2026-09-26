@@ -1,0 +1,294 @@
+// Prisma Schema for Ilm - Sacred Text Comparison Platform
+// Run: npx prisma generate && npx prisma db push
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// Text & Passage Models
+// ============================================================================
+
+model Text {
+  id          String   @id @default(cuid())
+  textId      String   @unique @map("text_id") // quran, talmud, torah, ot, nt
+  name        String
+  originalLang String  @map("original_lang")
+  direction   String   @default("ltr") // rtl or ltr
+  bookCount   Int      @default(0) @map("book_count")
+  verseCount  Int      @default(0) @map("verse_count")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  books       Book[]
+  passages    Passage[]
+  translations Translation[]
+
+  @@index([textId])
+  @@map("texts")
+}
+
+model Book {
+  id              String   @id @default(cuid())
+  textId          String   @map("text_id")
+  text            Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
+  bookId          String   @map("book_id") // e.g., "2" for Al-Baqarah, "john" for John
+  name            String
+  nameOriginal    String?  @map("name_original")
+  nameTranslit    String?  @map("name_translit")
+  chapterCount    Int      @default(0) @map("chapter_count")
+  verseCount      Int      @default(0) @map("verse_count")
+  order           Int
+  testament       String?  // old, new, quran, talmud, torah
+  category        String?  // pentateuch, gospel, pauline, meccan, medinan, etc.
+  description     String?
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  passages        Passage[]
+  chapters        Chapter[]
+
+  @@unique([textId, bookId])
+  @@index([textId, order])
+  @@map("books")
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  bookId      String   @map("book_id")
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  number      Int
+  name        String?  // Surah name, etc.
+  nameOriginal String? @map("name_original")
+  verseCount  Int      @default(0) @map("verse_count")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  passages    Passage[]
+
+  @@unique([bookId, number])
+  @@index([bookId])
+  @@map("chapters")
+}
+
+model Passage {
+  id                    String   @id @default(cuid())
+  passageKey            String   @unique @map("passage_key") // quran:2:255, nt:john:3:16
+  textId                String   @map("text_id")
+  text                  Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
+  bookId                String   @map("book_id")
+  book                  Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  chapterId             String   @map("chapter_id")
+  chapter               Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  chapterNum            Int      @map("chapter_num")
+  verseNum              Int      @map("verse_num")
+  originalText          String   @map("original_text") @db.Text
+  primaryTranslation    String   @map("primary_translation") @db.Text
+  primaryTranslationId  String?  @map("primary_translation_id")
+  language              String   @default("english")
+  verseOrder            Int      @map("verse_order") // Global ordering within text
+  metadata              Json     @default("{}")
+  // Semantic embeddings stored as JSON array (or use pgvector extension)
+  embeddings            Json?    @default("[]")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  themes                PassageTheme[]
+  crossRefsSource       CrossReference[] @relation("CrossRefSource")
+  crossRefsTarget       CrossReference[] @relation("CrossRefTarget")
+  alignmentsSource      Alignment[] @relation("AlignmentSource")
+  alignmentsTarget      Alignment[] @relation("AlignmentTarget")
+
+  @@index([textId, verseOrder])
+  @@index([bookId, chapterNum, verseNum])
+  @@index([passageKey])
+  @@map("passages")
+}
+
+// ============================================================================
+// Translation Models
+// ============================================================================
+
+model Translation {
+  id          String   @id @default(cuid())
+  textId      String   @map("text_id")
+  text        Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
+  name        String   // e.g., "Sahih International", "KJV", "ESV"
+  language    String   @default("english")
+  translator  String?
+  year        Int?
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  license     String?  // public_domain, creative_commons, proprietary
+  sourceUrl   String?  @map("source_url")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  passageTranslations PassageTranslation[]
+
+  @@unique([textId, name, language])
+  @@map("translations")
+}
+
+model PassageTranslation {
+  id            String   @id @default(cuid())
+  passageId     String   @map("passage_id")
+  passage       Passage  @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  translationId String   @map("translation_id")
+  translation   Translation @relation(fields: [translationId], references: [id], onDelete: Cascade)
+  text          String   @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([passageId, translationId])
+  @@index([passageId])
+  @@map("passage_translations")
+}
+
+// ============================================================================
+// Thematic Analysis (Jev-powered)
+// ============================================================================
+
+model Theme {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  category    String?  // divine_attributes, covenant_law, salvation, etc.
+  description String?
+  taxonomy    String[] @default([]) // hierarchical path
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  passageThemes PassageTheme[]
+
+  @@index([category])
+  @@map("themes")
+}
+
+model PassageTheme {
+  id        String  @id @default(cuid())
+  passageId String  @map("passage_id")
+  passage   Passage @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  themeId   String  @map("theme_id")
+  theme     Theme   @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  score     Float   @default(0) // 0-1 from Jev Score
+  confidence Float  @default(0) // 0-1 from Jev
+  evidence  String[] @default([])
+  source    String  @default("jev") // jev, manual, derived
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([passageId, themeId])
+  @@index([passageId])
+  @@index([themeId, score])
+  @@map("passage_themes")
+}
+
+// ============================================================================
+// Cross-References (Jev-detected)
+// ============================================================================
+
+model CrossReference {
+  id              String   @id @default(cuid())
+  sourcePassageId String   @map("source_passage_id")
+  sourcePassage   Passage  @relation("CrossRefSource", fields: [sourcePassageId], references: [id], onDelete: Cascade)
+  targetPassageId String   @map("target_passage_id")
+  targetPassage   Passage  @relation("CrossRefTarget", fields: [targetPassageId], references: [id], onDelete: Cascade)
+  type            String   // quote, allusion, thematic, linguistic, narrative, theological
+  strength        Float    @default(0) // 0-1 from Jev Score
+  direction       String   @default("bidirectional") // bidirectional, source_to_target, target_to_source
+  notes           String?
+  detectedBy      String   @default("jev") @map("detected_by") // jev, manual
+  matchedSegments Json     @default("[]") // [{textA, textB, startA, endA, startB, endB}]
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([sourcePassageId, targetPassageId, type])
+  @@index([sourcePassageId])
+  @@index([targetPassageId])
+  @@index([type, strength])
+  @@map("cross_references")
+}
+
+// ============================================================================
+// Alignments (for side-by-side comparison)
+// ============================================================================
+
+model Alignment {
+  id              String   @id @default(cuid())
+  sourcePassageId String   @map("source_passage_id")
+  sourcePassage   Passage  @relation("AlignmentSource", fields: [sourcePassageId], references: [id], onDelete: Cascade)
+  targetPassageId String   @map("target_passage_id")
+  targetPassage   Passage  @relation("AlignmentTarget", fields: [targetPassageId], references: [id], onDelete: Cascade)
+  type            String   // direct_quote, strong_allusion, thematic_parallel, linguistic_cognate, narrative_parallel, theological_echo, none
+  strength        Float    @default(0)
+  matchedSegments Json     @default("[]")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([sourcePassageId, targetPassageId])
+  @@index([sourcePassageId])
+  @@index([targetPassageId])
+  @@map("alignments")
+}
+
+// ============================================================================
+// Search & Analytics
+// ============================================================================
+
+model SearchLog {
+  id        String   @id @default(cuid())
+  query     String
+  intent    String?
+  filters   Json     @default("{}")
+  resultCount Int     @map("result_count")
+  tookMs    Int      @map("took_ms")
+  userId    String?  @map("user_id")
+  sessionId String?  @map("session_id")
+  ipHash    String?  @map("ip_hash")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("search_logs")
+}
+
+model UserPreference {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  weights       Json     @default('{"thematic":0.3,"linguistic":0.2,"historical":0.15,"narrative":0.15,"theological":0.2}') // RecommendationWeights
+  preferredTexts String[] @default([]) @map("preferred_texts")
+  preferredTranslations Json @default("{}") @map("preferred_translations")
+  uiSettings    Json     @default("{}") @map("ui_settings")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("user_preferences")
+}
+
+// ============================================================================
+// Indexing Jobs (BullMQ)
+// ============================================================================
+
+model IndexingJob {
+  id          String   @id @default(cuid())
+  type        String   // full_reindex, incremental, passage_update, theme_extract, crossref_detect, alignment_compute
+  status      String   @default("pending") // pending, running, completed, failed
+  progress    Int      @default(0)
+  totalItems  Int      @default(0) @map("total_items")
+  processedItems Int   @default(0) @map("processed_items")
+  error       String?
+  metadata    Json     @default("{}")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([type, status])
+  @@map("indexing_jobs")
+}
