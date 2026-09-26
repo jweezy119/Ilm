@@ -1,0 +1,95 @@
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: calc(100vh - 200px);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.chat-bubble {
+  max-width: 85%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  line-height: 1.5;
+}
+
+.chat-bubble-body {
+  white-space: pre-wrap;
+}
+
+.msg-user {
+  align-self: flex-end;
+  background: var(--primary);
+  color: white;
+}
+
+.msg-assistant {
+  align-self: flex-start;
+  background: #f1f5f9;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.msg-error {
+  align-self: center;
+  background: #fee;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.chat-sources {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.source-chip {
+  display: inline-block;
+  margin: 0.15rem 0.25rem 0 0;
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chat-input-row input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.chat-input-row button {
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chat-input-row button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
