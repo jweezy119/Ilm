@@ -1,525 +1,384 @@
 /**
- * API Routes - Main HTTP endpoints
+ * HTTP routes.
+ *
+ * Handlers stay thin: validate, call a service, wrap the result. Every response
+ * uses the same { success, data } / { success, error } envelope.
  */
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { SearchQuery, SearchIntent, TextId, PassageKey, RecommendationWeights, DEFAULT_WEIGHTS } from '@ilm/shared';
-import { searchPassages, searchByPassageKey, logSearch, hybridSearch } from '../services/search';
-import { getPassageById, getPassageByKey, getBooks, getBook, getPassagesByBook, getPassagesByChapter, getTextStats } from '../services/passage';
-import { generateRecommendations, getRecommendationExplanation, getThematicJourney, getThemeMap, getUserWeights, setUserWeights } from '../services/recommendation';
-import { comparePassages, getParallelTranslations, generateComparisonUrl } from '../services/comparison';
+import { TextIdSchema, TextId, RecommendationWeightsInputSchema, PassageKeySchema as SharedPassageKeySchema } from '@ilm/shared';
+import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
+import {
+  getPassageById,
+  getPassageByKey,
+  getPassagesByKeys,
+  getPassagesByBook,
+  getPassagesByChapter,
+  getBooks,
+  getBook,
+  getTextStats,
+  getCorpusStats,
+  prisma,
+} from '../services/passage';
+import {
+  generateRecommendations,
+  getRecommendationExplanation,
+  getThematicJourney,
+  getThemeMap,
+  getUserWeights,
+  setUserWeights,
+  normalizeWeights,
+} from '../services/recommendation';
+import { comparePassages, getParallelTranslations, generateComparisonUrl, computeSharedThemes } from '../services/comparison';
+import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { classifySearchIntent } from '../services/typesafe';
+import { getJevJudge } from '../services/typesafe-client';
+import { isIndexReady, invalidateOramaIndex } from '../search/orama';
+import { HttpError } from '../lib/errors';
 
-// Validation schemas
-const SearchQuerySchema = z.object({
+// ============================================================================
+// REQUEST SCHEMAS
+// ============================================================================
+
+const SearchBodySchema = z.object({
   query: z.string().min(1).max(500),
   intent: z.enum(['comparison', 'explanation', 'thematic_study', 'linguistic_analysis', 'cross_reference', 'reading', 'unknown']).optional(),
-  filters: z.object({
-    texts: z.array(z.enum(['quran', 'talmud', 'torah', 'ot', 'nt'])).optional(),
-    books: z.array(z.string()).optional(),
-    chapters: z.array(z.number().int().positive()).optional(),
-    languages: z.array(z.enum(['arabic', 'hebrew', 'aramaic', 'greek', 'english'])).optional(),
-    themes: z.array(z.string()).optional(),
-  }).optional(),
+  filters: z
+    .object({
+      texts: z.array(TextIdSchema).optional(),
+      books: z.array(z.string()).optional(),
+      chapters: z.array(z.number().int().positive()).optional(),
+      languages: z.array(z.enum(['arabic', 'hebrew', 'aramaic', 'greek', 'english'])).optional(),
+      themes: z.array(z.string()).optional(),
+    })
+    .optional(),
   limit: z.number().int().positive().max(100).default(20),
   offset: z.number().int().nonnegative().default(0),
   includeScores: z.boolean().default(true),
+  // One extra Jev request per search; turn it off for cheap literal search.
+  semantic: z.boolean().default(true),
+  expand: z.boolean().default(true),
 });
 
-const PassageKeySchema = z.string().regex(/^(quran|talmud|torah|ot|nt):.+:\d+:\d+$/);
+const PassageKeySchema = SharedPassageKeySchema;
 
-const RecommendationRequestSchema = z.object({
+const RecommendationBodySchema = z.object({
   passageId: z.string().min(1),
-  weights: z.object({
-    thematic: z.number().min(0).max(1).default(0.3),
-    linguistic: z.number().min(0).max(1).default(0.2),
-    historical: z.number().min(0).max(1).default(0.15),
-    narrative: z.number().min(0).max(1).default(0.15),
-    theological: z.number().min(0).max(1).default(0.2),
-  }).optional(),
-  limit: z.number().int().positive().max(20).default(10),
-  excludeTexts: z.array(z.enum(['quran', 'talmud', 'torah', 'ot', 'nt'])).optional(),
+  weights: RecommendationWeightsInputSchema.optional(),
+  limit: z.number().int().positive().max(25).default(10),
+  excludeTexts: z.array(TextIdSchema).optional(),
   excludeSameBook: z.boolean().default(false),
   minScore: z.number().min(0).max(1).default(0.15),
 });
 
-const ComparisonRequestSchema = z.object({
+const ComparisonBodySchema = z.object({
   passageIds: z.array(z.string().min(1)).min(2).max(5),
-  options: z.object({
-    includeAlignments: z.boolean().default(true),
-    includeThemes: z.boolean().default(true),
-    includeCrossRefs: z.boolean().default(true),
-    syncScrolling: z.boolean().default(true),
-  }).optional(),
+  options: z
+    .object({
+      includeAlignments: z.boolean().default(true),
+      includeThemes: z.boolean().default(true),
+      includeCrossRefs: z.boolean().default(true),
+      syncScrolling: z.boolean().default(true),
+    })
+    .default({ includeAlignments: true, includeThemes: true, includeCrossRefs: true, syncScrolling: true }),
 });
 
-const WeightsSchema = z.object({
-  thematic: z.number().min(0).max(1),
-  linguistic: z.number().min(0).max(1),
-  historical: z.number().min(0).max(1),
-  narrative: z.number().min(0).max(1),
-  theological: z.number().min(0).max(1),
-}).refine(w => {
-  const sum = w.thematic + w.linguistic + w.historical + w.narrative + w.theological;
-  return Math.abs(sum - 1.0) < 0.01;
-}, 'Weights must sum to 1.0');
+const WeightsBodySchema = z
+  .object({
+    thematic: z.number().min(0).max(1),
+    linguistic: z.number().min(0).max(1),
+    historical: z.number().min(0).max(1),
+    narrative: z.number().min(0).max(1),
+    theological: z.number().min(0).max(1),
+  })
+  .refine((w) => Math.abs(w.thematic + w.linguistic + w.historical + w.narrative + w.theological - 1) < 0.02, {
+    message: 'Weights must sum to 1.0',
+  });
 
-export async function registerRoutes(app: FastifyInstance) {
-  // Health check
-  app.get('/health', async () => ({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '0.1.0',
-  }));
+// ============================================================================
+// HELPERS
+// ============================================================================
 
-  // ========================================================================
-  // SEARCH ENDPOINTS
-  // ========================================================================
+const ok = (data: unknown) => ({ success: true as const, data });
 
-  /**
-   * Unified search across all texts
-   * POST /api/search
-   */
+function fail(reply: FastifyReply, status: number, code: string, message: string, details?: unknown) {
+  return reply.status(status).send({ success: false, error: { code, message, ...(details ? { details } : {}) } });
+}
+
+function parse<T extends z.ZodTypeAny>(schema: T, input: unknown): z.infer<T> {
+  const result = schema.safeParse(input);
+  if (!result.success) {
+    throw new HttpError(400, 'VALIDATION_ERROR', 'Request body failed validation', result.error.flatten());
+  }
+  return result.data;
+}
+
+// ============================================================================
+// ROUTES
+// ============================================================================
+
+export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  // ---------------------------------------------------------------- health
+  app.get('/health', async () => {
+    const jev = getJevJudge();
+    const passages = await prisma.passage.count();
+    return ok({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version ?? '0.1.0',
+      search: { ready: isIndexReady(), passagesIndexed: passages },
+      jev: { configured: jev.available, reason: jev.reason },
+    });
+  });
+
+  // ---------------------------------------------------------------- search
   app.post('/api/search', async (request: FastifyRequest, reply: FastifyReply) => {
-    const startTime = Date.now();
-    
-    try {
-      const query = SearchQuerySchema.parse(request.body);
-      
-      const result = await searchPassages(query);
-      
-      // Log search for analytics
-      await logSearch(
-        query.query,
-        query.intent,
-        query.filters,
-        result.results.length,
-        result.tookMs,
-        request.headers['x-user-id'] as string,
-        request.headers['x-session-id'] as string
-      );
-      
-      return reply.send({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Invalid search query', details: error.flatten() },
-        });
-      }
-      throw error;
-    }
-  });
+    const body = parse(SearchBodySchema, request.body);
+    const result = await searchPassages(body);
 
-  /**
-   * Search suggestions/autocomplete
-   * GET /api/search/suggest?q=...
-   */
-  app.get('/api/search/suggest', async (request: FastifyRequest<{ Querystring: { q: string; limit?: string } }>) => {
-    const { q, limit = '5' } = request.query;
-    
-    if (!q || q.length < 2) {
-      return { success: true, data: { suggestions: [] } };
-    }
-    
-    // Use MeiliSearch for suggestions
-    // In production, use a dedicated suggestions index
-    const result = await searchPassages({
-      query: q,
-      limit: parseInt(limit),
-      filters: {},
+    void logSearch({
+      query: body.query,
+      intent: result.intent,
+      filters: body.filters,
+      resultCount: result.results.length,
+      tookMs: result.tookMs,
+      userId: headerValue(request, 'x-user-id'),
+      sessionId: headerValue(request, 'x-session-id'),
     });
-    
-    const suggestions = result.results
-      .map(r => `${r.passage.book} ${r.passage.chapter}:${r.passage.verse}`)
-      .slice(0, parseInt(limit));
-    
-    return { success: true, data: { suggestions } };
+
+    return ok(result);
   });
 
-  /**
-   * Classify search intent
-   * POST /api/search/intent
-   */
-  app.post('/api/search/intent', async (request: FastifyRequest<{ Body: { query: string } }>) => {
-    const { query } = request.body;
-    
-    if (!query || query.length < 3) {
-      return { success: true, data: { intent: 'unknown', confidence: 0 } };
-    }
-    
-    const result = await classifySearchIntent(query);
-    
-    return { success: true, data: result };
+  app.get('/api/search/suggest', async (request: FastifyRequest<{ Querystring: { q?: string; limit?: string } }>) => {
+    const q = request.query.q?.trim() ?? '';
+    const limit = Math.min(20, Math.max(1, Number(request.query.limit ?? 5)));
+    if (q.length < 2) return ok({ suggestions: [] });
+
+    const result = await searchPassages({ query: q, limit, offset: 0, includeScores: true, semantic: false, expand: true });
+    const suggestions = result.results.map((r) => `${r.passage.book} ${r.passage.chapter}:${r.passage.verse}`);
+    return ok({ suggestions: [...new Set(suggestions)].slice(0, limit) });
   });
 
-  // ========================================================================
-  // PASSAGE ENDPOINTS
-  // ========================================================================
-
-  /**
-   * Get passage by ID
-   * GET /api/passages/:id
-   */
-  app.get('/api/passages/:id', async (request: FastifyRequest<{ Params: { id: string } }>) => {
-    const passage = await getPassageById(request.params.id);
-    
-    if (!passage) {
-      return reply.status(404).send({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Passage not found' },
-      });
-    }
-    
-    return { success: true, data: passage };
+  app.post('/api/search/intent', async (request: FastifyRequest<{ Body: { query?: string } }>) => {
+    const query = request.body?.query?.trim() ?? '';
+    if (query.length < 3) return ok({ intent: 'unknown', confidence: 0, source: 'derived' });
+    return ok(await classifySearchIntent(query));
   });
 
-  /**
-   * Get passage by canonical key (e.g., quran:2:255)
-   * GET /api/passages/by-key/:key
-   */
-  app.get('/api/passages/by-key/:key', async (request: FastifyRequest<{ Params: { key: string } }>) => {
-    const key = request.params.key;
-    
+  app.get('/api/themes', async () => ok({ themes: await listThemes() }));
+
+  app.get('/api/search/stats', async () => ok(await getIndexStats()));
+
+  // ---------------------------------------------------------------- passages
+  app.get('/api/passages/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const passage = await getPassageById(decodeURIComponent(request.params.id));
+    if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with id ${request.params.id}`);
+    return ok(passage);
+  });
+
+  app.get(
+    '/api/passages/by-key/:key',
+    async (request: FastifyRequest<{ Params: { key: string }; Querystring: { refresh?: string } }>, reply: FastifyReply) => {
+    const key = decodeURIComponent(request.params.key);
     if (!PassageKeySchema.safeParse(key).success) {
-      return reply.status(400).send({
-        success: false,
-        error: { code: 'INVALID_KEY', message: 'Invalid passage key format. Use textId:book:chapter:verse' },
-      });
+      return fail(reply, 400, 'INVALID_KEY', 'Passage keys look like textId:book:chapter:verse, e.g. quran:2:1:255');
     }
-    
-    const passage = await getPassageByKey(key);
-    
-    if (!passage) {
-      return reply.status(404).send({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Passage not found' },
-      });
+      const passage = await getPassageByKey(key);
+      if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with key ${key}`);
+      return ok({ ...passage, crossReferences: await crossReferencesFor(request, passage.id, request.query.refresh === '1') });
     }
-    
-    return { success: true, data: passage };
-  });
+  );
 
   /**
-   * Get multiple passages by keys
-   * POST /api/passages/batch
+   * Cross-references, computed on first request and stored after that.
+   *   GET /api/passages/:id/cross-references[?refresh=1]
    */
-  app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys: string[] } }>) => {
-    const { keys } = request.body;
-    
+  app.get('/api/passages/:id/cross-references', async (request: FastifyRequest<{ Params: { id: string }; Querystring: { refresh?: string } }>, reply: FastifyReply) => {
+    const id = decodeURIComponent(request.params.id);
+    const passage = await getPassageById(id);
+    if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with id ${id}`);
+
+    const result = await getCrossReferencesForPassage(passage.id, { refresh: request.query.refresh === '1' });
+    return ok({ references: result.references, computed: result.computed });
+  });
+
+  app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys?: unknown } }>, reply: FastifyReply) => {
+    const keys = request.body?.keys;
     if (!Array.isArray(keys) || keys.length === 0 || keys.length > 50) {
-      return reply.status(400).send({
-        success: false,
-        error: { code: 'INVALID_INPUT', message: 'Provide 1-50 passage keys' },
-      });
+      return fail(reply, 400, 'INVALID_INPUT', 'Provide 1-50 passage keys');
     }
-    
-    const passages = await getPassagesByKeys(keys);
-    
-    return { success: true, data: { passages } };
+    return ok({ passages: await getPassagesByKeys(keys as string[]) });
   });
 
-  /**
-   * Get all books for a text
-   * GET /api/texts/:textId/books
-   */
-  app.get('/api/texts/:textId/books', async (request: FastifyRequest<{ Params: { textId: TextId } }>) => {
-    const { textId } = request.params;
-    
+  // ---------------------------------------------------------------- texts
+  app.get('/api/texts', async () => ok(await getCorpusStats()));
+
+  app.get('/api/texts/:textId', async (request: FastifyRequest<{ Params: { textId: string } }>, reply: FastifyReply) => {
+    const textId = parse(TextIdSchema, request.params.textId);
+    return ok(await getTextStats(textId));
+  });
+
+  app.get('/api/texts/:textId/books', async (request: FastifyRequest<{ Params: { textId: string } }>, reply: FastifyReply) => {
+    const textId = parse(TextIdSchema, request.params.textId);
     const books = await getBooks(textId);
-    
-    return { success: true, data: { books, textId, total: books.length } };
+    return ok({ textId, books, total: books.length });
   });
 
-  /**
-   * Get book metadata
-   * GET /api/texts/:textId/books/:bookId
-   */
-  app.get('/api/texts/:textId/books/:bookId', async (request: FastifyRequest<{ Params: { textId: TextId; bookId: string } }>) => {
-    const { textId, bookId } = request.params;
-    
-    const book = await getBook(textId, bookId);
-    
-    if (!book) {
-      return reply.status(404).send({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Book not found' },
-      });
+  app.get('/api/texts/:textId/books/:bookId', async (request: FastifyRequest<{ Params: { textId: string; bookId: string } }>, reply: FastifyReply) => {
+    const textId = parse(TextIdSchema, request.params.textId);
+    const book = await getBook(textId, request.params.bookId);
+    if (!book) return fail(reply, 404, 'NOT_FOUND', `No book ${request.params.bookId} in ${textId}`);
+    return ok(book);
+  });
+
+  app.get(
+    '/api/texts/:textId/books/:bookId/passages',
+    async (request: FastifyRequest<{ Params: { textId: string; bookId: string }; Querystring: { limit?: string; offset?: string } }>, reply: FastifyReply) => {
+      const textId = parse(TextIdSchema, request.params.textId);
+      const limit = clamp(Number(request.query.limit ?? 100), 1, 500);
+      const offset = clamp(Number(request.query.offset ?? 0), 0, Number.MAX_SAFE_INTEGER);
+      const passages = await getPassagesByBook(textId, request.params.bookId, limit, offset);
+      return ok({ textId, book: request.params.bookId, passages, total: passages.length, limit, offset });
     }
-    
-    return { success: true, data: book };
-  });
+  );
 
-  /**
-   * Get passages in a book
-   * GET /api/texts/:textId/books/:bookId/passages
-   */
-  app.get('/api/texts/:textId/books/:bookId/passages', async (request: FastifyRequest<{
-    Params: { textId: TextId; bookId: string };
-    Querystring: { limit?: string; offset?: string };
-  }>) => {
-    const { textId, bookId } = request.params;
-    const limit = parseInt(request.query.limit || '100');
-    const offset = parseInt(request.query.offset || '0');
-    
-    const passages = await getPassagesByBook(textId, bookId, limit, offset);
-    
-    return { success: true, data: { passages, total: passages.length } };
-  });
-
-  /**
-   * Get passages in a chapter
-   * GET /api/texts/:textId/books/:bookId/chapters/:chapter
-   */
-  app.get('/api/texts/:textId/books/:bookId/chapters/:chapter', async (request: FastifyRequest<{
-    Params: { textId: TextId; bookId: string; chapter: string };
-  }>) => {
-    const { textId, bookId, chapter } = request.params;
-    const chapterNum = parseInt(chapter);
-    
-    if (isNaN(chapterNum) || chapterNum < 1) {
-      return reply.status(400).send({
-        success: false,
-        error: { code: 'INVALID_CHAPTER', message: 'Invalid chapter number' },
-      });
-    }
-    
-    const passages = await getPassagesByChapter(textId, bookId, chapterNum);
-    
-    return { success: true, data: { passages, chapter: chapterNum } };
-  });
-
-  /**
-   * Get text statistics
-   * GET /api/texts/:textId/stats
-   */
-  app.get('/api/texts/:textId/stats', async (request: FastifyRequest<{ Params: { textId: TextId } }>) => {
-    const { textId } = request.params;
-    const stats = await getTextStats(textId);
-    
-    return { success: true, data: stats };
-  });
-
-  // ========================================================================
-  // RECOMMENDATION ENDPOINTS
-  // ========================================================================
-
-  /**
-   * Get recommendations for a passage
-   * POST /api/recommendations
-   */
-  app.post('/api/recommendations', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const body = RecommendationRequestSchema.parse(request.body);
-      
-      const result = await generateRecommendations(body);
-      
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Invalid request', details: error.flatten() },
-        });
+  app.get(
+    '/api/texts/:textId/books/:bookId/chapters/:chapter',
+    async (request: FastifyRequest<{ Params: { textId: string; bookId: string; chapter: string } }>, reply: FastifyReply) => {
+      const textId = parse(TextIdSchema, request.params.textId);
+      const chapter = Number(request.params.chapter);
+      if (!Number.isInteger(chapter) || chapter < 1) {
+        return fail(reply, 400, 'INVALID_CHAPTER', 'Chapter must be a positive integer');
       }
-      throw error;
+      return ok({ textId, book: request.params.bookId, chapter, passages: await getPassagesByChapter(textId, request.params.bookId, chapter) });
     }
+  );
+
+  // ---------------------------------------------------------------- recommendations
+  app.post('/api/recommendations', async (request: FastifyRequest) => {
+    const body = parse(RecommendationBodySchema, request.body);
+    return ok(await generateRecommendations({ ...body, weights: normalizeWeights(body.weights) }));
   });
 
-  /**
-   * Get detailed explanation for a recommendation
-   * GET /api/recommendations/explain/:sourceId/:targetId
-   */
-  app.get('/api/recommendations/explain/:sourceId/:targetId', async (request: FastifyRequest<{
-    Params: { sourceId: string; targetId: string };
-    Querystring: { weights?: string };
-  }>) => {
-    const { sourceId, targetId } = request.params;
-    
-    let weights = DEFAULT_WEIGHTS;
-    if (request.query.weights) {
-      try {
-        weights = JSON.parse(request.query.weights);
-      } catch {
-        // Use defaults
-      }
+  app.get(
+    '/api/recommendations/explain/:sourceId/:targetId',
+    async (request: FastifyRequest<{ Params: { sourceId: string; targetId: string }; Querystring: { weights?: string } }>, reply: FastifyReply) => {
+      const weights = parseWeightsParam(request.query.weights);
+      return ok(await getRecommendationExplanation(request.params.sourceId, request.params.targetId, weights));
     }
-    
-    const explanation = await getRecommendationExplanation(sourceId, targetId, weights);
-    
-    return { success: true, data: explanation };
+  );
+
+  // ---------------------------------------------------------------- themes
+  app.get('/api/themes/:theme/journey', async (request: FastifyRequest<{ Params: { theme: string }; Querystring: { texts?: string; limit?: string } }>, reply: FastifyReply) => {
+    const texts = request.query.texts?.split(',').filter((t): t is TextId => TextIdSchema.safeParse(t).success);
+    const limit = clamp(Number(request.query.limit ?? 20), 1, 100);
+    return ok({ theme: request.params.theme, journey: await getThematicJourney(request.params.theme, texts, limit) });
   });
 
-  /**
-   * Get thematic journey across texts
-   * GET /api/themes/:theme/journey
-   */
-  app.get('/api/themes/:theme/journey', async (request: FastifyRequest<{
-    Params: { theme: string };
-    Querystring: { texts?: string; limit?: string };
-  }>) => {
-    const { theme } = request.params;
-    const texts = request.query.texts?.split(',') as TextId[] | undefined;
-    const limit = parseInt(request.query.limit || '20');
-    
-    const journey = await getThematicJourney(theme, texts, limit);
-    
-    return { success: true, data: { theme, journey } };
-  });
-
-  /**
-   * Get theme map (related themes)
-   * GET /api/themes/:theme/map
-   */
   app.get('/api/themes/:theme/map', async (request: FastifyRequest<{ Params: { theme: string } }>) => {
-    const { theme } = request.params;
-    const map = await getThemeMap(theme);
-    
-    return { success: true, data: map };
+    return ok(await getThemeMap(request.params.theme));
   });
 
-  /**
-   * Get user recommendation weights
-   * GET /api/users/:userId/weights
-   */
+  app.get('/api/themes/:theme/shared', async (request: FastifyRequest<{ Params: { theme: string }; Querystring: { keys: string } }>, reply: FastifyReply) => {
+    const keys = (request.query.keys ?? '').split(',').filter(Boolean);
+    if (keys.length < 2) return fail(reply, 400, 'INVALID_INPUT', 'Pass at least two passage keys as ?keys=a,b');
+
+    const passages = await getPassagesByKeys(keys);
+    return ok({ theme: request.params.theme, sharedThemes: computeSharedThemes(passages) });
+  });
+
+  // ---------------------------------------------------------------- weights
   app.get('/api/users/:userId/weights', async (request: FastifyRequest<{ Params: { userId: string } }>) => {
-    const weights = await getUserWeights(request.params.userId);
-    return { success: true, data: weights };
+    return ok(await getUserWeights(request.params.userId));
   });
 
-  /**
-   * Set user recommendation weights
-   * PUT /api/users/:userId/weights
-   */
-  app.put('/api/users/:userId/weights', async (request: FastifyRequest<{
-    Params: { userId: string };
-    Body: RecommendationWeights;
-  }>, reply: FastifyReply) => {
-    try {
-      const weights = WeightsSchema.parse(request.body);
-      await setUserWeights(request.params.userId, weights);
-      return { success: true, data: weights };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Weights must sum to 1.0', details: error.flatten() },
-        });
-      }
-      throw error;
-    }
+  app.put('/api/users/:userId/weights', async (request: FastifyRequest<{ Params: { userId: string } }>, reply: FastifyReply) => {
+    const weights = parse(WeightsBodySchema, request.body);
+    await setUserWeights(request.params.userId, weights);
+    return ok(weights);
   });
 
-  // ========================================================================
-  // COMPARISON ENDPOINTS
-  // ========================================================================
-
-  /**
-   * Compare passages side-by-side
-   * POST /api/compare
-   */
+  // ---------------------------------------------------------------- comparison
   app.post('/api/compare', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      const body = ComparisonRequestSchema.parse(request.body);
-      
-      const result = await comparePassages(body);
-      
-      // Generate shareable URL
-      const shareUrl = generateComparisonUrl(body.passageIds);
-      
-      return { success: true, data: { ...result, shareUrl } };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.status(400).send({
-          success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Invalid comparison request', details: error.flatten() },
-        });
+    const body = parse(ComparisonBodySchema, request.body);
+    const result = await comparePassages(body);
+    return ok({ ...result, shareUrl: generateComparisonUrl(result.passages.map((p) => p.passageKey)) });
+  });
+
+  app.get(
+    '/api/compare/translations/:textId/:book/:chapter/:verse',
+    async (request: FastifyRequest<{ Params: { textId: string; book: string; chapter: string; verse: string }; Querystring: { translations?: string } }>) => {
+      const textId = parse(TextIdSchema, request.params.textId);
+      const chapter = Number(request.params.chapter);
+      const verse = Number(request.params.verse);
+      if (!Number.isInteger(chapter) || !Number.isInteger(verse) || chapter < 1 || verse < 1) {
+        throw new HttpError(400, 'INVALID_REFERENCE', 'Chapter and verse must be positive integers');
       }
+      return ok(await getParallelTranslations(textId, request.params.book, chapter, verse, request.query.translations?.split(',')));
+    }
+  );
+
+  // ---------------------------------------------------------------- admin
+  app.post('/api/admin/reindex', async (request: FastifyRequest<{ Body?: { type?: string } }>, reply: FastifyReply) => {
+    if (process.env.NODE_ENV === 'production' && !request.headers['x-admin-token']) {
+      return fail(reply, 401, 'UNAUTHORIZED', 'Reindexing requires an x-admin-token header in production');
+    }
+
+    const job = await prisma.indexingJob.create({
+      data: { type: request.body?.type ?? 'full_reindex', status: 'running', startedAt: new Date() },
+    });
+
+    try {
+      await invalidateOramaIndex();
+      const { initializeOramaIndex } = await import('../search/orama');
+      await initializeOramaIndex();
+      await prisma.indexingJob.update({ where: { id: job.id }, data: { status: 'completed', completedAt: new Date(), progress: 100 } });
+      return ok({ jobId: job.id, status: 'completed' });
+    } catch (error) {
+      await prisma.indexingJob.update({ where: { id: job.id }, data: { status: 'failed', error: (error as Error).message } });
       throw error;
     }
   });
 
-  /**
-   * Get parallel translations for a verse
-   * GET /api/compare/translations/:textId/:book/:chapter/:verse
-   */
-  app.get('/api/compare/translations/:textId/:book/:chapter/:verse', async (request: FastifyRequest<{
-    Params: { textId: TextId; book: string; chapter: string; verse: string };
-    Querystring: { translations?: string };
-  }>) => {
-    const { textId, book, chapter, verse } = request.params;
-    const translationIds = request.query.translations?.split(',');
-    
-    const result = await getParallelTranslations(textId, book, parseInt(chapter), parseInt(verse), translationIds);
-    
-    return { success: true, data: result };
+  app.get('/api/admin/jobs/:jobId', async (request: FastifyRequest<{ Params: { jobId: string } }>, reply: FastifyReply) => {
+    const job = await prisma.indexingJob.findUnique({ where: { id: request.params.jobId } });
+    if (!job) return fail(reply, 404, 'NOT_FOUND', `No job ${request.params.jobId}`);
+    return ok(job);
   });
+}
 
-  // ========================================================================
-  // TEXT METADATA ENDPOINTS
-  // ========================================================================
+/**
+ * Cross-references for a passage, or an empty list if detection fails.
+ * A slow first load should still show the passage, so detection never fails the
+ * request.
+ */
+async function crossReferencesFor(request: FastifyRequest, passageId: string, refresh: boolean) {
+  try {
+    return (await getCrossReferencesForPassage(passageId, { refresh })).references;
+  } catch (error) {
+    request.log.warn({ err: error }, 'cross-reference detection failed; serving the passage without them');
+    return [];
+  }
+}
 
-  /**
-   * Get all available texts metadata
-   * GET /api/texts
-   */
-  app.get('/api/texts', async () => {
-    const texts = await Promise.all(
-      ['quran', 'talmud', 'torah', 'ot', 'nt'].map(async (textId) => {
-        const stats = await getTextStats(textId as TextId);
-        return { textId, ...stats };
-      })
-    );
-    
-    return { success: true, data: { texts } };
-  });
+function headerValue(request: FastifyRequest, name: string): string | undefined {
+  const value = request.headers[name];
+  return Array.isArray(value) ? value[0] : value;
+}
 
-  // ========================================================================
-  // ADMIN/INDEXING ENDPOINTS (protected in production)
-  // ========================================================================
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
 
-  /**
-   * Trigger re-indexing
-   * POST /api/admin/reindex
-   */
-  app.post('/api/admin/reindex', async (request: FastifyRequest<{ Body: { textId?: TextId } }>) => {
-    // In production, add authentication
-    const { textId } = request.body;
-    
-    // Create indexing job
-    const job = await prisma.indexingJob.create({
-      data: {
-        type: textId ? 'incremental' : 'full_reindex',
-        metadata: { textId },
-      },
-    });
-    
-    // Trigger background job (would use BullMQ)
-    // await indexingQueue.add('reindex', { jobId: job.id, textId });
-    
-    return { success: true, data: { jobId: job.id, status: 'queued' } };
-  });
-
-  /**
-   * Get indexing job status
-   * GET /api/admin/jobs/:jobId
-   */
-  app.get('/api/admin/jobs/:jobId', async (request: FastifyRequest<{ Params: { jobId: string } }>) => {
-    const job = await prisma.indexingJob.findUnique({
-      where: { id: request.params.jobId },
-    });
-    
-    if (!job) {
-      return reply.status(404).send({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Job not found' },
-      });
-    }
-    
-    return { success: true, data: job };
-  });
+function parseWeightsParam(raw?: string) {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    const weights = WeightsBodySchema.safeParse(parsed);
+    return weights.success ? weights.data : undefined;
+  } catch {
+    return undefined;
+  }
 }

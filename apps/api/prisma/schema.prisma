@@ -62,8 +62,8 @@ model Book {
 
 model Chapter {
   id          String   @id @default(cuid())
-  bookId      String   @map("book_id")
-  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  bookRef     String   @map("book_ref")
+  book        Book     @relation(fields: [bookRef], references: [id], onDelete: Cascade)
   number      Int
   name        String?  // Surah name, etc.
   nameOriginal String? @map("name_original")
@@ -74,8 +74,8 @@ model Chapter {
 
   passages    Passage[]
 
-  @@unique([bookId, number])
-  @@index([bookId])
+  @@unique([bookRef, number])
+  @@index([bookRef])
   @@map("chapters")
 }
 
@@ -84,10 +84,11 @@ model Passage {
   passageKey            String   @unique @map("passage_key") // quran:2:255, nt:john:3:16
   textId                String   @map("text_id")
   text                  Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
-  bookId                String   @map("book_id")
-  book                  Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  chapterId             String   @map("chapter_id")
-  chapter               Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  bookRef               String   @map("book_ref")
+  book                  Book     @relation(fields: [bookRef], references: [id], onDelete: Cascade)
+  bookSlug              String   @map("book_slug")
+  chapterRef            String   @map("chapter_ref")
+  chapter               Chapter  @relation(fields: [chapterRef], references: [id], onDelete: Cascade)
   chapterNum            Int      @map("chapter_num")
   verseNum              Int      @map("verse_num")
   originalText          String   @map("original_text") @db.Text
@@ -102,13 +103,14 @@ model Passage {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   themes                PassageTheme[]
+  passageTranslations   PassageTranslation[]
   crossRefsSource       CrossReference[] @relation("CrossRefSource")
   crossRefsTarget       CrossReference[] @relation("CrossRefTarget")
   alignmentsSource      Alignment[] @relation("AlignmentSource")
   alignmentsTarget      Alignment[] @relation("AlignmentTarget")
 
   @@index([textId, verseOrder])
-  @@index([bookId, chapterNum, verseNum])
+  @@index([textId, bookSlug, chapterNum, verseNum])
   @@index([passageKey])
   @@map("passages")
 }
@@ -175,8 +177,9 @@ model PassageTheme {
   id        String  @id @default(cuid())
   passageId String  @map("passage_id")
   passage   Passage @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  // Stores Theme.name, not Theme.id, so theme queries stay readable and stable.
   themeId   String  @map("theme_id")
-  theme     Theme   @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  theme     Theme   @relation(fields: [themeId], references: [name], onDelete: Cascade)
   score     Float   @default(0) // 0-1 from Jev Score
   confidence Float  @default(0) // 0-1 from Jev
   evidence  String[] @default([])
@@ -260,7 +263,8 @@ model SearchLog {
 model UserPreference {
   id            String   @id @default(cuid())
   userId        String   @unique @map("user_id")
-  weights       Json     @default('{"thematic":0.3,"linguistic":0.2,"historical":0.15,"narrative":0.15,"theological":0.2}') // RecommendationWeights
+  // RecommendationWeights, stored as JSON
+  weights       Json     @default("{}")
   preferredTexts String[] @default([]) @map("preferred_texts")
   preferredTranslations Json @default("{}") @map("preferred_translations")
   uiSettings    Json     @default("{}") @map("ui_settings")

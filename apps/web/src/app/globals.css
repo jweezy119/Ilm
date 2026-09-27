@@ -4,13 +4,13 @@
 
 @layer base {
   :root {
-    --background: 255 255 255;
-    --foreground: 16 42 67; /* ilm-900 */
+    --background: 40 33% 99%;
+    --foreground: 202 44% 26%;
   }
 
   .dark {
-    --background: 12 30 51; /* ilm-950 */
-    --foreground: 240 244 248; /* ilm-50 */
+    --background: 208 65% 8%;
+    --foreground: 210 40% 96%;
   }
 
   * {
@@ -18,8 +18,8 @@
   }
 
   body {
-    @apply bg-white dark:bg-ilm-950 text-ilm-900 dark:text-ilm-50 antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased;
+    font-family: var(--font-sans), system-ui, sans-serif;
   }
 
   html {
@@ -146,7 +146,7 @@
 
 /* Passage text rendering */
 .passage-text {
-  @apply prose prose-ilm max-w-none;
+  @apply prose max-w-none;
 }
 
 .passage-text .verse-number {

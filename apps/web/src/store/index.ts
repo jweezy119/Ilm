@@ -1,106 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { SearchResult, Passage } from '@ilm/shared';
+import type { Passage, RecommendationWeights, SearchResponse, TextId } from '@ilm/shared';
 
-interface SearchState {
-  results: SearchResult[];
-  recentSearches: string[];
-  setResults: (results: SearchResult[]) => void;
-  clearResults: () => void;
-  addRecentSearch: (query: string) => void;
-  clearRecentSearches: () => void;
-}
-
-export const useSearchStore = create<SearchState>()(
-  persist(
-    (set) => ({
-      results: [],
-      recentSearches: [],
-      setResults: (results) => set({ results }),
-      clearResults: () => set({ results: [] }),
-      addRecentSearch: (query) =>
-        set((state) => ({
-          recentSearches: [query, ...state.recentSearches.filter((q) => q !== query)].slice(0, 20),
-        })),
-      clearRecentSearches: () => set({ recentSearches: [] }),
-    }),
-    { name: 'ilm-search-store' }
-  )
-);
-
-interface ComparisonState {
-  passages: Passage[];
-  addPassage: (passage: Passage) => void;
-  removePassage: (passageId: string) => void;
-  clearPassages: () => void;
-  reorderPassages: (fromIndex: number, toIndex: number) => void;
-}
-
-export const useComparisonStore = create<ComparisonState>()(
-  persist(
-    (set) => ({
-      passages: [],
-      addPassage: (passage) =>
-        set((state) => {
-          if (state.passages.find((p) => p.id === passage.id)) return state;
-          if (state.passages.length >= 5) return state;
-          return { passages: [...state.passages, passage] };
-        }),
-      removePassage: (passageId) =>
-        set((state) => ({
-          passages: state.passages.filter((p) => p.id !== passageId),
-        })),
-      clearPassages: () => set({ passages: [] }),
-      reorderPassages: (fromIndex, toIndex) =>
-        set((state) => {
-          const newPassages = [...state.passages];
-          const [removed] = newPassages.splice(fromIndex, 1);
-          newPassages.splice(toIndex, 0, removed);
-          return { passages: newPassages };
-        }),
-    }),
-    { name: 'ilm-comparison-store' }
-  )
-);
-
-interface UIState {
-  sidebarOpen: boolean;
-  theme: 'light' | 'dark' | 'system';
-  setSidebarOpen: (open: boolean) => void;
-  toggleSidebar: () => void;
-  setTheme: (theme: 'light' | 'dark' | 'system') => void;
-}
-
-export const useUIStore = create<UIState>()(
-  persist(
-    (set) => ({
-      sidebarOpen: false,
-      theme: 'system',
-      setSidebarOpen: (open) => set({ sidebarOpen: open }),
-      toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-      setTheme: (theme) => set({ theme }),
-    }),
-    { name: 'ilm-ui-store' }
-  )
-);
-
-interface RecommendationWeights {
-  thematic: number;
-  linguistic: number;
-  historical: number;
-  narrative: number;
-  theological: number;
-}
-
-interface SettingsState {
-  weights: RecommendationWeights;
-  preferredTexts: string[];
-  preferredTranslation: Record<string, string>;
-  setWeights: (weights: Partial<RecommendationWeights>) => void;
-  setPreferredTexts: (texts: string[]) => void;
-  setPreferredTranslation: (textId: string, translationId: string) => void;
-  resetWeights: () => void;
-}
+const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
+export const MAX_COMPARISON = 5;
 
 const DEFAULT_WEIGHTS: RecommendationWeights = {
   thematic: 0.3,
@@ -110,21 +13,138 @@ const DEFAULT_WEIGHTS: RecommendationWeights = {
   theological: 0.2,
 };
 
+/** The comparison tray, persisted so a shared link survives a reload. */
+interface ComparisonState {
+  passageKeys: string[];
+  add: (passage: Passage) => void;
+  remove: (key: string) => void;
+  toggle: (passage: Passage) => void;
+  clear: () => void;
+  reorder: (from: number, to: number) => void;
+  has: (key: string) => boolean;
+}
+
+export const useComparisonStore = create<ComparisonState>()(
+  persist(
+    (set, get) => ({
+      passageKeys: [],
+
+      add: (passage) =>
+        set((state) => {
+          if (state.passageKeys.includes(passage.passageKey)) return state;
+          if (state.passageKeys.length >= MAX_COMPARISON) return state;
+          return { passageKeys: [...state.passageKeys, passage.passageKey] };
+        }),
+
+      remove: (key) => set((state) => ({ passageKeys: state.passageKeys.filter((k) => k !== key) })),
+
+      toggle: (passage) => {
+        const { passageKeys, add, remove } = get();
+        if (passageKeys.includes(passage.passageKey)) remove(passage.passageKey);
+        else add(passage);
+      },
+
+      clear: () => set({ passageKeys: [] }),
+
+      reorder: (from, to) =>
+        set((state) => {
+          const next = [...state.passageKeys];
+          const [moved] = next.splice(from, 1);
+          next.splice(to, 0, moved);
+          return { passageKeys: next };
+        }),
+
+      has: (key) => get().passageKeys.includes(key),
+    }),
+    { name: 'ilm-comparison' }
+  )
+);
+
+/** Last search, so the results page can be restored on navigation. */
+interface SearchState {
+  query: string;
+  response: SearchResponse | null;
+  activeTexts: TextId[];
+  recent: string[];
+  setQuery: (query: string) => void;
+  setResponse: (response: SearchResponse | null) => void;
+  toggleText: (textId: TextId) => void;
+  clear: () => void;
+  remember: (query: string) => void;
+  clearRecent: () => void;
+}
+
+export const useSearchStore = create<SearchState>()(
+  persist(
+    (set) => ({
+      query: '',
+      response: null,
+      activeTexts: ALL_TEXTS,
+      recent: [],
+
+      setQuery: (query) => set({ query }),
+      setResponse: (response) => set({ response }),
+
+      toggleText: (textId) =>
+        set((state) => {
+          const next = state.activeTexts.includes(textId)
+            ? state.activeTexts.filter((t) => t !== textId)
+            : [...state.activeTexts, textId];
+          // Never let the filter empty out, or the UI looks broken.
+          return { activeTexts: next.length > 0 ? next : state.activeTexts };
+        }),
+
+      clear: () => set({ response: null, query: '' }),
+
+      remember: (query) =>
+        set((state) => ({
+          recent: [query, ...state.recent.filter((q) => q !== query)].slice(0, 12),
+        })),
+
+      clearRecent: () => set({ recent: [] }),
+    }),
+    { name: 'ilm-search' }
+  )
+);
+
+/** Recommendation weights, kept in sync with the API per user. */
+interface SettingsState {
+  weights: RecommendationWeights;
+  setWeights: (weights: Partial<RecommendationWeights>) => void;
+  resetWeights: () => void;
+}
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       weights: DEFAULT_WEIGHTS,
-      preferredTexts: [],
-      preferredTranslation: {},
-      setWeights: (weights) =>
-        set((state) => ({ weights: { ...state.weights, ...weights } })),
-      setPreferredTexts: (texts) => set({ preferredTexts: texts }),
-      setPreferredTranslation: (textId, translationId) =>
-        set((state) => ({
-          preferredTranslation: { ...state.preferredTranslation, [textId]: translationId },
-        })),
+      setWeights: (weights) => set((state) => ({ weights: { ...state.weights, ...weights } })),
       resetWeights: () => set({ weights: DEFAULT_WEIGHTS }),
     }),
-    { name: 'ilm-settings-store' }
+    { name: 'ilm-settings' }
   )
 );
+
+/** Light/dark, applied to <html> by the theme provider. */
+type ThemeMode = 'light' | 'dark' | 'system';
+
+interface UiState {
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+  comparisonOpen: boolean;
+  setComparisonOpen: (open: boolean) => void;
+}
+
+export const useUiStore = create<UiState>()(
+  persist(
+    (set) => ({
+      theme: 'system',
+      setTheme: (theme) => set({ theme }),
+      comparisonOpen: false,
+      setComparisonOpen: (comparisonOpen) => set({ comparisonOpen }),
+    }),
+    { name: 'ilm-ui' }
+  )
+);
+
+export { ALL_TEXTS, DEFAULT_WEIGHTS };

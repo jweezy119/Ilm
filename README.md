@@ -1,329 +1,274 @@
-# Ilm (علم) — Sacred Text Comparison & Knowledge Platform
+# Ilm (علم) — Sacred Text Comparison
 
-> **Ilm** (Arabic: علم) means *knowledge, understanding, learning*. This platform enables deep, side-by-side comparison of sacred religious texts with AI-powered semantic search and context-aware recommendations.
+> **Ilm** (Arabic: علم) means *knowledge, understanding, learning*. Ilm searches,
+> compares, and traces themes across five sacred corpora, and explains every
+> connection it draws as a **weighted score** rather than a generated claim.
 
-## 🎯 Vision
+The repository is a small monorepo:
 
-Ilm is the definitive platform for comparative religious study, enabling scholars, students, and seekers to:
+| Package | What it is |
+| --- | --- |
+| `apps/web` | Next.js 14 App Router frontend |
+| `apps/api` | Fastify API: search, comparison, recommendations, theme exploration |
+| `packages/shared` | Zod schemas and types shared by both |
 
-- **Compare side-by-side** — Quran, Talmud, Torah, Old Testament, New Testament
-- **Search semantically** — Find passages by meaning, not just keywords
-- **Discover connections** — AI-detected cross-references, thematic parallels, linguistic cognates
-- **Understand context** — Recommendations based on scored affinities (thematic, linguistic, historical, narrative, theological)
-- **No inferences** — Only transparent, weighted scoring from TypeSafe's System One models
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Ilm Application                          │
-├─────────────────────────────────────────────────────────────────┤
-│  Frontend (Next.js 14 + TypeScript + Tailwind)                 │
-│  ├── Unified Search Interface                                   │
-│  ├── Side-by-Side Comparison View                               │
-│  ├── Passage Deep Reading Mode                                  │
-│  ├── Thematic Exploration & Journey                             │
-│  └── Real-time Recommendation Panel                             │
-├─────────────────────────────────────────────────────────────────┤
-│  Backend API (Fastify + TypeScript + TypeSafe SDK)             │
-│  ├── Semantic Search Engine (Meilisearch + Qdrant)             │
-│  ├── TypeSafe/Jev Intelligence Layer                           │
-│  │   ├── Theme Classification (Score primitive)                │
-│  │   ├── Intent Detection (Choice primitive)                   │
-│  │   ├── Cross-Reference Detection (Noul + Score)              │
-│  │   ├── Alignment Computation (Noul + Score)                  │
-│  │   └── Recommendation Scoring (5-dimension Score)            │
-│  ├── Passage Management & Alignment Service                    │
-│  └── Data Ingestion Pipeline                                   │
-├─────────────────────────────────────────────────────────────────┤
-│  Data Layer                                                     │
-│  ├── PostgreSQL (Prisma) — Metadata, passages, alignments      │
-│  ├── Meilisearch — Full-text search with highlighting          │
-│  ├── Qdrant — Vector embeddings for semantic search            │
-│  └── Redis (BullMQ) — Background job processing                │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## 📚 Supported Texts (Phase 1)
-
-| Text | Language | Structure | Verses | Status |
-|------|----------|-----------|--------|--------|
-| **Quran** | Arabic + English | 114 Surahs | 6,236 | ✅ Planned |
-| **Talmud (Bavli)** | Aramaic + English | 63 Tractates | ~50k | ✅ Planned |
-| **Torah** | Hebrew + English | 5 Books | 5,845 | ✅ Planned |
-| **Old Testament** | Hebrew + English | 39 Books | 23,145 | ✅ Planned |
-| **New Testament** | Greek + English | 27 Books | 7,957 | ✅ Planned |
-
-## 🔑 Core Features
-
-### 1. Unified Semantic Search
-- Single search bar across all texts
-- Intent classification (comparison, explanation, thematic study, etc.)
-- Hybrid search: full-text + vector similarity
-- Real-time highlighting and suggestions
-
-### 2. Side-by-Side Comparison
-- Select 2-5 passages from any texts
-- Synchronized scrolling
-- Jev-powered alignment highlights (quotes, allusions, parallels)
-- Toggle original/translation/both
-- RTL/LTR text direction support
-
-### 3. Deep Reading Mode
-- Original text with vowelling options
-- Multiple translations
-- Jev-identified themes with confidence scores
-- Cross-references to all other texts
-- Linguistic breakdown (roots, morphology)
-
-### 4. Thematic Exploration
-- Enter any concept → trace across all texts
-- Theme map showing related concepts
-- Chronological "journey" through texts
-- Co-occurrence network visualization
-
-### 5. Recommendation Engine (Pure Scoring)
-- **No AI-generated inferences** — only transparent weighted scores
-- 5 dimensions: Thematic, Linguistic, Historical, Narrative, Theological
-- User-adjustable weight sliders
-- "Why this passage?" breakdown for every recommendation
-- Real-time updates as you read
-
-## 🧠 TypeSafe/Jev Integration
-
-Ilm uses **TypeSafe's System One model (Jev)** for programmable semantic judgments:
-
-```typescript
-// Example: Thematic affinity scoring (0-1)
-const thematicScore = await jejScore(
-  "How strongly do these passages share thematic content?",
-  { textA: passageA.translation, textB: passageB.translation },
-  [
-    { level: 0, description: "No thematic overlap" },
-    { level: 3, description: "Clear shared theme, different emphasis" },
-    { level: 5, description: "Identical theme with deep resonance" }
-  ]
-);
-
-// Example: Cross-reference detection
-const hasConnection = await jejNoul(
-  "Do these passages share a meaningful connection?",
-  { sourceText: passageA.translation, targetText: passageB.translation }
-);
-```
-
-**Primitives Used:**
-- **Score** — Graded ranking on defined dimensions
-- **Choice** — Classification from defined options
-- **Noul** — Binary probability judgments
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 20+
-- PostgreSQL 16+
-- Redis 7+
-- Meilisearch 1.10+
-- Qdrant 1.8+
-- TypeSafe API key
-
-### Local Development
-
-```bash
-# Clone and install
-git clone <repo>
-cd Ilm
-npm install
-
-# Start infrastructure
-docker-compose up -d postgres redis meilisearch qdrant
-
-# Configure environment
-cp apps/api/.env.example apps/api/.env
-# Edit .env with your keys
-
-# Setup database
-cd apps/api
-npm run db:generate
-npm run db:push
-npm run db:seed
-
-# Start development servers
-cd ../..
-npm run dev
-```
-
-Visit `http://localhost:3000` for the web app, `http://localhost:4000` for the API.
-
-### Environment Variables
-
-```bash
-# apps/api/.env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ilm
-REDIS_URL=redis://localhost:6379
-MEILISEARCH_HOST=http://localhost:7700
-MEILISEARCH_API_KEY=your_master_key
-QDRANT_URL=http://localhost:6333
-TYPESAFE_API_KEY=your_typesafe_key
-OPENAI_API_KEY=your_openai_key  # For embeddings
-CORS_ORIGIN=http://localhost:3000
-```
-
-## 📦 Project Structure
-
-```
-Ilm/
-├── apps/
-│   ├── api/                 # Fastify backend
-│   │   ├── src/
-│   │   │   ├── services/    # Core business logic
-│   │   │   │   ├── typesafe.ts      # Jev integration
-│   │   │   │   ├── search.ts        # Meilisearch + Qdrant
-│   │   │   │   ├── passage.ts       # Passage CRUD
-│   │   │   │   ├── recommendation.ts # Scoring engine
-│   │   │   │   └── comparison.ts    # Alignment service
-│   │   │   ├── routes/      # API endpoints
-│   │   │   └── index.ts     # App entry
-│   │   ├── prisma/          # Database schema
-│   │   └── scripts/         # Ingestion & indexing
-│   │
-│   └── web/                 # Next.js frontend
-│       ├── src/
-│       │   ├── app/         # App Router pages
-│       │   ├── components/  # React components
-│       │   ├── lib/         # Utilities, API client
-│       │   ├── hooks/       # Custom React hooks
-│       │   ├── store/       # Zustand state
-│       │   └── types/       # TypeScript types
-│       └── tailwind.config.ts
-│
-├── packages/
-│   └── shared/              # Shared TypeScript types & Zod schemas
-│
-├── docker-compose.yml       # Infrastructure
-└── SPEC.md                  # Full specification
-```
-
-## 🔌 API Endpoints
-
-### Search
-```
-POST   /api/search              # Unified search
-GET    /api/search/suggest      # Autocomplete
-POST   /api/search/intent       # Classify intent
-```
-
-### Passages
-```
-GET    /api/passages/:id                    # Get passage
-GET    /api/passages/by-key/:key            # Get by canonical key
-POST   /api/passages/batch                  # Batch fetch
-GET    /api/texts/:textId/books             # List books
-GET    /api/texts/:textId/books/:bookId     # Book metadata
-GET    /api/texts/:textId/books/:bookId/passages
-GET    /api/texts/:textId/books/:bookId/chapters/:chapter
-GET    /api/texts/:textId/stats
-```
-
-### Recommendations
-```
-POST   /api/recommendations                 # Get recommendations
-GET    /api/recommendations/explain/:src/:tgt
-GET    /api/themes/:theme/journey           # Thematic journey
-GET    /api/themes/:theme/map               # Theme network
-GET/PUT /api/users/:userId/weights          # User weights
-```
-
-### Comparison
-```
-POST   /api/compare                         # Compare passages
-GET    /api/compare/translations/:textId/:book/:chapter/:verse
-```
-
-## 📖 Data Ingestion
-
-```bash
-# Ingest all texts
-cd apps/api
-npx tsx scripts/ingest.ts
-
-# Or individually
-npx tsx -e "import { ingestQuran } from './scripts/ingest'; ingestQuran()"
-```
-
-## 🔍 Indexing Pipeline
-
-```bash
-# Run full indexing (themes, cross-refs, embeddings)
-npx tsx scripts/index.ts
-
-# Index to search engines
-npx tsx -e "import { indexToMeilisearch, indexToQdrant } from './scripts/index'; indexToMeilisearch(); indexToQdrant()"
-```
-
-## 🧪 Testing
-
-```bash
-# API tests
-cd apps/api && npm run test
-
-# Web tests
-cd apps/web && npm run test
-
-# Type checking
-npm run typecheck
-```
-
-## 📊 Performance Targets
-
-| Metric | Target |
-|--------|--------|
-| Search latency (p95) | < 200ms |
-| Comparison alignment accuracy | > 85% |
-| Recommendation relevance (user rating) | > 4/5 |
-| Concurrent users | 100+ |
-| Passage load time | < 1s |
-
-## 🗺️ Roadmap
-
-### Phase 1 (Current) — Core Platform
-- [ ] All 5 texts ingested and indexed
-- [ ] Semantic search + comparison
-- [ ] Recommendation engine
-- [ ] Thematic exploration
-
-### Phase 2 — Enhanced Study
-- [ ] Commentary integration (Tafsir, Rashi, Church Fathers)
-- [ ] Audio recitation
-- [ ] Morphological analysis
-- [ ] User accounts & collections
-
-### Phase 3 — Community & AI
-- [ ] Collaborative annotations
-- [ ] Study groups
-- [ ] AI-assisted exegesis (with citations)
-- [ ] Mobile apps
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and typecheck
-5. Submit a PR
-
-## 📄 License
-
-MIT License — see LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- **TypeSafe** — For Jev/System One programmable AI
-- **Tanzil.net** — Quran text and translations
-- **Sefaria** — Jewish texts API
-- **API.Bible / BibleGet.io** — Christian texts
-- **Meilisearch & Qdrant** — Search infrastructure
+Postgres is the only datastore. Full-text search runs **in-process** with
+OramaJS, and the semantic layer calls **Jev** (TypeSafe's System One model) over
+HTTP. There is no Meilisearch, Qdrant, or Redis to run.
 
 ---
 
-**Built with ❤️ for the pursuit of knowledge (Ilm)**
+## Quick start
+
+```bash
+npm install
+
+# 1. Postgres (mapped to 5433 so it does not collide with a Postgres on 5432)
+docker run -d --rm --name ilm-postgres \
+  -e POSTGRES_DB=ilm -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  -p 5433:5432 -v ilm_postgres_data:/var/lib/postgresql/data \
+  --health-cmd "pg_isready -U postgres -d ilm" --health-interval 5s --health-retries 10 \
+  postgres:16-alpine
+
+# 2. Configure. Optional: every value can come from the environment instead, which
+#    is how it works on a host. A .env file is only a local convenience.
+cp apps/api/.env.example apps/api/.env
+
+# 3. Schema
+npm run db:deploy      # prisma migrate deploy
+
+# 4. Text (~45,000 passages, roughly 15 minutes)
+npm run ingest
+npm run index
+
+# 5. Run
+npm run dev
+```
+
+Then open <http://localhost:3000>. The API is on <http://localhost:4000>; check
+<http://localhost:4000/health> for its status.
+
+### AI credentials are optional
+
+The app runs fully without them. Every Jev-backed feature has a deterministic
+local fallback, and the UI labels which one produced each number.
+
+| Variable | Unset behaviour |
+| --- | --- |
+| `TYPESAFE_API_KEY` | Search is not re-ranked by meaning, cross-references are found by keyword overlap, and themes, alignments and search intent fall back to local scoring. `/health` reports `jev.configured: false` and the UI says "literal ranking". |
+| `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | Vector similarity is skipped; candidate ranking uses lexical overlap only. |
+
+Add the keys to `apps/api/.env` and restart to switch both on. No code change
+and no re-ingestion required.
+
+---
+
+## Corpus
+
+| Text | Language | Structure | Passages | Source |
+| --- | --- | --- | --- | --- |
+| Quran | Arabic + English | 114 surahs | 6,236 | api.quran.com (Sahih International, Pickthall, Yusuf Ali) |
+| Old Testament | English (KJV) | 39 books | 23,145 | thiagobodruk/bible bulk KJV |
+| New Testament | English (KJV) | 27 books | 7,957 | thiagobodruk/bible bulk KJV |
+| Torah | Hebrew + English | 5 books | 5,846 | Sefaria |
+| Talmud | Aramaic + Hebrew + English | 38 tractates (Mishnah) | 2,269 | Sefaria |
+| **Total** | | | **45,453** | |
+
+Two honest limitations, both by design rather than omission:
+
+- **The OT and NT carry no original-language text.** The bulk KJV source is
+  English only, so `originalText` is empty rather than fabricated. Reading
+  direction and translation for those two are handled correctly regardless.
+- **The Talmud is the Mishnah only.** Sefaria's Gemara is organised by folio
+  rather than chapter-and-verse, which does not fit this passage model. One
+  tractate (Kerisos) has no Mishnah under any title spelling Sefaria accepts and
+  is skipped with a warning.
+
+### Passage keys
+
+Every passage has a canonical key, used in URLs and in the `keys` query
+parameter for shared comparisons:
+
+```
+textId:book:chapter:verse
+```
+
+For example `quran:2:1:255` (Ayat al-Kursi), `ot:Proverbs:3:19`,
+`torah:Genesis:14:19`, `talmud:Berakhot:1:1`.
+
+---
+
+## How scoring works
+
+Recommendations are ranked, never written. Three stages:
+
+1. **Retrieve.** Candidates come from passages sharing the source's scored
+   themes, capped per corpus, plus lexical neighbours. Retrieval queries Postgres
+   rather than the search index: ranking index hits by verse order systematically
+   favours the start of whichever corpus carries the theme.
+2. **Prefilter.** A local lexical score (themes, significant terms, proper nouns,
+   embeddings when available) ranks the pool. The shortlist is then interleaved
+   across corpora, because a lexical measure almost always scores the source's
+   own text highest and would otherwise hand the model a list of near-duplicates.
+3. **Judge.** Jev scores each shortlisted pair across five dimensions —
+   thematic, linguistic, historical, narrative, theological — in a **single**
+   request per recommendation call. The composite is a weighted sum computed in
+   code, so changing a weight slider re-ranks instantly without new inference.
+
+Each dimension is normalised to 0–1. The response carries `source: 'jev'` or
+`source: 'derived'`, and the UI shows which.
+
+### Search
+
+Search is two steps, and both are optional accelerants rather than requirements.
+
+1. **Full-text retrieval.** Orama tokenises and matches, which means a multi-word
+   query matches any of its words. A coverage pass then measures what fraction of
+   the query's meaningful words each passage actually contains and discounts the
+   rest. Without this, `"divine compassion for the humble"` returns 41,247
+   passages, because tens of thousands of them contain "humble".
+2. **Jev re-ranking.** One request scores every shortlisted passage against the
+   query with a Noul, and adds a second corpus-level Noul answering whether the
+   passages address the query *at all*. That second question is what lets the app
+   say **"these texts do not address this"** instead of returning the five
+   least-bad matches — a real answer rather than a failed search.
+
+The two scores are blended (75% semantic, 25% full text) so a passage that
+literally contains your words stays reachable. Set `semantic: false` on
+`POST /api/search` to skip the extra request.
+
+When literal recall is thin, a **Choice** question names the theme the query
+reaches for, and the query is widened with that theme's vocabulary. Jev picks
+from the closed taxonomy rather than inventing synonyms, which keeps the answer
+usable as code.
+
+### Cross-references
+
+`detectCrossReferences` used to be reachable only from the indexing script, so the
+cross-reference section of a passage could never populate. It now runs on the
+first request for a passage and is stored, so later reads are a plain query. A
+Noul gates each candidate, a Choice types the connection, and a Score grades its
+strength — all in one request.
+
+### Semantic density
+
+Scored once per passage at index time and stored on the passage. Search uses it as
+a small tie-breaker between passages full-text scored alike: a denser passage is
+not automatically the right answer, only the more substantive one.
+
+### Jev primitives in use
+
+| Primitive | Where |
+| --- | --- |
+| **Score** | Five affinity dimensions, alignment strength, cross-reference strength, semantic density |
+| **Choice** | Alignment type, cross-reference type, theme classification, search intent, query expansion |
+| **Noul** | Search re-ranking, corpus-level relevance, alignment gate, cross-reference gate |
+
+Independent questions are batched into one `systemOne` request rather than one
+request each. Search re-ranking sends one Noul per shortlisted passage *plus* the
+corpus-level check as a single request — see
+`apps/api/src/services/typesafe-client.ts`.
+
+### Cost per interaction
+
+| Interaction | Requests | Notes |
+| --- | --- | --- |
+| Search | 1 + 1 | One for intent, one for re-ranking and the corpus verdict |
+| Search with expansion | +1 | Only when literal recall is thin |
+| Recommendations | 1 | Every shortlisted pair, all five dimensions, in one request |
+| Comparison of 5 passages | 1 | Ten pairs, all typed and graded at once |
+| Passage, first visit | 1 | Cross-reference detection, then cached forever |
+
+---
+
+## API
+
+All responses use the same envelope: `{ success: true, data }` or
+`{ success: false, error: { code, message } }`.
+
+```
+GET    /health
+
+POST   /api/search                      unified search
+GET    /api/search/suggest?q=           autocomplete
+POST   /api/search/intent               classify a query's intent
+GET    /api/search/stats                index statistics
+GET    /api/themes                      themes present in the index
+
+GET    /api/passages/:id
+GET    /api/passages/by-key/:key        e.g. /api/passages/by-key/quran:2:1:255
+POST   /api/passages/batch
+
+GET    /api/texts                       corpus summary
+GET    /api/texts/:textId
+GET    /api/texts/:textId/books
+GET    /api/texts/:textId/books/:bookId
+GET    /api/texts/:textId/books/:bookId/passages
+GET    /api/texts/:textId/books/:bookId/chapters/:chapter
+
+POST   /api/recommendations
+GET    /api/recommendations/explain/:sourceId/:targetId
+GET    /api/themes/:theme/journey
+GET    /api/themes/:theme/map
+GET    /api/themes/:theme/shared?keys=a,b
+
+GET    /api/users/:userId/weights
+PUT    /api/users/:userId/weights
+
+POST   /api/compare                     2-5 passages, pairwise alignments
+GET    /api/compare/translations/:textId/:book/:chapter/:verse
+
+POST   /api/admin/reindex               rebuild the search index
+GET    /api/admin/jobs/:jobId
+```
+
+The browser calls `/api/*` on its own origin; `apps/web/next.config.js` rewrites
+those to the API, so development needs no CORS preflight and no internal host in
+the client bundle. Set `NEXT_INTERNAL_API_URL` if the API is not on
+`http://localhost:4000`.
+
+---
+
+## Scripts
+
+```
+npm run dev             web + api, with file watching
+npm run build           shared -> api -> web
+npm run typecheck       tsc --noEmit across all three packages
+npm test                vitest across api and web
+npm run db:generate     prisma generate
+npm run db:deploy       apply migrations (use this on a host)
+npm run db:push         push the schema without a migration history (local only)
+npm run db:up           start the Postgres container
+
+npm run ingest          fetch all corpora
+npm run ingest -- quran --limit 3       one text, first 3 books only
+npm run index           score themes, then build the search index
+npm run index -- --themes 0             rebuild the search index only
+npm run index -- --crossrefs            also detect cross-references
+```
+
+Ingestion is idempotent — every write is an upsert keyed on the passage key, so
+re-running after a failure is safe.
+
+`scripts/api-daemon.sh` and `scripts/web-daemon.sh` start and stop each service in
+the background, which is handy for scripted checks.
+
+---
+
+## Deploying
+
+See [DEPLOY.md](./DEPLOY.md) for Render, Fly, and any other host.
+
+---
+
+## Acknowledgments
+
+Scripture texts come from [api.quran.com](https://api.quran.com),
+[thiagobodruk/bible](https://github.com/thiagobodruk/bible), and
+[Sefaria](https://www.sefaria.org). Semantic judgments come from
+[TypeSafe](https://typesafe.ai).
+
+## License
+
+MIT

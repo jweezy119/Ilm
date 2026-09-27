@@ -1,223 +1,142 @@
 /**
- * Embeddings Service
- * Supports OpenRouter (multiple models) and OpenAI
- * Generates vector embeddings for semantic search
+ * Embeddings
+ *
+ * Optional. When an embedding provider is configured, vectors feed the local
+ * candidate ranking in recommendations. Without one, ranking falls back to theme
+ * and term overlap, so the app stays fully functional.
+ *
+ * Supports OpenRouter (many models) and OpenAI directly.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from './passage';
 
-const prisma = new PrismaClient();
-
-interface EmbeddingConfig {
+export interface EmbeddingConfig {
+  provider: 'openrouter' | 'openai';
   apiKey: string;
   baseUrl: string;
   model: string;
 }
 
-function getEmbeddingConfig(): EmbeddingConfig {
-  // Prefer OpenRouter if configured
-  if (process.env.OPENROUTER_API_KEY) {
+export function getEmbeddingConfig(): EmbeddingConfig | null {
+  const openrouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openrouterKey && !openrouterKey.startsWith('your_')) {
     return {
-      apiKey: process.env.OPENROUTER_API_KEY,
-      baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
-      model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+      provider: 'openrouter',
+      apiKey: openrouterKey,
+      baseUrl: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
+      model: process.env.EMBEDDING_MODEL ?? 'openai/text-embedding-3-small',
     };
   }
-  
-  // Fallback to OpenAI
-  if (process.env.OPENAI_API_KEY) {
+
+  const openaiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openaiKey && !openaiKey.startsWith('your_')) {
     return {
-      apiKey: process.env.OPENAI_API_KEY,
-      baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-      model: process.env.EMBEDDING_MODEL || 'text-embedding-3-small',
+      provider: 'openai',
+      apiKey: openaiKey,
+      baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+      model: process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small',
     };
   }
-  
-  throw new Error('No embedding API key configured. Set OPENROUTER_API_KEY or OPENAI_API_KEY');
+
+  return null;
 }
 
-/**
- * Generate embeddings for a single text
- */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const config = getEmbeddingConfig();
-  
-  const response = await fetch(`${config.baseUrl}/embeddings`, {
+export function isEmbeddingConfigured(): boolean {
+  return getEmbeddingConfig() !== null;
+}
+
+interface EmbeddingResponse {
+  data?: Array<{ embedding?: number[] }>;
+  error?: { message?: string };
+}
+
+async function requestEmbeddings(config: EmbeddingConfig, input: string[]): Promise<number[][]> {
+  const response = await fetch(`${config.baseUrl.replace(/\/$/, '')}/embeddings`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-      'HTTP-Referer': 'https://ilm.app',
-      'X-Title': 'Ilm Sacred Text Platform',
+      Authorization: `Bearer ${config.apiKey}`,
+      ...(config.provider === 'openrouter'
+        ? { 'HTTP-Referer': 'https://ilm.app', 'X-Title': 'Ilm' }
+        : {}),
     },
-    body: JSON.stringify({
-      model: config.model,
-      input: text,
-      encoding_format: 'float',
-    }),
+    body: JSON.stringify({ model: config.model, input, encoding_format: 'float' }),
   });
-  
+
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Embedding API error: ${response.status} ${error}`);
+    throw new Error(`Embedding provider returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
   }
-  
-  const data = await response.json();
-  return data.data[0].embedding;
+
+  const payload = (await response.json()) as EmbeddingResponse;
+  const vectors = payload.data?.map((d) => d.embedding).filter((v): v is number[] => Array.isArray(v)) ?? [];
+
+  if (vectors.length !== input.length) {
+    throw new Error(`Embedding provider returned ${vectors.length} vectors for ${input.length} inputs`);
+  }
+
+  return vectors;
 }
 
-/**
- * Generate embeddings for multiple texts in batches
- */
-export async function generateEmbeddingsBatch(texts: string[], batchSize = 100): Promise<number[][]> {
+export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const config = getEmbeddingConfig();
-  const allEmbeddings: number[][] = [];
-  
+  if (!config) throw new Error('No embedding provider configured');
+  if (texts.length === 0) return [];
+
+  const batchSize = Number(process.env.EMBEDDING_BATCH_SIZE ?? 64);
+  const all: number[][] = [];
+
   for (let i = 0; i < texts.length; i += batchSize) {
-    const batch = texts.slice(i, i + batchSize);
-    
-    const response = await fetch(`${config.baseUrl}/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-        'HTTP-Referer': 'https://ilm.app',
-        'X-Title': 'Ilm Sacred Text Platform',
-      },
-      body: JSON.stringify({
-        model: config.model,
-        input: batch,
-        encoding_format: 'float',
-      }),
-    });
-    
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Embedding API error: ${response.status} ${error}`);
-    }
-    
-    const data = await response.json();
-    const embeddings = data.data.map((d: any) => d.embedding);
-    allEmbeddings.push(...embeddings);
-    
-    // Rate limiting
-    if (i + batchSize < texts.length) {
-      await new Promise(r => setTimeout(r, 100));
-    }
+    all.push(...(await requestEmbeddings(config, texts.slice(i, i + batchSize))));
   }
-  
-  return allEmbeddings;
+
+  return all;
 }
 
 /**
- * Generate and store embeddings for passages missing them
+ * Embed passages that have none yet.
+ * Returns the number of passages updated so a caller can loop until it hits 0.
  */
-export async function generateMissingEmbeddings(batchSize = 50): Promise<number> {
+export async function embedMissingPassages(batchSize = 200): Promise<number> {
+  const config = getEmbeddingConfig();
+  if (!config) {
+    console.log('[embeddings] no provider configured — skipping. Recommendation ranking will use lexical overlap only.');
+    return 0;
+  }
+
   const passages = await prisma.passage.findMany({
-    where: {
-      OR: [
-        { embeddings: { equals: [] } },
-        { embeddings: null },
-      ],
-    },
+    where: { OR: [{ embeddings: { equals: Prisma.DbNull } }, { embeddings: { equals: [] } }] },
+    select: { id: true, primaryTranslation: true, originalText: true },
     take: batchSize,
     orderBy: { verseOrder: 'asc' },
   });
-  
-  if (passages.length === 0) {
-    console.log('✅ All passages have embeddings');
-    return 0;
-  }
-  
-  console.log(`🧮 Generating embeddings for ${passages.length} passages...`);
-  
-  const texts = passages.map(p => `${p.primaryTranslation} ${p.originalText}`);
-  const embeddings = await generateEmbeddingsBatch(texts);
-  
-  for (let i = 0; i < passages.length; i++) {
-    await prisma.passage.update({
-      where: { id: passages[i].id },
-      data: { embeddings: embeddings[i] },
-    });
-  }
-  
-  console.log(`✅ Stored ${passages.length} embeddings`);
+
+  if (passages.length === 0) return 0;
+
+  const texts = passages.map((p) => [p.primaryTranslation, p.originalText].filter(Boolean).join(' '));
+  const vectors = await generateEmbeddings(texts);
+
+  await prisma.$transaction(
+    vectors.map((vector, i) =>
+      prisma.passage.update({ where: { id: passages[i].id }, data: { embeddings: vector as unknown as Prisma.InputJsonValue } })
+    )
+  );
+
   return passages.length;
 }
 
-/**
- * Compute cosine similarity between two vectors
- */
 export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  
-  let dotProduct = 0;
+  if (a.length === 0 || a.length !== b.length) return 0;
+
+  let dot = 0;
   let normA = 0;
   let normB = 0;
-  
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
+  for (let i = 0; i < a.length; i += 1) {
+    dot += a[i] * b[i];
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  
-  if (normA === 0 || normB === 0) return 0;
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
 
-/**
- * Find similar passages using vector similarity
- * Fetches embeddings from Postgres and computes similarity in memory
- */
-export async function findSimilarPassages(
-  queryEmbedding: number[],
-  options: {
-    limit?: number;
-    textIds?: string[];
-    minSimilarity?: number;
-  } = {}
-): Promise<Array<{ id: string; passageKey: string; textId: string; book: string; chapter: number; verse: number; translation: string; similarity: number }>> {
-  const { limit = 10, textIds, minSimilarity = 0.5 } = options;
-  
-  const where: any = {
-    embeddings: { not: [] },
-  };
-  
-  if (textIds?.length) {
-    where.textId = { in: textIds };
-  }
-  
-  const passages = await prisma.passage.findMany({
-    where,
-    select: {
-      id: true,
-      passageKey: true,
-      textId: true,
-      bookId: true,
-      chapterNum: true,
-      verseNum: true,
-      primaryTranslation: true,
-      embeddings: true,
-    },
-  });
-  
-  const results = passages
-    .map(p => ({
-      ...p,
-      similarity: cosineSimilarity(queryEmbedding, p.embeddings as number[]),
-    }))
-    .filter(p => p.similarity >= minSimilarity)
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, limit);
-  
-  return results.map(p => ({
-    id: p.id,
-    passageKey: p.passageKey,
-    textId: p.textId,
-    book: p.bookId,
-    chapter: p.chapterNum,
-    verse: p.verseNum,
-    translation: p.primaryTranslation,
-    similarity: p.similarity,
-  }));
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }

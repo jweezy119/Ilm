@@ -1,61 +1,71 @@
-# AGENTS
+# Working in this repository
 
-## What This App Is
+## Layout
 
-This is the official Quran Foundation Next.js starter. It demonstrates OAuth2/OIDC login, secure server sessions, Content API reads, Search API reads, and signed-in User API calls through `@quranjs/api`.
+```
+apps/web      Next.js 14 App Router frontend
+apps/api      Fastify API
+packages/shared  Zod schemas + types, compiled to dist/ and consumed by both
+```
 
-Keep changes small, explicit, and easy to review. Port behavior from larger Quran.com or QuranReflect apps only when it helps this starter stay correct.
-
-## Project Map
-
-- Server routes live in `src/app/api/**/route.ts` and `src/app/callback/route.ts`.
-- Browser-rendered pages live in `src/app/**/page.tsx`.
-- Shared browser components live in `src/components`.
-- Server session code lives in `src/lib/session`.
-- SDK clients and runtime helpers live in `src/lib/sdk.ts`, `src/lib/oauth.ts`, and `src/lib/env.ts`.
-- App copy, routes, and common constants live in `src/lib/constants.ts`.
-
-## SDK Boundary
-
-- Use `@quranjs/api/public` only for browser-safe OAuth initiation helpers.
-- Use `@quranjs/api/server` for OAuth token exchange, token refresh, Content APIs, Search APIs, and signed-in User APIs.
-- Do not import `@quranjs/api/server` into `page.tsx`, client components, or any file with `"use client"`.
-- Do not use `@quranjs/api/public` for backend token exchange or refresh logic.
-
-## Secrets And Tokens
-
-Never expose these values to browser code, client bundles, logs, analytics, or rendered HTML:
-
-- `CLIENT_SECRET`
-- `SESSION_SECRET`
-- OAuth access tokens
-- OAuth refresh tokens
-- session identifiers or raw session payloads
-
-Keep app-level Content/Search tokens separate from signed-in user session tokens. Do not call signed-in User APIs without a valid user session.
-
-## Auth Behavior To Preserve
-
-- Preserve Authorization Code with PKCE.
-- Preserve the `/callback` server route for code exchange and session creation.
-- Preserve `/api/session/refresh` so user sessions can refresh server-side.
-- Preserve `/api/auth/logout` and OIDC end-session logout. Do not replace it with local cookie deletion only.
-- Keep session cookies `httpOnly`, same-site aware, and server-owned.
-
-## Verification
-
-Run the narrowest check that covers your change, then run the full checks before finalizing a starter-wide change:
+`@ilm/shared` is built to `dist/` and both apps import the compiled output. Build
+it before typechecking or running either app:
 
 ```bash
-npm run lint
-npm run build
+npm run build:shared
+```
+
+`npm run dev` and `npm run build` at the root do this for you.
+
+## Before you commit
+
+```bash
+npm run typecheck
 npm test
-npm run smoke:config
-npm run smoke:routes
+npm run build
 ```
 
-For SDK wiring changes, also run:
+## Conventions
 
-```bash
-npm run sdk:status
-```
+- **AI features must degrade, not break.** Anything that calls Jev or an
+  embedding provider checks `getJevJudge().available` first and falls back to the
+  deterministic functions beside it in `apps/api/src/services/typesafe.ts`. A new
+  AI-backed feature needs a fallback that works without credentials.
+- **Label the source.** Scores and theme assignments report
+  `source: 'jev' | 'derived'`, and the UI surfaces it. Do not silently pass local
+  numbers off as model output.
+- **No generated prose.** Ilm shows scores, evidence spans, and the passages
+  themselves. It does not write commentary. Keep it that way — it is the product's
+  central claim, not a style preference.
+- **Batch Jev calls.** Independent questions go out in one `systemOne` request.
+  The old code issued one HTTP request per dimension per candidate; do not
+  reintroduce that pattern. Search re-ranking sends one Noul per shortlisted
+  passage *plus* the corpus-level verdict in a single request.
+- **Ask whether the corpus answers at all.** Re-ranking alone cannot tell a real
+  match from the closest irrelevant passage, because Choice/Score probabilities
+  always rank something first. The corpus-level Noul is what lets search say
+  "these texts do not address this". Do not drop it in favour of a cheaper score.
+- **Match theme keywords on word boundaries.** `containsKeyword` exists because
+  plain substring matching reads "reincarnation" as containing "nation" and tags
+  it as a passage about community. Use it rather than `.includes()`.
+- **Retrieval comes from Postgres, not the search index.** The Orama index stores
+  only what full-text ranking needs. Anything that enumerates or filters by
+  relation (themes, cross-references, corpora) should query Postgres, and must
+  not truncate results ordered by `verseOrder` — that biases toward the start of
+  whichever corpus sorted first.
+- **Passage keys are `textId:book:chapter:verse`.** The Quran is
+  `quran:2:1:255` (surah:chapter:verse), not `quran:2:255`.
+- **A blended score must stay unsaturated.** Search multiplies by
+  `(1 - w*(1-coverage))` rather than `(1 + w*coverage)`; scaling up pinned every
+  strong result to 1.00 and destroyed the ordering the UI shows.
+- **API responses use the envelope** `{ success, data }` / `{ success, error }`,
+  including `/health`. The web client reads `payload.data` and relies on it.
+
+## Data
+
+Ingestion is idempotent — every write upserts on the passage key, so re-running
+after a failure is safe. The local Postgres is on **port 5433** so it does not
+collide with a Postgres already on 5432; `apps/api/.env` expects that.
+
+`apps/api/data/search-index/` is generated and gitignored. Delete it to force a
+rebuild.

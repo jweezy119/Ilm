@@ -17,11 +17,13 @@ export type Language = z.infer<typeof LanguageSchema>;
 export const PassageMetadataSchema = z.object({
   language: LanguageSchema,
   writingSystem: z.string(),
-  canonicalOrder: z.number().int().positive(),
+  canonicalOrder: z.number().int().nonnegative(),
+  verseOrder: z.number().int().nonnegative().default(0),
   revelationOrder: z.number().int().positive().optional(),
   madhhab: z.string().optional(),
   juz: z.number().int().min(1).max(30).optional(),
   hizb: z.number().int().min(1).max(60).optional(),
+  page: z.number().int().positive().optional(),
 });
 export type PassageMetadata = z.infer<typeof PassageMetadataSchema>;
 
@@ -61,12 +63,13 @@ export const CrossRefSchema = z.object({
   strength: z.number().min(0).max(1),
   direction: z.enum(['bidirectional', 'source_to_target', 'target_to_source']),
   notes: z.string(),
-  detectedBy: z.enum(['jev', 'manual']).default('jev'),
+  detectedBy: z.enum(['jev', 'manual', 'derived']).default('jev'),
 });
 export type CrossRef = z.infer<typeof CrossRefSchema>;
 
 export const PassageSchema = z.object({
-  id: z.string(), // e.g., "quran:2:255", "nt:john:3:16"
+  id: z.string(),
+  passageKey: z.string(), // canonical key: "quran:2:1:255", "nt:john:3:16"
   textId: TextIdSchema,
   book: z.string(),
   chapter: z.number().int().positive(),
@@ -78,8 +81,6 @@ export const PassageSchema = z.object({
   embeddings: z.array(z.number()).default([]), // Semantic vector
   themes: z.array(ThemeScoreSchema).default([]),
   crossReferences: z.array(CrossRefSchema).default([]),
-  createdAt: z.date().default(() => new Date()),
-  updatedAt: z.date().default(() => new Date()),
 });
 export type Passage = z.infer<typeof PassageSchema>;
 
@@ -115,6 +116,13 @@ export const SearchQuerySchema = z.object({
   limit: z.number().int().positive().max(100).default(20),
   offset: z.number().int().nonnegative().default(0),
   includeScores: z.boolean().default(true),
+  /**
+   * Re-rank the full-text shortlist with Jev so results are ranked by meaning,
+   * not only by shared words. Costs one extra request per search.
+   */
+  semantic: z.boolean().default(true),
+  /** Widen a literal query with the vocabulary of the theme it names. */
+  expand: z.boolean().default(true),
 });
 export type SearchQuery = z.infer<typeof SearchQuerySchema>;
 
@@ -124,8 +132,16 @@ export const SearchResultSchema = z.object({
   matchedFields: z.array(z.string()),
   highlights: z.record(z.array(z.string())),
   intentConfidence: z.number().min(0).max(1).optional(),
+  /** Full-text relevance before any Jev re-ranking, 0-1. */
+  textScore: z.number().min(0).max(1).optional(),
+  /** Jev's relevance for this result, 0-1. Absent when Jev did not run. */
+  semanticScore: z.number().min(0).max(1).optional(),
 });
 export type SearchResult = z.infer<typeof SearchResultSchema>;
+
+/** What the corpus as a whole has to say about a query. */
+export const CorpusVerdictSchema = z.enum(['addressed', 'partial', 'unaddressed', 'unknown']);
+export type CorpusVerdict = z.infer<typeof CorpusVerdictSchema>;
 
 export const SearchResponseSchema = z.object({
   results: z.array(SearchResultSchema),
@@ -133,6 +149,16 @@ export const SearchResponseSchema = z.object({
   query: SearchQuerySchema,
   tookMs: z.number().int().nonnegative(),
   suggestions: z.array(z.string()).default([]),
+  intent: SearchIntentSchema.default('unknown'),
+  intentSource: z.enum(['jev', 'derived']).default('derived'),
+  /**
+   * 'unaddressed' means these texts say nothing on the topic. That is a real
+   * answer, and a more useful one than the least-bad keyword matches.
+   */
+  verdict: CorpusVerdictSchema.default('unknown'),
+  rerankSource: z.enum(['jev', 'derived']).default('derived'),
+  /** Theme the query was widened with, when one was recognised. */
+  expandedTheme: z.string().nullable().default(null),
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
@@ -203,14 +229,30 @@ export type ComparisonResponse = z.infer<typeof ComparisonResponseSchema>;
 // Recommendation Models
 // ============================================================================
 
-export const RecommendationWeightsSchema = z.object({
-  thematic: z.number().min(0).max(1).default(0.3),
-  linguistic: z.number().min(0).max(1).default(0.2),
-  historical: z.number().min(0).max(1).default(0.15),
-  narrative: z.number().min(0).max(1).default(0.15),
-  theological: z.number().min(0).max(1).default(0.2),
-});
+export const RecommendationWeightsSchema = z
+  .object({
+    thematic: z.number().min(0).max(1),
+    linguistic: z.number().min(0).max(1),
+    historical: z.number().min(0).max(1),
+    narrative: z.number().min(0).max(1),
+    theological: z.number().min(0).max(1),
+  })
+  .refine(
+    (w) => Math.abs(w.thematic + w.linguistic + w.historical + w.narrative + w.theological - 1) < 0.01,
+    { message: 'Weights must sum to 1.0' }
+  );
 export type RecommendationWeights = z.infer<typeof RecommendationWeightsSchema>;
+
+/** Weights as they arrive from a client: partial, and normalised downstream. */
+export const RecommendationWeightsInputSchema = z.object({
+  thematic: z.number().min(0).max(1).optional(),
+  linguistic: z.number().min(0).max(1).optional(),
+  historical: z.number().min(0).max(1).optional(),
+  narrative: z.number().min(0).max(1).optional(),
+  theological: z.number().min(0).max(1).optional(),
+});
+export type RecommendationWeightsInput = z.infer<typeof RecommendationWeightsInputSchema>;
+
 
 export const ScoreBreakdownSchema = z.object({
   thematic: z.number().min(0).max(1),
@@ -224,6 +266,7 @@ export type ScoreBreakdown = z.infer<typeof ScoreBreakdownSchema>;
 
 export const RecommendationSchema = z.object({
   passageId: z.string(),
+  passageKey: z.string(),
   textId: TextIdSchema,
   book: z.string(),
   chapter: z.number().int().positive(),
@@ -336,6 +379,13 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 
 export type PassageKey = `${TextId}:${string}:${number}:${number}`;
 
+export const PassageKeySchema = z
+  .string()
+  .regex(
+    /^(quran|talmud|torah|ot|nt):[^:]+:\d+:\d+$/,
+    'Passage keys look like textId:book:chapter:verse, e.g. quran:2:1:255 or nt:john:3:16'
+  );
+
 export function createPassageKey(textId: TextId, book: string, chapter: number, verse: number): PassageKey {
   return `${textId}:${book}:${chapter}:${verse}`;
 }
@@ -410,7 +460,7 @@ export const THEME_TAXONOMY = [
   'knowledge', 'wisdom', 'sovereignty', 'holiness', 'faithfulness',
   // Covenant & Law
   'covenant', 'law', 'commandment', 'obedience', 'sin', 'repentance', 'atonement',
-  'sacrifice', 'purity', 'holiness', 'righteousness',
+  'sacrifice', 'purity', 'righteousness',
   // Salvation & Eschatology
   'salvation', 'redemption', 'resurrection', 'judgment', 'heaven', 'hell',
   'afterlife', 'messiah', 'kingdom', 'eternal_life',
@@ -418,32 +468,23 @@ export const THEME_TAXONOMY = [
   'prayer', 'worship', 'fasting', 'pilgrimage', 'charity', 'almsgiving',
   'ritual', 'ceremony', 'sabbath', 'festival',
   // Ethics & Virtue
-  'justice', 'charity', 'humility', 'patience', 'gratitude', 'trust',
-  'honesty', 'kindness', 'generosity', 'forgiveness',
+  'humility', 'patience', 'gratitude', 'trust', 'honesty', 'kindness', 'generosity',
   // Narrative & Figures
   'creation', 'adam', 'noah', 'abraham', 'moses', 'david', 'solomon',
   'jesus', 'muhammad', 'prophets', 'angels', 'satan',
   // Community & Society
   'community', 'family', 'marriage', 'parenthood', 'neighbor', 'stranger',
-  'poor', 'orphan', 'widow', 'justice', 'governance',
+  'poor', 'orphan', 'widow', 'governance',
   // Cosmology & Nature
-  'creation', 'heaven', 'earth', 'light', 'darkness', 'water', 'fire',
+  'earth', 'light', 'darkness', 'water', 'fire',
   'wind', 'stars', 'animals', 'plants',
 ] as const;
 
-export type Theme = typeof THEME_TAXONOMY[number];
+export type Theme = (typeof THEME_TAXONOMY)[number];
 
 // ============================================================================
 // Recommendation Weights
 // ============================================================================
-
-export interface RecommendationWeights {
-  thematic: number;
-  linguistic: number;
-  historical: number;
-  narrative: number;
-  theological: number;
-}
 
 export const DEFAULT_WEIGHTS: RecommendationWeights = {
   thematic: 0.3,

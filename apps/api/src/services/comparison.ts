@@ -1,311 +1,187 @@
 /**
- * Comparison Service - Side-by-side passage alignment and comparison
+ * Comparison service
+ *
+ * Aligns 2-5 passages side by side. Each pair gets one Jev request (noul gate,
+ * type, strength) whose result is cached in Postgres, so revisiting a comparison
+ * costs nothing.
  */
 
-import { PrismaClient } from '@prisma/client';
 import { Passage, ComparisonRequest, ComparisonResponse, Alignment, TextId } from '@ilm/shared';
-import { computeAlignment } from './typesafe';
-import { getPassageById, getPassagesByKeys, getAlignments } from './passage';
+import { computeAlignment, sharedPhrases, type MatchedSegment } from './typesafe';
+import { getPassagesByKeys, getPassageByKey, cacheAlignment, getCachedAlignment, prisma } from './passage';
+import { NotFoundError } from '../lib/errors';
 
-const prisma = new PrismaClient();
+/** Below this, an alignment is not worth showing or caching. */
+const MIN_INTERESTING_ALIGNMENT = 0.15;
 
-// ============================================================================
-// COMPARISON ENGINE
-// ============================================================================
+/** Swap the two sides of a matched segment, for reversing a cached pair. */
+function flipSegment(segment: MatchedSegment): MatchedSegment {
+  return {
+    textA: segment.textB,
+    textB: segment.textA,
+    startA: segment.startB,
+    endA: segment.endB,
+    startB: segment.startA,
+    endB: segment.endA,
+  };
+}
 
-/**
- * Compare multiple passages side-by-side with Jev-powered alignments
- */
 export async function comparePassages(request: ComparisonRequest): Promise<ComparisonResponse> {
-  const passages = await getPassagesByKeys(request.passageIds);
-  
-  if (passages.length !== request.passageIds.length) {
-    const found = new Set(passages.map(p => p.id));
-    const missing = request.passageIds.filter(id => !found.has(id));
-    throw new Error(`Passages not found: ${missing.join(', ')}`);
-  }
-  
-  // Compute pairwise alignments
+  const refs = request.passageIds;
+  const passages = await getPassagesByKeys(refs);
+
+  if (passages.length === 0) throw new NotFoundError(`None of these passages exist: ${refs.join(', ')}`);
+
   const alignments: Alignment[] = [];
-  
-  if (request.options?.includeAlignments) {
-    for (let i = 0; i < passages.length; i++) {
-      for (let j = i + 1; j < passages.length; j++) {
-        // Check cached alignment first
-        const cached = await getCachedAlignment(passages[i].id, passages[j].id);
-        
-        if (cached && cached.strength > 0) {
-          alignments.push({
-            passageAId: cached.sourcePassageId,
-            passageBId: cached.targetPassageId,
-            type: cached.type as any,
-            strength: cached.strength,
-            matchedSegments: cached.matchedSegments as any,
-            notes: cached.notes || '',
-          });
-        } else {
-          // Compute new alignment with Jev
-          const alignment = await computeAlignment(passages[i], passages[j]);
-          
-          if (alignment.strength > 0.2) {
-            alignments.push({
-              passageAId: passages[i].id,
-              passageBId: passages[j].id,
-              type: alignment.type as any,
-              strength: alignment.strength,
-              matchedSegments: alignment.matchedSegments,
-              notes: alignment.notes,
-            });
-            
-            // Cache for future
-            await cacheAlignment(passages[i].id, passages[j].id, alignment);
-          }
-        }
-      }
+
+  if (request.options?.includeAlignments !== false) {
+    const pairs: Array<[Passage, Passage]> = [];
+    for (let i = 0; i < passages.length; i += 1) {
+      for (let j = i + 1; j < passages.length; j += 1) pairs.push([passages[i], passages[j]]);
     }
+
+    const computed = await Promise.all(
+      pairs.map(async ([a, b]) => {
+        // Cache key is order-independent; the response is not, so orient the
+        // cached segments back into (a, b) order.
+        const [keyLow, keyHigh] = [a.id, b.id].sort();
+        const aIsSource = a.id === keyLow;
+
+        const cached = await getCachedAlignment(keyLow, keyHigh);
+        if (cached) {
+          const segments = ((cached.matchedSegments as unknown as MatchedSegment[]) ?? []).map((s) =>
+            cached.sourcePassageId === a.id ? s : flipSegment(s)
+          );
+          return {
+            passageAId: a.id,
+            passageBId: b.id,
+            type: cached.type as Alignment['type'],
+            strength: cached.strength,
+            matchedSegments: segments,
+            notes: cached.notes ?? '',
+          } satisfies Alignment;
+        }
+
+        const result = await computeAlignment(a, b);
+        if (result.strength < MIN_INTERESTING_ALIGNMENT) return null;
+
+        await cacheAlignment(keyLow, keyHigh, {
+          type: result.type,
+          strength: result.strength,
+          matchedSegments: result.matchedSegments,
+          notes: result.notes,
+        });
+
+        return {
+          passageAId: a.id,
+          passageBId: b.id,
+          type: result.type,
+          strength: result.strength,
+          matchedSegments: aIsSource ? result.matchedSegments : result.matchedSegments.map(flipSegment),
+          notes: result.notes,
+        } satisfies Alignment;
+      })
+    );
+
+    alignments.push(...computed.filter((a): a is Alignment => a !== null));
   }
-  
-  // Compute shared themes
-  const sharedThemes = computeSharedThemes(passages);
-  
+
   return {
     passages,
     alignments,
-    sharedThemes,
+    sharedThemes: computeSharedThemes(passages),
     metadata: {
-      textCount: new Set(passages.map(p => p.textId)).size,
+      textCount: new Set(passages.map((p) => p.textId)).size,
       totalVerses: passages.length,
       generatedAt: new Date(),
     },
   };
 }
 
-/**
- * Get cached alignment or compute if not cached
- */
-async function getCachedAlignment(sourceId: string, targetId: string) {
-  return prisma.alignment.findUnique({
-    where: {
-      sourcePassageId_targetPassageId: {
-        sourcePassageId: sourceId,
-        targetPassageId: targetId,
-      },
-    },
-  });
-}
+// ============================================================================
+// SHARED THEMES
+// ============================================================================
 
-async function cacheAlignment(sourceId: string, targetId: string, alignment: {
-  type: string;
-  strength: number;
-  matchedSegments: any[];
-  notes: string;
-}) {
-  await prisma.alignment.upsert({
-    where: {
-      sourcePassageId_targetPassageId: {
-        sourcePassageId: sourceId,
-        targetPassageId: targetId,
-      },
-    },
-    create: {
-      sourcePassageId: sourceId,
-      targetPassageId: targetId,
-      type: alignment.type,
-      strength: alignment.strength,
-      matchedSegments: alignment.matchedSegments,
-      notes: alignment.notes,
-    },
-    update: {
-      type: alignment.type,
-      strength: alignment.strength,
-      matchedSegments: alignment.matchedSegments,
-      notes: alignment.notes,
-    },
-  });
-}
+export function computeSharedThemes(passages: Passage[]): ComparisonResponse['sharedThemes'] {
+  const byTheme = new Map<string, Map<string, { score: number; evidence: string[] }>>();
 
-/**
- * Compute shared themes across passages
- */
-function computeSharedThemes(passages: Passage[]): Array<{
-  theme: string;
-  passages: Record<string, string[]>;
-  avgScore: number;
-}> {
-  const themeMap = new Map<string, Map<string, { score: number; evidence: string[] }>>();
-  
   for (const passage of passages) {
     for (const theme of passage.themes) {
-      if (!themeMap.has(theme.theme)) {
-        themeMap.set(theme.theme, new Map());
-      }
-      themeMap.get(theme.theme)!.set(passage.id, {
-        score: theme.score,
-        evidence: theme.evidence,
-      });
+      if (!byTheme.has(theme.theme)) byTheme.set(theme.theme, new Map());
+      byTheme.get(theme.theme)!.set(passage.id, { score: theme.score, evidence: theme.evidence });
     }
   }
-  
-  const results: Array<{
-    theme: string;
-    passages: Record<string, string[]>;
-    avgScore: number;
-  }> = [];
-  
-  for (const [theme, passageData] of themeMap) {
-    if (passageData.size >= 2) { // Shared by at least 2 passages
-      const scores = Array.from(passageData.values()).map(v => v.score);
-      const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-      
-      const passagesObj: Record<string, string[]> = {};
-      for (const [pid, data] of passageData) {
-        passagesObj[pid] = data.evidence;
-      }
-      
-      results.push({ theme, passages: passagesObj, avgScore });
-    }
+
+  const shared: ComparisonResponse['sharedThemes'] = [];
+  for (const [theme, perPassage] of byTheme) {
+    if (perPassage.size < 2) continue;
+
+    const scores = [...perPassage.values()].map((v) => v.score);
+    const passages: Record<string, string[]> = {};
+    for (const [passageId, value] of perPassage) passages[passageId] = value.evidence;
+
+    shared.push({ theme, passages, avgScore: scores.reduce((a, b) => a + b, 0) / scores.length });
   }
-  
-  return results.sort((a, b) => b.avgScore - a.avgScore);
+
+  return shared.sort((a, b) => b.avgScore - a.avgScore);
 }
 
-/**
- * Get pre-computed comparison for common pairs (e.g., same verse across translations)
- */
+// ============================================================================
+// PARALLEL TRANSLATIONS
+// ============================================================================
+
 export async function getParallelTranslations(
   textId: TextId,
   book: string,
   chapter: number,
   verse: number,
-  translationIds?: string[]
-): Promise<{
-  original: Passage;
-  translations: Passage[];
-}> {
-  const baseKey = `${textId}:${book}:${chapter}:${verse}`;
-  const original = await getPassageByKey(baseKey);
-  
-  if (!original) {
-    throw new Error(`Passage not found: ${baseKey}`);
-  }
-  
-  // Get all translations for this passage
-  const translations = await prisma.passageTranslation.findMany({
-    where: { passageId: original.id },
+  translationNames?: string[]
+): Promise<{ original: Passage; translations: Array<{ name: string; translator: string; text: string; isPrimary: boolean }> }> {
+  const key = `${textId}:${book}:${chapter}:${verse}`;
+  const passage = await getPassageByKey(key);
+  if (!passage) throw new NotFoundError(`Passage not found: ${key}`);
+
+  const rows = await prisma.passageTranslation.findMany({
+    where: { passageId: passage.id },
     include: { translation: true },
   });
-  
-  let filtered = translations;
-  if (translationIds?.length) {
-    filtered = translations.filter(t => translationIds.includes(t.translationId));
-  }
-  
-  const translationPassages = filtered.map(t => ({
-    ...original,
-    translation: t.text,
-    id: `${original.id}:${t.translationId}`,
-    alternativeTranslations: [],
-  })) as Passage[];
-  
-  return { original, translations: translationPassages };
-}
 
-/**
- * Compare same passage across different texts (e.g., Quran 2:255 vs Bible John 3:16)
- */
-export async function compareAcrossTexts(
-  passageA: Passage,
-  textB: TextId,
-  limit = 5
-): Promise<{
-  source: Passage;
-  matches: Array<{ passage: Passage; alignment: Alignment; scores: any }>;
-}> {
-  // Search for related passages in target text
-  // This would use the search service with semantic similarity
-  // For now, return empty - implement with search service
-  
+  const translations = rows.map((row) => ({
+    name: row.translation.name,
+    translator: row.translation.translator ?? row.translation.name,
+    text: row.text,
+    isPrimary: row.translation.isPrimary,
+  }));
+
   return {
-    source: passageA,
-    matches: [],
+    original: passage,
+    translations: translationNames?.length
+      ? translations.filter((t) => translationNames.includes(t.name))
+      : translations,
   };
 }
 
-/**
- * Get verse-by-verse comparison for a chapter across texts
- */
-export async function compareChapterAcrossTexts(
-  textId: TextId,
-  book: string,
-  chapter: number,
-  targetTexts: TextId[]
-): Promise<{
-  sourcePassages: Passage[];
-  comparisons: Map<string, Passage[]>; // targetTextId -> passages
-}> {
-  const sourcePassages = await getPassagesByChapter(textId, book, chapter);
-  
-  // For each target text, find thematic parallels
-  const comparisons = new Map<string, Passage[]>();
-  
-  for (const targetText of targetTexts) {
-    // This would use thematic search - placeholder
-    comparisons.set(targetText, []);
-  }
-  
-  return { sourcePassages, comparisons };
+// ============================================================================
+// SHARED PHRASES (used by the frontend highlighter)
+// ============================================================================
+
+export function findSharedPhrases(a: Passage, b: Passage): MatchedSegment[] {
+  return sharedPhrases(a.translation, b.translation);
 }
 
-/**
- * Synchronized scrolling positions for comparison view
- */
-export function calculateSyncPositions(
-  passages: Passage[],
-  viewportHeight: number,
-  lineHeight: number = 24
-): Record<string, { top: number; height: number }> {
-  // Calculate relative positions for synchronized scrolling
-  // Based on verse position within chapter/book
-  
-  const positions: Record<string, { top: number; height: number }> = {};
-  
-  for (const passage of passages) {
-    // Normalize position (0-1) based on verse order in text
-    const totalVerses = TEXT_VERSE_COUNTS[passage.textId] || 10000;
-    const position = passage.metadata.verseOrder / totalVerses;
-    
-    positions[passage.id] = {
-      top: position * viewportHeight,
-      height: lineHeight * Math.max(1, Math.ceil(passage.translation.length / 80)),
-    };
-  }
-  
-  return positions;
-}
+// ============================================================================
+// SHARE LINKS
+// ============================================================================
 
-// Approximate verse counts for position normalization
-const TEXT_VERSE_COUNTS: Record<TextId, number> = {
-  quran: 6236,
-  talmud: 50000, // Approximate
-  torah: 5845,
-  ot: 23145,
-  nt: 7957,
-};
-
-/**
- * Generate comparison URL for sharing
- */
-export function generateComparisonUrl(passageIds: string[]): string {
+/** Shareable link. The key is `keys` because that is what the /compare page reads. */
+export function generateComparisonUrl(passageKeys: string[]): string {
   const params = new URLSearchParams();
-  params.set('compare', passageIds.join(','));
+  params.set('keys', passageKeys.join(','));
   return `/compare?${params.toString()}`;
 }
 
-/**
- * Parse comparison URL
- */
 export function parseComparisonUrl(url: string): string[] {
-  const params = new URLSearchParams(url.split('?')[1] || '');
-  const compare = params.get('compare');
-  return compare ? compare.split(',') : [];
+  const query = url.split('?')[1] ?? '';
+  const keys = new URLSearchParams(query).get('keys') ?? new URLSearchParams(query).get('compare');
+  return keys ? keys.split(',').filter(Boolean) : [];
 }

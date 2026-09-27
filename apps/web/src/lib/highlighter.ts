@@ -1,129 +1,120 @@
-'use client';
-
 /**
- * Highlighter utility for rendering text with alignment highlights
+ * Text segmentation for alignment highlights.
+ *
+ * Pure string logic, no JSX, so it can be unit tested and reused outside React.
  */
 
 export interface HighlightSegment {
   text: string;
   highlighted: boolean;
+  /** Id of the alignment this segment belongs to, when highlighted. */
   alignmentId?: string;
+  /** Alignment type, e.g. `direct_quote`. */
   type?: string;
 }
 
-export function computeHighlights(
+/**
+ * Split `text` into alternating plain and highlighted runs, marking every
+ * occurrence of each phrase. Longer phrases win, so a four-word match is not
+ * broken up by a two-word match inside it.
+ */
+export function segmentByPhrases(
   text: string,
-  alignments: Array<{ matchedSegments: Array<{ textA: string; textB: string }> }>
+  phrases: Array<{ phrase: string; alignmentId?: string; type?: string }>,
+  minLength = 4
 ): HighlightSegment[] {
-  if (!alignments.length) return [{ text, highlighted: false }];
-  
-  // Collect all matched segments
-  const segments = alignments.flatMap(a => a.matchedSegments);
-  const matchedTexts = new Set(segments.map(s => s.textA).concat(segments.map(s => s.textB)));
-  
-  if (!matchedTexts.size) return [{ text, highlighted: false }];
-  
-  // Simple approach: find all occurrences of matched texts
-  const highlights: HighlightSegment[] = [];
-  let remainingText = text;
-  
-  // Sort matched texts by length (longest first) to avoid partial overlaps
-  const sortedMatches = Array.from(matchedTexts).sort((a, b) => b.length - a.length);
-  
-  for (const match of sortedMatches) {
-    const regex = new RegExp(match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    let matchResult;
-    
-    while ((matchResult = regex.exec(remainingText)) !== null) {
-      // Found a match - would need more sophisticated logic for production
-    }
-  }
-  
-  // For now, return simple highlighting
-  return [{ text, highlighted: false }];
-}
+  const usable = phrases
+    .filter((p) => p.phrase.trim().length >= minLength)
+    .sort((a, b) => b.phrase.length - a.phrase.length);
 
-export function renderHighlightedText(
-  text: string,
-  highlights: HighlightSegment[]
-): React.ReactNode {
-  return (
-    <span>
-      {highlights.map((segment, i) => (
-        segment.highlighted ? (
-          <mark
-            key={i}
-            className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded"
-            data-alignment-id={segment.alignmentId}
-            data-type={segment.type}
-          >
-            {segment.text}
-          </mark>
-        ) : (
-          <span key={i}>{segment.text}</span>
-        )
-      ))}
-    </span>
-  );
-}
+  if (usable.length === 0) return text ? [{ text, highlighted: false }] : [];
 
-/**
- * Advanced highlighter using diff algorithm
- */
-export function diffHighlight(original: string, modified: string): HighlightSegment[] {
-  // Simplified diff - in production use a proper diff library like 'diff'
-  const originalWords = original.split(/(\s+)/);
-  const modifiedWords = modified.split(/(\s+)/);
-  
+  // One pass, longest alternative first: the regex engine tries each alternative
+  // in order at every position, so the first match is always the longest.
+  const alternatives = usable.map((p) => escapeRegExp(p.phrase.trim())).join('|');
+  const lookup = new Map(usable.map((p) => [p.phrase.trim().toLowerCase(), p]));
+
+  const parts = text.split(new RegExp(`(${alternatives})`, 'gi'));
+
   const segments: HighlightSegment[] = [];
-  let i = 0, j = 0;
-  
-  while (i < originalWords.length || j < modifiedWords.length) {
-    if (i < originalWords.length && j < modifiedWords.length && originalWords[i] === modifiedWords[j]) {
-      segments.push({ text: originalWords[i], highlighted: false });
-      i++; j++;
-    } else if (j < modifiedWords.length && (i >= originalWords.length || !originalWords.slice(i).includes(modifiedWords[j]))) {
-      segments.push({ text: modifiedWords[j], highlighted: true, type: 'added' });
-      j++;
+  for (const part of parts) {
+    if (!part) continue;
+    const match = lookup.get(part.trim().toLowerCase());
+    if (match) {
+      segments.push({ text: part, highlighted: true, alignmentId: match.alignmentId, type: match.type });
     } else {
-      segments.push({ text: originalWords[i], highlighted: true, type: 'removed' });
-      i++;
+      segments.push({ text: part, highlighted: false });
     }
   }
-  
-  return segments;
+
+  return mergeAdjacent(segments);
+}
+
+/** Collapse neighbouring segments that share a highlight state. */
+export function mergeAdjacent(segments: HighlightSegment[]): HighlightSegment[] {
+  const merged: HighlightSegment[] = [];
+  for (const segment of segments) {
+    const last = merged[merged.length - 1];
+    if (last && last.highlighted === segment.highlighted && last.type === segment.type && last.alignmentId === segment.alignmentId) {
+      last.text += segment.text;
+    } else {
+      merged.push({ ...segment });
+    }
+  }
+  return merged;
+}
+
+export interface SharedPhrase {
+  /** Lowercased match key, for de-duplication. */
+  phrase: string;
+  /** The matched span as it appears in textA, at indexA. */
+  textA: string;
+  /** The matched span as it appears in textB, at indexB. */
+  textB: string;
+  indexA: number;
+  indexB: number;
 }
 
 /**
- * Find common substrings between two texts (for alignment visualization)
+ * Phrases appearing in both texts, as a windowed word match.
+ *
+ * Returns the longest distinct matches only, so a passage repeated does not
+ * produce duplicate evidence. Matching is case-insensitive, so the same phrase
+ * can differ in case between the two texts; `textA`/`textB` carry each text's own
+ * rendering, while `phrase` stays lowercased as a stable key.
  */
-export function findCommonSubstrings(textA: string, textB: string, minLength = 10): Array<{ text: string; indexA: number; indexB: number }> {
-  const results: Array<{ text: string; indexA: number; indexB: number }> = [];
-  const wordsA = textA.toLowerCase().split(/\s+/);
-  const wordsB = textB.toLowerCase().split(/\s+/);
-  
-  // Find common phrases of 3+ words
-  for (let i = 0; i < wordsA.length - 2; i++) {
-    for (let len = 3; len <= 8 && i + len <= wordsA.length; len++) {
-      const phrase = wordsA.slice(i, i + len).join(' ');
-      const indexB = textB.toLowerCase().indexOf(phrase);
-      
-      if (indexB !== -1) {
-        const indexA = textA.toLowerCase().indexOf(phrase);
-        if (indexA !== -1) {
-          results.push({ text: phrase, indexA, indexB });
-        }
-      }
+export function sharedPhrases(textA: string, textB: string, minWords = 3, maxPhrases = 8): SharedPhrase[] {
+  const lowerA = textA.toLowerCase();
+  const lowerB = textB.toLowerCase();
+  const wordsA = lowerA.split(/\s+/);
+
+  const found = new Map<string, SharedPhrase>();
+
+  for (let i = 0; i < wordsA.length - minWords + 1; i += 1) {
+    for (let length = Math.min(8, wordsA.length - i); length >= minWords; length -= 1) {
+      const phrase = wordsA.slice(i, i + length).join(' ');
+      if (found.has(phrase)) continue;
+
+      const indexA = lowerA.indexOf(phrase);
+      if (indexA === -1) continue;
+      const indexB = lowerB.indexOf(phrase);
+      if (indexB === -1) continue;
+
+      found.set(phrase, {
+        phrase,
+        textA: textA.slice(indexA, indexA + phrase.length),
+        textB: textB.slice(indexB, indexB + phrase.length),
+        indexA,
+        indexB,
+      });
+      i += length - 1;
+      break;
     }
   }
-  
-  // Remove duplicates and sort by length
-  const unique = new Map<string, { text: string; indexA: number; indexB: number }>();
-  for (const r of results) {
-    if (!unique.has(r.text) || unique.get(r.text)!.text.length < r.text.length) {
-      unique.set(r.text, r);
-    }
-  }
-  
-  return Array.from(unique.values()).sort((a, b) => b.text.length - a.text.length);
+
+  return [...found.values()].sort((a, b) => b.phrase.length - a.phrase.length).slice(0, maxPhrases);
+}
+
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

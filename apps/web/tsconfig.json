@@ -16,7 +16,7 @@
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"],
-      "@ilm/shared": ["../../packages/shared/src"]
+      "@ilm/shared": ["../../packages/shared/dist/index.d.ts"]
     },
     "baseUrl": "."
   },

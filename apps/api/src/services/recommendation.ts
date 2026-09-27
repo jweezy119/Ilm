@@ -1,206 +1,301 @@
 /**
- * Recommendation Service - Pure scoring-based recommendations
- * NO INFERENCES - only weighted composite scores from Jev judgments
+ * Recommendation service
+ *
+ * Recommendations are ranked, never written. Candidates are retrieved and cheaply
+ * ranked locally first, then Jev scores the survivors across five dimensions in a
+ * single request. Composite scores are a weighted sum computed here, so moving a
+ * weight slider never re-runs inference.
  */
 
-import { PrismaClient } from '@prisma/client';
 import { Passage, TextId, RecommendationWeights, RecommendationRequest, RecommendationResponse, DEFAULT_WEIGHTS, ScoreBreakdown } from '@ilm/shared';
-import { 
-  scoreThematicAffinity, 
-  scoreLinguisticAffinity, 
-  scoreHistoricalAffinity, 
-  scoreNarrativeAffinity, 
-  scoreTheologicalAffinity,
-  computeRecommendationScores 
+import {
+  AFFINITY_DIMENSIONS,
+  AffinityDimension,
+  scoreCandidates,
+  scoreAffinity,
+  localAffinity,
+  embeddingSimilarity,
+  sharedThemes,
+  sharedTerms,
+  properNouns,
+  ScoreSource,
 } from './typesafe';
-import { getPassageById, getPassagesByText, getPassageThemes } from './passage';
+import { getPassageById, getPassagesByKeys, prisma } from './passage';
+import { NotFoundError } from '../lib/errors';
+import { searchIndex } from '../search/orama';
 
-const prisma = new PrismaClient();
+const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
+
+/** How many survivors get sent to Jev. Bounds one request's cost and latency. */
+const SHORTLIST_SIZE = Number(process.env.RECOMMEND_SHORTLIST ?? 20);
+
+/** Candidate passages pulled per corpus before local ranking. */
+const CANDIDATES_PER_TEXT = 120;
 
 // ============================================================================
-// RECOMMENDATION ENGINE
+// RECOMMENDATIONS
 // ============================================================================
+
+export interface ScoredRecommendation {
+  passage: Passage;
+  scores: ScoreBreakdown;
+  source: ScoreSource;
+  confidence: number;
+  matchedThemes: string[];
+  matchedTerms: string[];
+  reasoning: string;
+}
+
+export async function rankCandidates(
+  source: Passage,
+  weights: RecommendationWeights,
+  options: { limit: number; excludeTexts?: TextId[]; excludeSameBook?: boolean; minScore?: number; shortlist?: number }
+): Promise<{ ranked: ScoredRecommendation[]; source: ScoreSource }> {
+  const { limit, excludeTexts, excludeSameBook } = options;
+  const minScore = options.minScore ?? 0.15;
+  const shortlistSize = options.shortlist ?? SHORTLIST_SIZE;
+
+  const excluded = new Set(excludeTexts ?? []);
+  const candidateKeys = await retrieveCandidateKeys(source, excluded, excludeSameBook ? source.book : undefined);
+
+  if (candidateKeys.length === 0) return { ranked: [], source: 'derived' };
+
+  const candidates = await getPassagesByKeys(candidateKeys);
+  if (candidates.length === 0) return { ranked: [], source: 'derived' };
+
+  // Stage 1: local ranking, no AI. Embeddings help when they exist; themes and
+  // terms always do.
+  const locally = candidates
+    .map((candidate) => ({
+      candidate,
+      local: 0.7 * localAffinity(source, candidate) + 0.3 * embeddingSimilarity(source, candidate),
+    }))
+    .filter((c) => c.local > 0)
+    .sort((a, b) => b.local - a.local);
+
+  const shortlist = interleaveByText(locally.map((c) => c.candidate), Math.max(shortlistSize, limit * 2));
+
+  if (shortlist.length === 0) return { ranked: [], source: 'derived' };
+
+  // Stage 2: Jev scores the shortlist in one request.
+  const scored = await scoreCandidates(source, shortlist, weights as Record<AffinityDimension, number>);
+
+  const scoreSource: ScoreSource = scored.some((s) => s.source === 'jev') ? 'jev' : 'derived';
+
+  const ranked: ScoredRecommendation[] = scored
+    .filter((s) => s.scores.composite >= minScore)
+    .map((s) => ({
+      passage: s.candidate,
+      scores: s.scores as ScoreBreakdown,
+      source: s.source,
+      confidence: s.confidence,
+      matchedThemes: sharedThemes(source, s.candidate),
+      matchedTerms: sharedTerms(source, s.candidate),
+      reasoning: explain(s.scores, s.source),
+    }))
+    .sort((a, b) => b.scores.composite - a.scores.composite)
+    .slice(0, limit);
+
+  return { ranked, source: scoreSource };
+}
 
 /**
- * Generate recommendations for a passage based on scored affinities
- * PURE SCORING - no generated inferences, only weighted Jev scores
+ * Candidate pool for a source passage.
+ *
+ * Built from Postgres rather than the search index: ranking index hits by
+ * verse order and truncating systematically favours the start of whichever
+ * corpus happens to carry the theme, which crowded out every other tradition.
+ * Querying theme rows directly and capping per corpus keeps all five in play.
  */
-export async function generateRecommendations(
-  request: RecommendationRequest
-): Promise<RecommendationResponse> {
-  const sourcePassage = await getPassageById(request.passageId);
-  if (!sourcePassage) {
-    throw new Error(`Source passage not found: ${request.passageId}`);
-  }
-  
-  const weights = request.weights || DEFAULT_WEIGHTS;
-  
-  // Get candidate passages
-  let candidates: Passage[];
-  
-  if (request.excludeTexts?.length) {
-    // Get from all texts except excluded
-    const allTexts: TextId[] = ['quran', 'talmud', 'torah', 'ot', 'nt'];
-    const allowedTexts = allTexts.filter(t => !request.excludeTexts!.includes(t));
-    
-    candidates = [];
+async function retrieveCandidateKeys(
+  source: Passage,
+  excludedTexts: Set<TextId>,
+  excludedBook?: string
+): Promise<string[]> {
+  const keys = new Set<string>();
+  const allowedTexts = ALL_TEXTS.filter((t) => !excludedTexts.has(t));
+  if (allowedTexts.length === 0) return [];
+
+  const seedThemes = source.themes.slice(0, 4).map((t) => t.theme);
+
+  if (seedThemes.length > 0) {
+    // Cap per corpus so one large text cannot monopolise the shortlist.
+    const perText = Math.ceil(CANDIDATES_PER_TEXT / allowedTexts.length);
+
     for (const textId of allowedTexts) {
-      const passages = await getPassagesByText(textId, 500); // Limit per text
-      candidates.push(...passages);
-    }
-  } else {
-    // Get from all texts
-    candidates = [];
-    for (const textId of ['quran', 'talmud', 'torah', 'ot', 'nt'] as TextId[]) {
-      const passages = await getPassagesByText(textId, 500);
-      candidates.push(...passages);
+      const rows = await prisma.passageTheme.findMany({
+        where: { themeId: { in: seedThemes }, passage: { textId, passageKey: { not: source.passageKey } } },
+        select: { passage: { select: { passageKey: true } } },
+        orderBy: { score: 'desc' },
+        take: perText,
+      });
+      for (const row of rows) keys.add(row.passage.passageKey);
     }
   }
-  
-  // Filter out same passage
-  candidates = candidates.filter(p => p.id !== sourcePassage.id);
-  
-  // Filter out same book if requested
-  if (request.excludeSameBook) {
-    candidates = candidates.filter(p => p.book !== sourcePassage.book);
+
+  // Lexical neighbours, for passages whose themes are too sparse to match on.
+  const term = [...source.themes.map((t) => t.theme), ...sharedTermSample(source.translation)].slice(0, 3).join(' ');
+  if (term) {
+    const byTerm = await searchIndex({
+      term,
+      textIds: allowedTexts,
+      limit: CANDIDATES_PER_TEXT,
+      properties: ['translation', 'themes'],
+    });
+    for (const hit of byTerm.hits) keys.add(hit.document.passageKey);
   }
-  
-  // Compute scores using Jev
-  const scored = await computeRecommendationScores(sourcePassage, candidates, weights);
-  
-  // Apply minimum score threshold
-  const filtered = scored.filter(r => r.scores.composite >= (request.minScore || 0.15));
-  
-  // Limit results
-  const limited = filtered.slice(0, request.limit || 10);
-  
-  // Format response
-  const recommendations = limited.map(r => ({
-    passageId: r.passage.id,
-    textId: r.passage.textId,
-    book: r.passage.book,
-    chapter: r.passage.chapter,
-    verse: r.passage.verse,
-    preview: r.passage.translation.substring(0, 200),
-    scores: r.scores,
-    reasoning: r.reasoning,
-    matchedThemes: r.matchedThemes,
-    matchedTerms: r.matchedTerms,
-  }));
-  
+
+  keys.delete(source.passageKey);
+
+  if (excludedBook) {
+    for (const passage of await getPassagesByKeys([...keys])) {
+      if (passage.book === excludedBook) keys.delete(passage.passageKey);
+    }
+  }
+
+  return [...keys];
+}
+
+/**
+ * Take `size` passages round-robin across corpora, preserving each corpus's own
+ * ranking order.
+ *
+ * Local affinity is a lexical measure, so it almost always scores the source's
+ * own text highest and would hand the model a shortlist of near-duplicates.
+ * Interleaving guarantees the other traditions actually get judged; the final
+ * order is still decided purely by composite score, so a genuinely stronger
+ * same-text passage can still win.
+ */
+function interleaveByText(ranked: Passage[], size: number): Passage[] {
+  const byText = new Map<TextId, Passage[]>();
+  for (const passage of ranked) {
+    if (!byText.has(passage.textId)) byText.set(passage.textId, []);
+    byText.get(passage.textId)!.push(passage);
+  }
+
+  // Source corpus first so its strongest match is never displaced, then the
+  // others in corpus order for stable, predictable output.
+  const queues = [...byText.entries()].sort((a, b) => b[1].length - a[1].length).map(([, list]) => list);
+
+  const out: Passage[] = [];
+  for (let round = 0; out.length < size; round += 1) {
+    let added = false;
+    for (const queue of queues) {
+      if (round < queue.length) {
+        out.push(queue[round]);
+        added = true;
+        if (out.length >= size) break;
+      }
+    }
+    if (!added) break;
+  }
+
+  return out;
+}
+
+function sharedTermSample(translation: string): string[] {
+  const counts = new Map<string, number>();
+  for (const word of translation.toLowerCase().replace(/[^\p{L}\s]/gu, ' ').split(/\s+/)) {
+    if (word.length <= 4) continue;
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, 3)
+    .map(([word]) => word);
+}
+
+export async function generateRecommendations(request: RecommendationRequest): Promise<RecommendationResponse> {
+  const sourcePassage = await getPassageById(request.passageId);
+  if (!sourcePassage) throw new NotFoundError(`Passage not found: ${request.passageId}`);
+
+  const weights = normalizeWeights(request.weights);
+
+  const { ranked } = await rankCandidates(sourcePassage, weights, {
+    limit: request.limit ?? 10,
+    excludeTexts: request.excludeTexts,
+    excludeSameBook: request.excludeSameBook,
+    minScore: request.minScore ?? 0.15,
+  });
+
   return {
-    recommendations,
+    recommendations: ranked.map((r) => ({
+      passageId: r.passage.id,
+      passageKey: r.passage.passageKey,
+      textId: r.passage.textId,
+      book: r.passage.book,
+      chapter: r.passage.chapter,
+      verse: r.passage.verse,
+      preview: r.passage.translation.slice(0, 200),
+      scores: r.scores,
+      reasoning: r.reasoning,
+      matchedThemes: r.matchedThemes,
+      matchedTerms: r.matchedTerms,
+    })),
     sourcePassage,
     weights,
     generatedAt: new Date(),
   };
 }
 
-/**
- * Get recommendation explanation - breaks down scores for transparency
- */
+/** Per-dimension breakdown for one pair, so the UI can show its working. */
 export async function getRecommendationExplanation(
   sourcePassageId: string,
   targetPassageId: string,
   weights: RecommendationWeights = DEFAULT_WEIGHTS
 ): Promise<{
   scores: ScoreBreakdown;
-  breakdown: {
-    dimension: string;
-    score: number;
-    weight: number;
-    contribution: number;
-    evidence: string[];
-  }[];
+  source: ScoreSource;
+  breakdown: Array<{ dimension: string; score: number; weight: number; contribution: number; evidence: string[] }>;
   summary: string;
 }> {
-  const [source, target] = await Promise.all([
-    getPassageById(sourcePassageId),
-    getPassageById(targetPassageId),
-  ]);
-  
-  if (!source || !target) {
-    throw new Error('Passage not found');
-  }
-  
-  // Compute individual scores
-  const [thematic, linguistic, historical, narrative, theological] = await Promise.all([
-    scoreThematicAffinity(source, target),
-    scoreLinguisticAffinity(source, target),
-    scoreHistoricalAffinity(source, target),
-    scoreNarrativeAffinity(source, target),
-    scoreTheologicalAffinity(source, target),
-  ]);
-  
-  const composite = 
-    thematic * weights.thematic +
-    linguistic * weights.linguistic +
-    historical * weights.historical +
-    narrative * weights.narrative +
-    theological * weights.theological;
-  
-  const breakdown = [
-    {
-      dimension: 'Thematic',
-      score: thematic,
-      weight: weights.thematic,
-      contribution: thematic * weights.thematic,
-      evidence: findThematicEvidence(source, target),
-    },
-    {
-      dimension: 'Linguistic',
-      score: linguistic,
-      weight: weights.linguistic,
-      contribution: linguistic * weights.linguistic,
-      evidence: findLinguisticEvidence(source, target),
-    },
-    {
-      dimension: 'Historical',
-      score: historical,
-      weight: weights.historical,
-      contribution: historical * weights.historical,
-      evidence: findHistoricalEvidence(source, target),
-    },
-    {
-      dimension: 'Narrative',
-      score: narrative,
-      weight: weights.narrative,
-      contribution: narrative * weights.narrative,
-      evidence: findNarrativeEvidence(source, target),
-    },
-    {
-      dimension: 'Theological',
-      score: theological,
-      weight: weights.theological,
-      contribution: theological * weights.theological,
-      evidence: findTheologicalEvidence(source, target),
-    },
-  ];
-  
-  const summary = `Composite score: ${(composite * 100).toFixed(1)}%. ` +
-    `Top factors: ${breakdown
-      .filter(b => b.contribution > 0.05)
-      .sort((a, b) => b.contribution - a.contribution)
-      .slice(0, 3)
-      .map(b => `${b.dimension} (${(b.contribution * 100).toFixed(1)}%)`)
-      .join(', ')}.`;
-  
+  const [source, target] = await Promise.all([getPassageById(sourcePassageId), getPassageById(targetPassageId)]);
+  if (!source || !target) throw new NotFoundError('One or both passages were not found');
+
+  const resolved = normalizeWeights(weights);
+  const judged = await scoreAffinity(source, target, resolved);
+  const scores = judged.value as ScoreBreakdown;
+
+  const evidence: Record<AffinityDimension, string[]> = {
+    thematic: sharedThemes(source, target),
+    linguistic: sharedTerms(source, target).slice(0, 10),
+    historical: historicalEvidence(source, target),
+    narrative: [...properNouns(source.translation)].filter((n) => properNouns(target.translation).has(n)),
+    theological: sharedThemes(source, target).filter(isDoctrinal),
+  };
+
+  const breakdown = AFFINITY_DIMENSIONS.map((dim) => ({
+    dimension: dim[0].toUpperCase() + dim.slice(1),
+    score: scores[dim],
+    weight: resolved[dim],
+    contribution: scores[dim] * resolved[dim],
+    evidence: evidence[dim],
+  }));
+
+  const top = [...breakdown].sort((a, b) => b.contribution - a.contribution).filter((b) => b.contribution > 0.02).slice(0, 3);
+
   return {
-    scores: { thematic, linguistic, historical, narrative, theological, composite },
+    scores,
+    source: judged.source,
     breakdown,
-    summary,
+    summary:
+      `Composite ${(scores.composite * 100).toFixed(1)}%` +
+      (top.length ? `, led by ${top.map((b) => `${b.dimension.toLowerCase()} (${(b.contribution * 100).toFixed(1)}%)`).join(', ')}` : '') +
+      `. Scores are ${judged.source === 'jev' ? 'Jev judgments combined with your weights' : 'local lexical and theme overlap — set TYPESAFE_API_KEY for semantic scoring'}.`,
   };
 }
 
-/**
- * Get thematic journey - trace a theme across texts chronologically
- */
+// ============================================================================
+// THEMATIC EXPLORATION
+// ============================================================================
+
 export async function getThematicJourney(
   theme: string,
   texts?: TextId[],
   limit = 20
 ): Promise<Array<{
   passageId: string;
+  passageKey: string;
   textId: TextId;
   book: string;
   chapter: number;
@@ -209,214 +304,127 @@ export async function getThematicJourney(
   score: number;
   chronologicalOrder: number;
 }>> {
-  const targetTexts = texts || ['quran', 'talmud', 'torah', 'ot', 'nt'] as TextId[];
-  
-  // Find passages with this theme
-  const passageThemes = await prisma.passageTheme.findMany({
-    where: {
-      themeId: theme,
-      passage: {
-        textId: { in: targetTexts },
-      },
-    },
-    include: {
-      passage: {
-        include: {
-          themes: { include: { theme: true } },
-        },
-      },
-    },
+  const targetTexts = (texts?.length ? texts : ALL_TEXTS) as TextId[];
+
+  const rows = await prisma.passageTheme.findMany({
+    where: { themeId: theme, passage: { textId: { in: targetTexts } } },
+    include: { passage: true },
     orderBy: { score: 'desc' },
-    take: limit * 2,
+    take: limit * 4,
   });
-  
-  // Sort by chronological order within each text
-  const results = passageThemes
-    .map(pt => ({
-      passageId: pt.passage.id,
-      textId: pt.passage.textId as TextId,
-      book: pt.passage.bookId,
-      chapter: pt.passage.chapterNum,
-      verse: pt.passage.verseNum,
-      preview: pt.passage.primaryTranslation.substring(0, 200),
-      score: pt.score,
-      chronologicalOrder: pt.passage.verseOrder,
+
+  return rows
+    .map((row) => ({
+      passageId: row.passage.id,
+      passageKey: row.passage.passageKey,
+      textId: row.passage.textId as TextId,
+      book: row.passage.bookSlug,
+      chapter: row.passage.chapterNum,
+      verse: row.passage.verseNum,
+      preview: row.passage.primaryTranslation.slice(0, 200),
+      score: row.score,
+      chronologicalOrder: row.passage.verseOrder,
     }))
-    .sort((a, b) => a.chronologicalOrder - b.chronologicalOrder)
+    .sort((a, b) => b.score - a.score)
     .slice(0, limit);
-  
-  return results;
 }
 
-/**
- * Get theme map - related themes network
- */
 export async function getThemeMap(theme: string): Promise<{
   center: string;
-  related: Array<{ theme: string; cooccurrence: number; passages: number }>;
+  related: Array<{ theme: string; sharedPassages: number; avgScore: number }>;
 }> {
-  // Find passages with the center theme
   const centerPassages = await prisma.passageTheme.findMany({
     where: { themeId: theme },
     select: { passageId: true },
+    take: 500,
   });
-  
-  const passageIds = centerPassages.map(p => p.passageId);
-  
-  // Find co-occurring themes
-  const cooccurring = await prisma.passageTheme.groupBy({
+  const passageIds = centerPassages.map((p) => p.passageId);
+  if (passageIds.length === 0) return { center: theme, related: [] };
+
+  const grouped = await prisma.passageTheme.groupBy({
     by: ['themeId'],
-    where: {
-      passageId: { in: passageIds },
-      themeId: { not: theme },
-    },
+    where: { passageId: { in: passageIds }, themeId: { not: theme } },
     _count: { themeId: true },
     _avg: { score: true },
     orderBy: { _count: { themeId: 'desc' } },
     take: 20,
   });
-  
+
   return {
     center: theme,
-    related: cooccurring.map(c => ({
-      theme: c.themeId,
-      cooccurrence: c._avg.score || 0,
-      passages: c._count.themeId,
+    related: grouped.map((g) => ({
+      theme: g.themeId,
+      sharedPassages: g._count.themeId,
+      avgScore: g._avg.score ?? 0,
     })),
   };
 }
 
 // ============================================================================
-// WEIGHT MANAGEMENT
+// WEIGHTS
 // ============================================================================
 
 export async function getUserWeights(userId: string): Promise<RecommendationWeights> {
   const pref = await prisma.userPreference.findUnique({ where: { userId } });
-  return pref?.weights as RecommendationWeights || DEFAULT_WEIGHTS;
+  return normalizeWeights(pref?.weights as Partial<RecommendationWeights> | undefined);
 }
 
 export async function setUserWeights(userId: string, weights: RecommendationWeights): Promise<void> {
+  const resolved = normalizeWeights(weights);
   await prisma.userPreference.upsert({
     where: { userId },
-    create: { userId, weights },
-    update: { weights },
+    create: { userId, weights: resolved },
+    update: { weights: resolved },
   });
 }
 
 export async function resetUserWeights(userId: string): Promise<RecommendationWeights> {
-  await prisma.userPreference.upsert({
-    where: { userId },
-    create: { userId, weights: DEFAULT_WEIGHTS },
-    update: { weights: DEFAULT_WEIGHTS },
-  });
+  await setUserWeights(userId, DEFAULT_WEIGHTS);
   return DEFAULT_WEIGHTS;
 }
 
-// ============================================================================
-// EVIDENCE FINDERS (for transparency)
-// ============================================================================
+/** Clamp into range and rescale so the five weights always sum to 1. */
+export function normalizeWeights(weights?: Partial<RecommendationWeights>): RecommendationWeights {
+  if (!weights) return DEFAULT_WEIGHTS;
 
-function findThematicEvidence(source: Passage, target: Passage): string[] {
-  const sharedThemes = new Set(source.themes.map(t => t.theme))
-    .intersection(new Set(target.themes.map(t => t.theme)));
-  return [...sharedThemes].slice(0, 5);
+  const clamped = AFFINITY_DIMENSIONS.map((dim) => Math.max(0, Math.min(1, weights[dim] ?? DEFAULT_WEIGHTS[dim])));
+  const total = clamped.reduce((a, b) => a + b, 0);
+
+  if (total === 0) return DEFAULT_WEIGHTS;
+  if (Math.abs(total - 1) < 0.001) return Object.fromEntries(AFFINITY_DIMENSIONS.map((dim, i) => [dim, clamped[i]])) as RecommendationWeights;
+
+  return Object.fromEntries(AFFINITY_DIMENSIONS.map((dim, i) => [dim, clamped[i] / total])) as RecommendationWeights;
 }
 
-function findLinguisticEvidence(source: Passage, target: Passage): string[] {
-  // Extract significant terms from both
-  const terms1 = extractTerms(source.translation);
-  const terms2 = extractTerms(target.translation);
-  const shared = [...terms1].filter(t => terms2.has(t));
-  return shared.slice(0, 10);
-}
+// ============================================================================
+// PRESENTATION HELPERS
+// ============================================================================
 
-function findHistoricalEvidence(source: Passage, target: Passage): string[] {
-  // In production, use historical metadata
-  const evidence: string[] = [];
-  if (source.textId === target.textId) {
-    evidence.push(`Same text (${source.textId})`);
+const DIMENSION_LABEL: Record<AffinityDimension, string> = {
+  thematic: 'thematic resonance',
+  linguistic: 'shared terminology and roots',
+  historical: 'historical connection',
+  narrative: 'narrative parallel',
+  theological: 'theological alignment',
+};
+
+/** A sentence built only from the numbers, so a recommendation never overstates. */
+export function explain(scores: ScoreBreakdown, source: ScoreSource): string {
+  const leaders = AFFINITY_DIMENSIONS.filter((dim) => scores[dim] >= 0.5).sort((a, b) => scores[b] - scores[a]);
+
+  if (leaders.length === 0) {
+    return `Composite ${(scores.composite * 100).toFixed(0)}% with no dimension above 50%. ${source === 'derived' ? 'Derived from local overlap, not semantic scoring.' : ''}`.trim();
   }
-  // Check for known historical connections
-  const connections = getKnownHistoricalConnections(source.textId, target.textId);
-  evidence.push(...connections);
-  return evidence.slice(0, 3);
+
+  const parts = leaders.map((dim) => `${DIMENSION_LABEL[dim]} (${(scores[dim] * 100).toFixed(0)}%)`);
+  return `${parts.join('; ')}. Composite ${(scores.composite * 100).toFixed(0)}%.`;
 }
 
-function findNarrativeEvidence(source: Passage, target: Passage): string[] {
-  // Extract proper nouns (names, places)
-  const names1 = extractProperNouns(source.translation);
-  const names2 = extractProperNouns(target.translation);
-  const shared = [...names1].filter(n => names2.has(n));
-  return shared.slice(0, 5);
+function isDoctrinal(theme: string): boolean {
+  return /salvation|redemption|covenant|law|messiah|judgment|forgiveness|mercy|atonement|resurrection|sin/.test(theme);
 }
 
-function findTheologicalEvidence(source: Passage, target: Passage): string[] {
-  // Use theme overlap as proxy for theological concepts
-  const sharedThemes = findThematicEvidence(source, target);
-  return sharedThemes.filter(t => 
-    ['salvation', 'redemption', 'covenant', 'law', 'messiah', 'judgment', 'forgiveness', 'mercy'].includes(t)
-  );
-}
-
-function extractTerms(text: string): Set<string> {
-  const stopWords = new Set([
-    'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
-    'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be', 'been', 'being',
-    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-    'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those',
-    'a', 'an', 'his', 'her', 'its', 'their', 'our', 'your', 'my', 'me',
-    'he', 'she', 'it', 'they', 'we', 'you', 'i', 'him', 'them', 'us',
-    'lord', 'god', 'lord', 'said', 'say', 'unto', 'upon', 'shall', 'will',
-  ]);
-  
-  return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^\w\s']/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 3 && !stopWords.has(w))
-  );
-}
-
-function extractProperNouns(text: string): Set<string> {
-  // Simple proper noun extraction (capitalized words)
-  const words = text.match(/\b[A-Z][a-z]+\b/g) || [];
-  return new Set(words.filter(w => w.length > 2));
-}
-
-function getKnownHistoricalConnections(textA: TextId, textB: TextId): string[] {
-  const connections: Record<string, Record<string, string[]>> = {
-    quran: {
-      ot: ['Shared Abrahamic narratives', 'Moses/Exodus parallels', 'Psalms echoes'],
-      nt: ['Jesus/Mary narratives', 'Gospel parallels', 'Pauline theology contrasts'],
-      torah: ['Direct Torah narratives', 'Legal parallels', 'Covenant theology'],
-      talmud: ['Rabbinic parallels', 'Legal methodology', 'Scriptural interpretation'],
-    },
-    ot: {
-      quran: ['Shared Abrahamic narratives', 'Prophetic figures', 'Legal parallels'],
-      nt: ['Messianic prophecies', 'Typology', 'Direct quotations'],
-      torah: ['Same text (Pentateuch)', 'Identical narratives'],
-      talmud: ['Rabbinic interpretation', 'Midrashic expansion'],
-    },
-    nt: {
-      quran: ['Jesus narratives', 'Mary narratives', 'Eschatological parallels'],
-      ot: ['Fulfillment citations', 'Typological reading', 'Septuagint influence'],
-      torah: ['Jesus as prophet like Moses', 'New covenant theology'],
-      talmud: ['Contemporary Judaism context', 'Halakhic debates'],
-    },
-    torah: {
-      quran: ['Direct narrative parallels', 'Legal similarities'],
-      ot: ['Identical text (Pentateuch)'],
-      nt: ['Foundation for Gospel narratives'],
-      talmud: ['Basis for Mishnah/Gemara'],
-    },
-    talmud: {
-      quran: ['Rabbinic-Jewish context', 'Legal parallels'],
-      ot: ['Scriptural interpretation'],
-      nt: ['Second Temple Judaism context'],
-      torah: ['Oral Torah on Written Torah'],
-    },
-  };
-  
-  return connections[textA]?.[textB] || [];
+function historicalEvidence(source: Passage, target: Passage): string[] {
+  if (source.textId === target.textId) return [`Both from ${source.textId}`];
+  return [`${source.textId} ↔ ${target.textId}`];
 }

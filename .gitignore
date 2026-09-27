@@ -47,11 +47,6 @@ Thumbs.db
 logs/
 *.log
 
-# Prisma
-prisma/migrations/
-
-# Meilisearch
-meili_data/
-
-# Qdrant
-qdrant_data/
+# Local runtime data
+apps/api/data/
+apps/api/.env.local

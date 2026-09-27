@@ -1,137 +1,112 @@
 /**
- * Ilm API - Main Entry Point
- * Sacred Text Comparison & Knowledge Platform
+ * Ilm API — Fastify entry point.
  */
 
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
+import { ZodError } from 'zod';
 import { registerRoutes } from './routes/api';
-import { PrismaClient } from '@prisma/client';
+import { HttpError } from './lib/errors';
 import { initializeOramaIndex } from './search/orama';
+import { prisma } from './services/passage';
+import { getJevJudge } from './services/typesafe-client';
 
-const prisma = new PrismaClient();
-
-async function main() {
+async function main(): Promise<void> {
   const app = Fastify({
     logger: {
-      level: process.env.LOG_LEVEL || 'info',
-      transport: process.env.NODE_ENV !== 'production' ? {
-        target: 'pino-pretty',
-        options: { colorize: true },
-      } : undefined,
+      level: process.env.LOG_LEVEL ?? 'info',
+      ...(process.env.NODE_ENV !== 'production'
+        ? { transport: { target: 'pino-pretty', options: { colorize: true } } }
+        : {}),
     },
-    ajv: {
-      customOptions: {
-        strict: false,
-      },
-    },
+    ajv: { customOptions: { strict: false, coerceTypes: true } },
   });
 
-  // Register plugins
-  await app.register(fastifyHelmet, {
-    contentSecurityPolicy: false, // Configure for production
-  });
+  await app.register(fastifyHelmet, { contentSecurityPolicy: false });
 
   await app.register(fastifyCors, {
-    origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+    origin: process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()) ?? ['http://localhost:3000'],
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
   await app.register(fastifyRateLimit, {
-    max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
-    timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000'),
-    keyGenerator: (req) => req.ip,
+    max: Number(process.env.RATE_LIMIT_MAX ?? 600),
+    timeWindow: Number(process.env.RATE_LIMIT_WINDOW ?? 60000),
   });
 
-  // Initialize Orama search index
-  app.log.info('🔍 Initializing Orama search index...');
-  try {
-    await initializeOramaIndex();
-    app.log.info('✅ Orama search index ready');
-  } catch (error) {
-    app.log.error({ err: error }, '❌ Failed to initialize Orama index');
-    // Don't exit - allow API to start, index will be built on first search
-  }
-
-  // Register routes
-  await registerRoutes(app);
-
-  // Global error handler
   app.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
-    
+    if (error instanceof HttpError) {
+      return reply.status(error.statusCode).send({
+        success: false,
+        error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) },
+      });
+    }
+
+    if (error instanceof ZodError) {
+      return reply.status(400).send({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Request failed validation', details: error.flatten() },
+      });
+    }
+
     if (error.validation) {
       return reply.status(400).send({
         success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: error.message,
-          details: error.validation,
-        },
+        error: { code: 'VALIDATION_ERROR', message: error.message, details: error.validation },
       });
     }
-    
-    if (error.statusCode) {
-      return reply.status(error.statusCode).send({
-        success: false,
-        error: {
-          code: error.code || 'ERROR',
-          message: error.message,
-        },
-      });
-    }
-    
-    return reply.status(500).send({
+
+    const status = typeof error.statusCode === 'number' ? error.statusCode : 500;
+    if (status >= 500) request.log.error({ err: error }, 'request failed');
+
+    return reply.status(status).send({
       success: false,
       error: {
-        code: 'INTERNAL_ERROR',
-        message: process.env.NODE_ENV === 'production' 
-          ? 'An unexpected error occurred' 
-          : error.message,
+        code: status >= 500 ? 'INTERNAL_ERROR' : (error.code ?? 'ERROR'),
+        message: status >= 500 && process.env.NODE_ENV === 'production' ? 'Something went wrong' : error.message,
       },
     });
   });
 
-  // 404 handler
-  app.setNotFoundHandler((request, reply) => {
-    return reply.status(404).send({
+  app.setNotFoundHandler((request, reply) =>
+    reply.status(404).send({
       success: false,
-      error: {
-        code: 'NOT_FOUND',
-        message: `Route ${request.method} ${request.url} not found`,
-      },
-    });
-  });
+      error: { code: 'NOT_FOUND', message: `${request.method} ${request.url} is not a route` },
+    })
+  );
 
-  // Graceful shutdown
-  const shutdown = async () => {
-    app.log.info('Shutting down...');
+  await registerRoutes(app);
+
+  // Warm the search index but never block startup on it.
+  initializeOramaIndex()
+    .then(() => app.log.info('search index ready'))
+    .catch((error) => app.log.error({ err: error }, 'search index unavailable; searches will be degraded until it is built'));
+
+  const jev = getJevJudge();
+  if (!jev.available) {
+    app.log.warn(`Jev disabled (${jev.reason}). Recommendations and themes fall back to local scoring.`);
+  }
+
+  const port = Number(process.env.PORT ?? 4000);
+  const host = process.env.HOST ?? '0.0.0.0';
+
+  await app.listen({ port, host });
+  app.log.info(`Ilm API listening on http://${host}:${port}`);
+
+  const shutdown = async (signal: string) => {
+    app.log.info(`${signal} received, shutting down`);
     await app.close();
     await prisma.$disconnect();
     process.exit(0);
   };
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-
-  // Start server
-  const port = parseInt(process.env.PORT || '4000');
-  const host = process.env.HOST || '0.0.0.0';
-
-  try {
-    await app.listen({ port, host });
-    app.log.info(`🚀 Ilm API running on http://${host}:${port}`);
-    app.log.info(`📚 Texts: Quran, Talmud, Torah, Old Testament, New Testament`);
-    app.log.info(`🔍 Search: OramaJS (in-memory, no external service)`);
-    app.log.info(`⚖️  Comparison: Side-by-side with Jev alignments`);
-    app.log.info(`💡 Recommendations: Pure scoring-based (no inferences)`);
-  } catch (err) {
-    app.log.error(err);
-    process.exit(1);
-  }
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 }
 
-main();
+main().catch((error) => {
+  console.error('Failed to start Ilm API:', error);
+  process.exit(1);
+});

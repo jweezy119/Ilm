@@ -1,11 +1,9 @@
 import type { Config } from 'tailwindcss';
+import typography from '@tailwindcss/typography';
 
 const config: Config = {
-  content: [
-    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
+  darkMode: 'class',
+  content: ['./src/app/**/*.{js,ts,jsx,tsx,mdx}', './src/components/**/*.{js,ts,jsx,tsx,mdx}', './src/lib/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
       colors: {
@@ -31,11 +29,10 @@ const config: Config = {
         nt: { DEFAULT: '#3d1a5c', light: '#ebe8f5', dark: '#260f3d' },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        arabic: ['Amiri', 'Noto Naskh Arabic', 'serif'],
-        hebrew: ['Frank Ruehl', 'Noto Sans Hebrew', 'serif'],
-        greek: ['GFS Neohellenic', 'Noto Sans Greek', 'serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        arabic: ['var(--font-arabic)', 'Noto Naskh Arabic', 'serif'],
+        hebrew: ['var(--font-hebrew)', 'Noto Sans Hebrew', 'serif'],
+        greek: ['var(--font-greek)', 'Noto Serif', 'serif'],
       },
       typography: (theme: any) => ({
         DEFAULT: {
@@ -64,9 +61,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [
-    require('@tailwindcss/typography'),
-  ],
+  plugins: [typography],
 };
 
 export default config;
