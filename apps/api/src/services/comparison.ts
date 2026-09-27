@@ -1,13 +1,16 @@
 /**
  * Comparison service
  *
- * Aligns 2-5 passages side by side. Each pair gets one Jev request (noul gate,
- * type, strength) whose result is cached in Postgres, so revisiting a comparison
- * costs nothing.
+ * Aligns 2-8 passages side by side, which is one column per corpus in TEXT_IDS plus
+ * a few. Every pair is asked in a single batched Jev request (see
+ * `computeAlignments`), and each pair's result is cached in Postgres, so revisiting
+ * a comparison costs nothing and a partly-cached comparison only pays for the pairs
+ * it is missing.
  */
 
 import { Passage, ComparisonRequest, ComparisonResponse, Alignment, TextId } from '@ilm/shared';
-import { computeAlignment, sharedPhrases, type MatchedSegment } from './typesafe';
+import { computeAlignments, sharedPhrases, type MatchedSegment } from './typesafe';
+import { getJevJudge } from './typesafe-client';
 import { getPassagesByKeys, getPassageByKey, cacheAlignment, getCachedAlignment, prisma } from './passage';
 import { NotFoundError } from '../lib/errors';
 
@@ -32,70 +35,141 @@ export async function comparePassages(request: ComparisonRequest): Promise<Compa
 
   if (passages.length === 0) throw new NotFoundError(`None of these passages exist: ${refs.join(', ')}`);
 
+  // Postgres returns rows in whatever order it likes, so restore the caller's order:
+  // the panel grid is one column per passage and the reader chose that order.
+  const byKey = new Map(passages.map((p) => [p.passageKey, p]));
+  const ordered = refs.map((key) => byKey.get(key)).filter((p): p is Passage => Boolean(p));
+
+  const missing = refs.filter((key) => !byKey.has(key));
+  if (missing.length > 0) {
+    // Silently dropping a requested passage is how a comparison ends up showing
+    // four panels for a five-passage request.
+    throw new NotFoundError(`No such passage: ${missing.join(', ')}`);
+  }
+
+  const options = request.options ?? {};
   const alignments: Alignment[] = [];
+  let totalPairs = 0;
+  let cachedPairs = 0;
 
-  if (request.options?.includeAlignments !== false) {
+  if (options.includeAlignments !== false) {
     const pairs: Array<[Passage, Passage]> = [];
-    for (let i = 0; i < passages.length; i += 1) {
-      for (let j = i + 1; j < passages.length; j += 1) pairs.push([passages[i], passages[j]]);
+    for (let i = 0; i < ordered.length; i += 1) {
+      for (let j = i + 1; j < ordered.length; j += 1) pairs.push([ordered[i], ordered[j]]);
     }
+    totalPairs = pairs.length;
 
-    const computed = await Promise.all(
-      pairs.map(async ([a, b]) => {
+    // A cached pair needs no question, so only the gaps are sent to the model —
+    // which is what keeps a revisited comparison free.
+    const cachedAlignments = new Map<number, Alignment>();
+    const uncached: Array<[Passage, Passage]> = [];
+    const pairIndex: number[] = [];
+
+    await Promise.all(
+      pairs.map(async ([a, b], index) => {
         // Cache key is order-independent; the response is not, so orient the
         // cached segments back into (a, b) order.
         const [keyLow, keyHigh] = [a.id, b.id].sort();
-        const aIsSource = a.id === keyLow;
 
         const cached = await getCachedAlignment(keyLow, keyHigh);
-        if (cached) {
-          const segments = ((cached.matchedSegments as unknown as MatchedSegment[]) ?? []).map((s) =>
-            cached.sourcePassageId === a.id ? s : flipSegment(s)
-          );
-          return {
-            passageAId: a.id,
-            passageBId: b.id,
-            type: cached.type as Alignment['type'],
-            strength: cached.strength,
-            matchedSegments: segments,
-            notes: cached.notes ?? '',
-          } satisfies Alignment;
+        if (!cached) {
+          uncached.push([a, b]);
+          pairIndex.push(index);
+          return;
         }
+        cachedPairs += 1;
+        const segments = ((cached.matchedSegments as unknown as MatchedSegment[]) ?? []).map((s) =>
+          cached.sourcePassageId === a.id ? s : flipSegment(s)
+        );
+        cachedAlignments.set(index, {
+          passageAId: a.id,
+          passageBId: b.id,
+          type: cached.type as Alignment['type'],
+          strength: cached.strength,
+          matchedSegments: segments,
+          notes: cached.notes ?? '',
+          // The stored row does not record which judge produced it, so a hit is
+          // reported as derived rather than claiming a model answered.
+          source: 'derived',
+        });
+      })
+    );
 
-        const result = await computeAlignment(a, b);
-        if (result.strength < MIN_INTERESTING_ALIGNMENT) return null;
+    const computed = await computeAlignments(uncached);
 
-        await cacheAlignment(keyLow, keyHigh, {
+    // Awaited rather than fired and forgotten: a rejected write would otherwise
+    // surface as an unhandled rejection instead of a failed comparison.
+    await Promise.all(
+      computed.map((result, i) => {
+        const [a, b] = uncached[i];
+        const [keyLow, keyHigh] = [a.id, b.id].sort();
+        const aIsSource = a.id === keyLow;
+
+        return cacheAlignment(keyLow, keyHigh, {
           type: result.type,
           strength: result.strength,
           matchedSegments: result.matchedSegments,
           notes: result.notes,
+        }).then(() => {
+          cachedAlignments.set(pairIndex[i], {
+            passageAId: a.id,
+            passageBId: b.id,
+            type: result.type,
+            strength: result.strength,
+            matchedSegments: aIsSource ? result.matchedSegments : result.matchedSegments.map(flipSegment),
+            notes: result.notes,
+            source: result.source,
+          });
         });
-
-        return {
-          passageAId: a.id,
-          passageBId: b.id,
-          type: result.type,
-          strength: result.strength,
-          matchedSegments: aIsSource ? result.matchedSegments : result.matchedSegments.map(flipSegment),
-          notes: result.notes,
-        } satisfies Alignment;
       })
     );
 
-    alignments.push(...computed.filter((a): a is Alignment => a !== null));
+    alignments.push(
+      ...[...cachedAlignments.entries()]
+        .sort(([i], [j]) => i - j)
+        .map(([, alignment]) => alignment)
+        .filter((a) => a.strength >= MIN_INTERESTING_ALIGNMENT)
+    );
   }
 
   return {
-    passages,
+    passages: ordered,
     alignments,
-    sharedThemes: computeSharedThemes(passages),
+    sharedThemes: options.includeThemes === false ? [] : computeSharedThemes(ordered),
+    crossReferences: options.includeCrossRefs === false ? [] : await computeCrossReferences(ordered),
     metadata: {
-      textCount: new Set(passages.map((p) => p.textId)).size,
-      totalVerses: passages.length,
+      textCount: new Set(ordered.map((p) => p.textId)).size,
+      totalVerses: ordered.length,
+      totalPairs,
+      jevConfigured: getJevJudge().available,
+      cachedPairs,
       generatedAt: new Date(),
     },
   };
+}
+
+/**
+ * Cross-references between the compared passages only, from the rows ingestion
+ * already found. Recomputing them would mean another Jev pass over every
+ * neighbourhood, which is not what asking for a comparison should cost.
+ */
+async function computeCrossReferences(passages: Passage[]): Promise<ComparisonResponse['crossReferences']> {
+  const ids = passages.map((p) => p.id);
+  if (ids.length < 2) return [];
+
+  const rows = await prisma.crossReference.findMany({
+    where: { sourcePassageId: { in: ids }, targetPassageId: { in: ids } },
+    orderBy: { strength: 'desc' },
+    take: 50,
+  });
+
+  return rows.map((row) => ({
+    sourcePassageId: row.sourcePassageId,
+    targetPassageId: row.targetPassageId,
+    type: row.type,
+    strength: row.strength,
+    notes: row.notes ?? '',
+  }));
 }
 
 // ============================================================================

@@ -16,7 +16,11 @@
  */
 
 import { TextId, TEXT_METADATA } from '@ilm/shared';
+import { loadLocalEnv } from '../src/lib/env';
+import { stripSefariaHtml } from '../src/services/sefaria';
 import { upsertBook, upsertPassage, prisma, getTextStats } from '../src/services/passage';
+
+loadLocalEnv();
 
 const QURAN_API = 'https://api.quran.com/api/v4';
 const SEFARIA_API = 'https://www.sefaria.org/api';
@@ -341,32 +345,6 @@ interface SefariaChapterResponse {
   lengths?: number[];
 }
 
-/**
- * Sefaria returns HTML-wrapped text with footnote markers, cantillation markup,
- * and poetry line breaks. Strip the markup and collapse whitespace; the
- * diacritics and vowel points are part of the scripture, so they stay.
- */
-function stripSefariaHtml(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  return decodeEntities(
-    value
-      .replace(/<\s*br\s*\/?\s*>/gi, ' ')
-      .replace(/<[^>]*>/g, '')
-  )
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function decodeEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
-}
 
 /** Fetch one Sefaria chapter as parallel English and original-language segments. */
 async function fetchSefariaChapter(ref: string): Promise<{ en: string[]; original: string[] } | null> {
@@ -616,10 +594,16 @@ async function main(): Promise<void> {
   console.log('Next: npm run index   (build the search index and score themes)');
 }
 
-main()
-  .then(() => prisma.$disconnect())
-  .catch(async (error) => {
-    console.error('\n❌ Ingestion failed:', error);
-    await prisma.$disconnect();
-    process.exit(1);
-  });
+// Only when run directly. Importing this module for its helpers must not start a
+// full corpus ingest as a side effect.
+const isDirectRun = process.argv[1]?.replace(/\\/g, '/').endsWith('scripts/ingest.ts');
+
+if (isDirectRun) {
+  main()
+    .then(() => prisma.$disconnect())
+    .catch(async (error) => {
+      console.error('\n❌ Ingestion failed:', error);
+      await prisma.$disconnect();
+      process.exit(1);
+    });
+}

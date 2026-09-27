@@ -176,7 +176,7 @@ corpus-level check as a single request — see
 | Search | 1 + 1 | One for intent, one for re-ranking and the corpus verdict |
 | Search with expansion | +1 | Only when literal recall is thin |
 | Recommendations | 1 | Every shortlisted pair, all five dimensions, in one request |
-| Comparison of 5 passages | 1 | Ten pairs, all typed and graded at once |
+| Comparison of 8 passages | 1 | All 28 pairs, typed and graded at once; cached pairs are answered from Postgres instead |
 | Passage, first visit | 1 | Cross-reference detection, then cached forever |
 
 ---
@@ -215,8 +215,10 @@ GET    /api/themes/:theme/shared?keys=a,b
 GET    /api/users/:userId/weights
 PUT    /api/users/:userId/weights
 
-POST   /api/compare                     2-5 passages, pairwise alignments
+POST   /api/compare                     2-8 passages, all pairs in one Jev request
 GET    /api/compare/translations/:textId/:book/:chapter/:verse
+
+GET    /api/lexicon?word=               published dictionary entries for a Hebrew or Aramaic word
 
 POST   /api/admin/reindex               rebuild the search index
 GET    /api/admin/jobs/:jobId
@@ -246,6 +248,12 @@ npm run ingest -- quran --limit 3       one text, first 3 books only
 npm run index           score themes, then build the search index
 npm run index -- --themes 0             rebuild the search index only
 npm run index -- --crossrefs            also detect cross-references
+
+# Original-language text for the OT, which the KJV file does not carry.
+# Update-only: it attaches Hebrew to verses that already exist rather than
+# creating new ones, because the Masoretic and English verse divisions differ.
+npx tsx --env-file=apps/api/.env apps/api/scripts/ingest-ot-original.ts
+npx tsx --env-file=apps/api/.env apps/api/scripts/ingest-ot-original.ts --book Genesis
 ```
 
 Ingestion is idempotent — every write is an upsert keyed on the passage key, so

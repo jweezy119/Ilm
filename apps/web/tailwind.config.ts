@@ -7,6 +7,40 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Ink and paper. Every page styles itself with these two names rather than
+        // raw greys, and dark mode is reached by the `dark:` variants on each
+        // utility — so these are one fixed scale, not a pair that swaps.
+        //
+        // The scale is deliberately the same in both modes: ink-800 is the dark
+        // header in light mode and the panel background in dark mode, because the
+        // markup asks for `bg-ink-800 dark:bg-ink-900` rather than for "the
+        // inverted one". ink-700 matches --foreground in globals.css, which is why
+        // body copy and `text-ink-700` read as the same colour.
+        ink: {
+          50: '#f6f8fa',
+          100: '#e9eef3',
+          200: '#d5dee6',
+          300: '#b0bdc9',
+          400: '#8b9aa8',
+          500: '#6b7c8c',
+          600: '#4c6273',
+          700: '#33485a',
+          800: '#22323f',
+          900: '#16242e',
+          950: '#0e1a22',
+        },
+        // The page surface: warm cream, matching --background in globals.css, so
+        // `bg-paper` and the body background are the same colour to the pixel.
+        paper: {
+          DEFAULT: '#fdfcfa',
+          50: '#fefdfb',
+          100: '#faf7f1',
+          200: '#f3ede1',
+          500: '#b9a98c',
+          800: '#2a2f2c',
+          900: '#16211d',
+          950: '#0b1a17',
+        },
         // Ilm brand colors - deep, scholarly tones
         ilm: {
           50: '#f0f4f8',
@@ -34,7 +68,7 @@ const config: Config = {
         hebrew: ['var(--font-hebrew)', 'Noto Sans Hebrew', 'serif'],
         greek: ['var(--font-greek)', 'Noto Serif', 'serif'],
       },
-      typography: (theme: any) => ({
+      typography: (theme: (path: string) => string) => ({
         DEFAULT: {
           css: {
             color: theme('colors.ilm.800'),

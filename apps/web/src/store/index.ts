@@ -1,9 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Passage, RecommendationWeights, SearchResponse, TextId } from '@ilm/shared';
+import {
+  MAX_COMPARISON_PASSAGES,
+  type Passage,
+  type RecommendationWeights,
+  type SearchResponse,
+  type TextId,
+} from '@ilm/shared';
 
 const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
-export const MAX_COMPARISON = 5;
+
+// The cap is the API's, not a second one declared here. The two disagreed once
+// already, and the symptom was a 400 the UI could not explain.
+export const MAX_COMPARISON = MAX_COMPARISON_PASSAGES;
 
 const DEFAULT_WEIGHTS: RecommendationWeights = {
   thematic: 0.3,
@@ -17,6 +26,12 @@ const DEFAULT_WEIGHTS: RecommendationWeights = {
 interface ComparisonState {
   passageKeys: string[];
   add: (passage: Passage) => void;
+  /**
+   * Add by key alone. A recommendation row carries a reference and a preview, not a
+   * whole passage, so this is how the reader puts a relation into the tray without
+   * the caller inventing a Passage object it does not have.
+   */
+  addKey: (key: string) => void;
   remove: (key: string) => void;
   toggle: (passage: Passage) => void;
   clear: () => void;
@@ -34,6 +49,13 @@ export const useComparisonStore = create<ComparisonState>()(
           if (state.passageKeys.includes(passage.passageKey)) return state;
           if (state.passageKeys.length >= MAX_COMPARISON) return state;
           return { passageKeys: [...state.passageKeys, passage.passageKey] };
+        }),
+
+      addKey: (key) =>
+        set((state) => {
+          if (state.passageKeys.includes(key)) return state;
+          if (state.passageKeys.length >= MAX_COMPARISON) return state;
+          return { passageKeys: [...state.passageKeys, key] };
         }),
 
       remove: (key) => set((state) => ({ passageKeys: state.passageKeys.filter((k) => k !== key) })),

@@ -150,7 +150,7 @@ interface Recommendation {
 - Instant preview with highlighted matches
 
 ### 2. Side-by-Side Comparison
-- Select 2-5 passages from any texts
+- Select 2-8 passages from any texts, one column per text
 - Synchronized scrolling
 - Jev-powered alignment highlights
 - Toggle: original / translation / both

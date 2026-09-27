@@ -28,4 +28,8 @@ services:
       retries: 10
 
 volumes:
+  # Pinned to the bare name, without Compose's project-name prefix, so this volume
+  # is the same one `npm run db:up` creates. Without `name:` the two paths in the
+  # README silently diverge and each starts an empty database.
   ilm_postgres_data:
+    name: ilm_postgres_data

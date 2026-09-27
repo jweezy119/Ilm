@@ -14,12 +14,17 @@
 
 import type { Prisma } from '@prisma/client';
 import { TextId, Passage } from '@ilm/shared';
+import { loadLocalEnv } from '../src/lib/env';
 import { prisma, setPassageThemesBatch } from '../src/services/passage';
 import { classifyThemes, scoreSemanticDensity } from '../src/services/typesafe';
 import { getJevJudge } from '../src/services/typesafe-client';
 import { embedMissingPassages, isEmbeddingConfigured } from '../src/services/embeddings';
 import { getCrossReferencesForPassage } from '../src/services/crossrefs';
 import { buildOramaIndex, persistOramaIndex } from '../src/search/orama';
+
+// Without this the script would find no TYPESAFE_API_KEY, fall back to local theme
+// scoring, and write those scores over the model-derived ones without saying so.
+loadLocalEnv();
 
 const THEME_BATCH = 100;
 const CROSSREF_BATCH = 5;

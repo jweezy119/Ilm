@@ -41,7 +41,6 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@ilm/shared'],
-  eslint: { ignoreDuringBuilds: true },
   async rewrites() {
     return [
       { source: '/api/search', destination: `${API_ORIGIN}/api/search` },
@@ -51,6 +50,7 @@ const nextConfig = {
       { source: '/api/themes/:path*', destination: `${API_ORIGIN}/api/themes/:path*` },
       { source: '/api/recommendations/:path*', destination: `${API_ORIGIN}/api/recommendations/:path*` },
       { source: '/api/compare/:path*', destination: `${API_ORIGIN}/api/compare/:path*` },
+      { source: '/api/lexicon', destination: `${API_ORIGIN}/api/lexicon` },
       { source: '/api/users/:path*', destination: `${API_ORIGIN}/api/users/:path*` },
       { source: '/health', destination: `${API_ORIGIN}/health` },
     ];

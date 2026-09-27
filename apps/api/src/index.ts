@@ -2,6 +2,10 @@
  * Ilm API — Fastify entry point.
  */
 
+import { loadLocalEnv } from './lib/env';
+
+loadLocalEnv();
+
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
@@ -36,20 +40,24 @@ async function main(): Promise<void> {
     timeWindow: Number(process.env.RATE_LIMIT_WINDOW ?? 60000),
   });
 
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof HttpError) {
-      return reply.status(error.statusCode).send({
+  // Fastify 5 types the handler's error as `unknown`, so the shape Fastify errors
+  // actually have is recovered here once rather than asserted at each use.
+  app.setErrorHandler((rawError: unknown, request, reply) => {
+    if (rawError instanceof HttpError) {
+      return reply.status(rawError.statusCode).send({
         success: false,
-        error: { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) },
+        error: { code: rawError.code, message: rawError.message, ...(rawError.details ? { details: rawError.details } : {}) },
       });
     }
 
-    if (error instanceof ZodError) {
+    if (rawError instanceof ZodError) {
       return reply.status(400).send({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Request failed validation', details: error.flatten() },
+        error: { code: 'VALIDATION_ERROR', message: 'Request failed validation', details: rawError.flatten() },
       });
     }
+
+    const error = rawError as { validation?: unknown; statusCode?: number; code?: string; message?: string };
 
     if (error.validation) {
       return reply.status(400).send({

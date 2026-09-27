@@ -193,11 +193,23 @@ export const AlignmentSchema = z.object({
     })
   ),
   notes: z.string(),
+  // Which judge produced the type and the strength. Without this the UI would have
+  // to assert that every score came from Jev, which is false whenever the local
+  // fallback ran.
+  source: z.enum(['jev', 'derived']).default('derived'),
 });
 export type Alignment = z.infer<typeof AlignmentSchema>;
 
+/**
+ * How many passages one comparison may hold. Eight is one column per corpus in
+ * TEXT_IDS plus three, which is the point at which the panel grid stops being
+ * readable side by side. The cap bounds the request: alignments are all pairs, so
+ * it is what keeps one comparison to a single batched Jev call of a sane size.
+ */
+export const MAX_COMPARISON_PASSAGES = 8;
+
 export const ComparisonRequestSchema = z.object({
-  passageIds: z.array(z.string()).min(2).max(5),
+  passageIds: z.array(z.string()).min(2).max(MAX_COMPARISON_PASSAGES),
   options: z.object({
     includeAlignments: z.boolean().default(true),
     includeThemes: z.boolean().default(true),
@@ -217,9 +229,27 @@ export const ComparisonResponseSchema = z.object({
       avgScore: z.number().min(0).max(1),
     })
   ),
+  crossReferences: z.array(
+    z.object({
+      sourcePassageId: z.string(),
+      targetPassageId: z.string(),
+      type: z.string(),
+      strength: z.number().min(0).max(1),
+      notes: z.string(),
+    })
+  ).default([]),
   metadata: z.object({
     textCount: z.number(),
     totalVerses: z.number(),
+    // Total pairs the passages form. Equal to alignments.length only when every
+    // pair cleared the interest threshold, so the UI can say what was dropped.
+    totalPairs: z.number(),
+    // Whether a model is reachable at all. The UI must not claim links were
+    // scored locally "because no key is configured" when the truth is that they
+    // came from a previous run's cache.
+    jevConfigured: z.boolean(),
+    // Pairs answered from the alignments table rather than by asking the model.
+    cachedPairs: z.number(),
     generatedAt: z.date(),
   }),
 });
@@ -276,6 +306,12 @@ export const RecommendationSchema = z.object({
   reasoning: z.string(), // Human-readable breakdown
   matchedThemes: z.array(z.string()),
   matchedTerms: z.array(z.string()),
+  // Whether a model judged this pair or a local rule did. Without it the UI would
+  // have to present every number as model output, which is false when Jev is absent
+  // or when the pair fell back.
+  source: z.enum(['jev', 'derived']).default('derived'),
+  // True when these scores came from a previous judgement rather than this request.
+  cached: z.boolean().default(false),
 });
 export type Recommendation = z.infer<typeof RecommendationSchema>;
 
@@ -293,6 +329,10 @@ export const RecommendationResponseSchema = z.object({
   recommendations: z.array(RecommendationSchema),
   sourcePassage: PassageSchema,
   weights: RecommendationWeightsSchema,
+  /** Whether any recommendation in this list was model-judged. */
+  source: z.enum(['jev', 'derived']).default('derived'),
+  /** How many of these were recombined from the affinity cache. */
+  cachedCount: z.number().int().min(0).default(0),
   generatedAt: z.date(),
 });
 export type RecommendationResponse = z.infer<typeof RecommendationResponseSchema>;
@@ -493,3 +533,37 @@ export const DEFAULT_WEIGHTS: RecommendationWeights = {
   narrative: 0.15,
   theological: 0.2,
 };
+
+// ============================================================================
+// Lexicon
+// ============================================================================
+
+/**
+ * One published dictionary's entry for a word.
+ *
+ * Reference data, never generated: these senses were written by lexicographers,
+ * and `lexicon` and `source` name the dictionary so the reader can see whose
+ * definition they are reading.
+ */
+export const LexiconEntrySchema = z.object({
+  headword: z.string(),
+  lexicon: z.string(),
+  language: z.string(),
+  transliteration: z.string().nullable().default(null),
+  strongNumber: z.string().nullable().default(null),
+  morphology: z.string().nullable().default(null),
+  senses: z.array(z.object({ definition: z.string() })),
+  source: z.string().nullable().default(null),
+});
+export type LexiconEntry = z.infer<typeof LexiconEntrySchema>;
+
+export const LexiconLookupSchema = z.object({
+  /** The word as looked up, with pointing stripped. */
+  word: z.string(),
+  entries: z.array(LexiconEntrySchema),
+  /** True when the answer came from the cache rather than Sefaria. */
+  cached: z.boolean(),
+  /** True when no dictionary carries this word. A real answer, not an error. */
+  notFound: z.boolean(),
+});
+export type LexiconLookup = z.infer<typeof LexiconLookupSchema>;

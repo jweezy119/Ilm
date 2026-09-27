@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { notFound, useParams } from 'next/navigation';
-import { ArrowLeft, Scale, Loader2, AlertTriangle, Sparkles, Check } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, ArrowRight, Scale, Loader2, AlertTriangle, Sparkles, Check, Plus, Minus } from 'lucide-react';
 import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Shell, PageHeader, Empty } from '@/components/Shell';
-import { PassageCard } from '@/components/PassageCard';
+import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
 import { useComparisonStore, useSettingsStore } from '@/store';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, TEXT_STYLES } from '@/lib/utils';
 
@@ -100,8 +100,24 @@ export default function PassagePage() {
             {passage.originalText ? (
               <section className="mb-5">
                 <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">Original ({passage.metadata.language})</h2>
-                <p dir={getTextDirection(passage.textId)} className={cn('text-ink-900 dark:text-ink-100', getScriptFont(passage.metadata.language))}>
-                  {passage.originalText}
+                {/* Tap any word for its dictionary entries. Only offered for the
+                    scripts a lexicon here covers — Hebrew and Aramaic — so a Quranic
+                    or Greek word is not given a button that can only come back empty. */}
+                {LEXICON_LANGUAGES.has(passage.metadata.language) ? (
+                  <LookupableText
+                    text={passage.originalText}
+                    className={cn('text-ink-900 dark:text-ink-100', getScriptFont(passage.metadata.language))}
+                    dir={getTextDirection(passage.textId)}
+                  />
+                ) : (
+                  <p dir={getTextDirection(passage.textId)} className={cn('text-ink-900 dark:text-ink-100', getScriptFont(passage.metadata.language))}>
+                    {passage.originalText}
+                  </p>
+                )}
+                <p className="mt-1.5 text-[11px] text-ink-500">
+                  {LEXICON_LANGUAGES.has(passage.metadata.language)
+                    ? 'Every word is tappable — each opens the published dictionary entries for it.'
+                    : 'No dictionary in this library covers this script yet.'}
                 </p>
               </section>
             ) : null}
@@ -261,6 +277,9 @@ function CompareButton({ passage }: { passage: Passage }) {
 
 function RecommendationPanel({ passage }: { passage: Passage }) {
   const weights = useSettingsStore((s) => s.weights);
+  const addKey = useComparisonStore((s) => s.addKey);
+  const removeKey = useComparisonStore((s) => s.remove);
+  const has = useComparisonStore((s) => s.has);
   const [state, setState] = useState<{ status: 'loading' | 'ready' | 'error'; message?: string; data?: Awaited<ReturnType<typeof api.recommendations>> }>({ status: 'loading' });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [excludeSameText, setExcludeSameText] = useState(false);
@@ -293,7 +312,7 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
     <aside className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
       <header className="mb-3">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Sparkles className="h-4 w-4 text-ink-400" /> Related passages
+          <Sparkles className="h-4 w-4 text-ink-400" /> Closest relations
         </h2>
         <p className="mt-0.5 text-xs text-ink-500">
           Ranked by a weighted sum of five dimensions. Changing a weight in{' '}
@@ -302,6 +321,12 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
           </Link>{' '}
           re-ranks without re-running the model.
         </p>
+        {state.status === 'ready' && state.data ? (
+          <p className="mt-1 text-[11px] text-ink-500">
+            {state.data.source === 'jev' ? 'Judged by Jev' : 'Scored by local rules — no model key configured'}
+            {state.data.cachedCount > 0 ? `, ${state.data.cachedCount} from cache` : ''}.
+          </p>
+        ) : null}
         <label className="mt-2 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-400">
           <input type="checkbox" checked={excludeSameText} onChange={(e) => setExcludeSameText(e.target.checked)} />
           Hide {getTextLabel(passage.textId, true)} results
@@ -319,17 +344,42 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
       {state.status === 'ready' ? (
         state.data && state.data.recommendations.length > 0 ? (
           <ul className="space-y-2">
-            {state.data.recommendations.map((rec) => (
+            {state.data.recommendations.map((rec) => {
+              const inTray = has(rec.passageKey);
+              return (
               <li key={rec.passageId} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
                 <div className="mb-1 flex items-center gap-2">
                   <span className={getTextChipClass(rec.textId)}>{getTextLabel(rec.textId, true)}</span>
                   <Link href={`/passage/${rec.passageKey.split('/').map(encodeURIComponent).join('/')}`} className="text-sm font-medium hover:underline">
                     {rec.book} {rec.chapter}:{rec.verse}
                   </Link>
+                  {/* Provenance per row. Without it every number here reads as model
+                      output, which is false when the pair fell back or was cached. */}
+                  <span
+                    className={cn(
+                      'rounded px-1 py-0.5 text-[10px]',
+                      rec.source === 'jev'
+                        ? 'bg-ilm-100 text-ilm-800 dark:bg-ilm-800 dark:text-ilm-100'
+                        : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
+                    )}
+                    title={rec.source === 'jev' ? 'Judged by the model' : 'Scored by a local rule, no model involved'}
+                  >
+                    {rec.source}
+                  </span>
                   <span className="ml-auto font-mono text-xs text-ink-500">{percent(rec.scores.composite)}</span>
                 </div>
 
                 <p className="line-clamp-2 text-sm text-ink-700 dark:text-ink-300">{truncate(rec.preview, 180)}</p>
+
+                {rec.matchedThemes.length > 0 ? (
+                  <ul className="mt-2 flex flex-wrap gap-1">
+                    {rec.matchedThemes.map((theme) => (
+                      <li key={theme} className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] text-ink-700 dark:bg-ink-800 dark:text-ink-300">
+                        {theme}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
                 <ul className="mt-2 space-y-1">
                   {DIMENSIONS.map((dim) => (
@@ -348,21 +398,36 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
 
                 <p className="mt-2 text-[11px] text-ink-500">{rec.reasoning}</p>
 
-                {rec.matchedThemes.length > 0 ? (
-                  <p className="mt-1 text-[11px] text-ink-500">Shared themes: {rec.matchedThemes.join(', ')}</p>
-                ) : null}
-
-                <button
-                  type="button"
-                  onClick={() => setExpanded(expanded === rec.passageId ? null : rec.passageId)}
-                  className="mt-2 text-[11px] text-emerald-800 underline dark:text-emerald-400"
-                >
-                  {expanded === rec.passageId ? 'Hide evidence' : 'Why this passage?'}
-                </button>
+                {/* The two things a reader actually wants from a relation: go there,
+                    or put it beside this passage. */}
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <Link
+                    href={`/passage/${rec.passageKey.split('/').map(encodeURIComponent).join('/')}`}
+                    className="inline-flex items-center gap-1 rounded border border-ink-300 px-2 py-0.5 text-[11px] hover:border-ink-500 dark:border-ink-700"
+                  >
+                    <ArrowRight className="h-3 w-3" /> Open this passage
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => (inTray ? removeKey(rec.passageKey) : addKey(rec.passageKey))}
+                    className="inline-flex items-center gap-1 rounded border border-ink-300 px-2 py-0.5 text-[11px] hover:border-ink-500 dark:border-ink-700"
+                  >
+                    {inTray ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                    {inTray ? 'Remove from comparison' : 'Compare beside this'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(expanded === rec.passageId ? null : rec.passageId)}
+                    className="text-[11px] text-emerald-800 underline dark:text-emerald-400"
+                  >
+                    {expanded === rec.passageId ? 'Hide evidence' : 'Why this passage?'}
+                  </button>
+                </div>
 
                 {expanded === rec.passageId ? <Explanation sourceId={passage.id} targetId={rec.passageId} /> : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
         ) : (
           <Empty title="No passages scored above the threshold">

@@ -13,6 +13,7 @@
  */
 
 import { Passage, CrossRef, CrossRefType, TextId, THEME_TAXONOMY } from '@ilm/shared';
+import { createBoundedMemo } from '../lib/memo';
 import { getJevJudge } from './typesafe-client';
 import type { EntryType, JevQuestion } from './typesafe-client';
 
@@ -793,52 +794,97 @@ const ALIGNMENT_STRENGTH_RUBRIC = [
   'Exceptional alignment, unmistakable to a reader',
 ];
 
-/** One request answers "is it aligned", "what kind", and "how strong". */
-export async function computeAlignment(a: Passage, b: Passage): Promise<AlignmentResult> {
-  const jev = getJevJudge();
+/**
+ * Pairs per Jev request.
+ *
+ * Every pair contributes a `type` and a `strength` question, so eight passages —
+ * 28 pairs — is 56 questions. This bound sits above that on purpose: a full
+ * comparison is one round trip, which is the whole point. It exists only so that
+ * raising MAX_COMPARISON_PASSAGES later degrades into several requests instead of
+ * one request the model will refuse.
+ */
+const PAIRS_PER_REQUEST = 32;
 
-  if (!jev.available) {
-    return localAlignment(a, b);
+/**
+ * Align many pairs, in one request.
+ *
+ * The old code called the model once per pair, so comparing five passages issued
+ * ten HTTP requests to ask ten independent questions. Every one of those questions
+ * only needs the passages, so they all go out together: the state carries each
+ * passage once, and each question names the pair it is about. Returns results in
+ * the same order as `pairs`, so the caller keeps its own orientation.
+ *
+ * A pair whose answers are missing, or any pair from a request that failed, falls
+ * back to the local ladder rather than dropping out of the comparison.
+ */
+export async function computeAlignments(pairs: Array<[Passage, Passage]>): Promise<AlignmentResult[]> {
+  if (pairs.length === 0) return [];
+
+  const jev = getJevJudge();
+  if (!jev.available) return pairs.map(([a, b]) => localAlignment(a, b));
+
+  // One entry per distinct passage, so the state carries each exactly once even
+  // when a passage appears in many pairs.
+  const docs = [...new Map(pairs.flat().map((p) => [p.id, p])).values()].map(passageView);
+  const computed: Array<AlignmentResult | null> = new Array(pairs.length).fill(null);
+
+  for (let start = 0; start < pairs.length; start += PAIRS_PER_REQUEST) {
+    const chunk = pairs.slice(start, start + PAIRS_PER_REQUEST);
+
+    const questions: JevQuestion[] = chunk.flatMap(([a, b], i) => {
+      const pair = { source: passageView(a), candidate: passageView(b) };
+      return [
+        {
+          kind: 'choice' as const,
+          id: `p${i}.type`,
+          instructions: { question: 'What kind of alignment links the source to the candidate?', ...pair },
+          criteria: ALIGNMENT_TYPE_CRITERIA,
+        },
+        {
+          kind: 'score' as const,
+          id: `p${i}.strength`,
+          instructions: { question: 'How strong is the alignment between the source and the candidate?', ...pair },
+          criteria: ALIGNMENT_STRENGTH_RUBRIC,
+        },
+      ];
+    });
+
+    const result = await askJev({ passages: docs }, questions);
+    if (!result) continue;
+
+    chunk.forEach(([a, b], i) => {
+      const chosen = result.answers[`p${i}.type`]?.choice;
+
+      // A pair the model did not answer is not a pair it judged "none". `none` is
+      // a real answer — it is one of the alignment criteria — but an absent answer
+      // must fall through to the local ladder rather than be reported as a verdict.
+      const answered = chosen === 'none' || (chosen !== undefined && (ALIGNMENT_TYPES as readonly string[]).includes(chosen));
+      if (!answered) return;
+
+      const segments = sharedPhrases(a.translation, b.translation);
+      computed[start + i] = {
+        type: chosen as AlignmentResult['type'],
+        strength: clamp01(result.answers[`p${i}.strength`]?.value ?? 0),
+        matchedSegments: segments,
+        notes: alignmentNote(segments),
+        source: 'jev',
+      };
+    });
   }
 
-  const state: EntryType = { source: passageView(a), candidate: passageView(b) };
+  return pairs.map(([a, b], i) => computed[i] ?? localAlignment(a, b));
+}
 
-  const result = await askJev(state, [
-    {
-      kind: 'choice',
-      id: 'type',
-      instructions: {
-        question: 'What kind of alignment links the source to the candidate?',
-        source: passageView(a),
-        candidate: passageView(b),
-      },
-      criteria: ALIGNMENT_TYPE_CRITERIA,
-    },
-    {
-      kind: 'score',
-      id: 'strength',
-      instructions: {
-        question: 'How strong is the alignment between the source and the candidate?',
-        source: passageView(a),
-        candidate: passageView(b),
-      },
-      criteria: ALIGNMENT_STRENGTH_RUBRIC,
-    },
-  ]);
+/** Evidence summary, the same whether the pair was typed by Jev or locally. */
+function alignmentNote(segments: MatchedSegment[]): string {
+  return segments.length
+    ? `${segments.length} shared phrase${segments.length === 1 ? '' : 's'}`
+    : 'no shared phrasing detected';
+}
 
-  if (!result) return localAlignment(a, b);
-
-  const type = (ALIGNMENT_TYPES as readonly string[]).includes(result.answers.type?.choice ?? '')
-    ? (result.answers.type?.choice as AlignmentResult['type'])
-    : 'none';
-
-  return {
-    type,
-    strength: result.answers.strength?.value ?? 0,
-    matchedSegments: sharedPhrases(a.translation, b.translation),
-    notes: `${type.replace(/_/g, ' ')} — ${(result.answers.strength?.confidence ?? 0) > 0 ? 'jev' : 'unrated'}`,
-    source: 'jev',
-  };
+/** One pair. Thin wrapper over the batched path, for callers that hold a single pair. */
+export async function computeAlignment(a: Passage, b: Passage): Promise<AlignmentResult> {
+  return (await computeAlignments([[a, b]]))[0];
 }
 
 export function localAlignment(a: Passage, b: Passage): AlignmentResult {
@@ -874,9 +920,7 @@ export function localAlignment(a: Passage, b: Passage): AlignmentResult {
     type,
     strength,
     matchedSegments: segments,
-    notes: segments.length
-      ? `${segments.length} shared phrase${segments.length === 1 ? '' : 's'}${themes.length ? `, themes: ${themes.join(', ')}` : ''}`
-      : 'no shared phrasing detected',
+    notes: alignmentNote(segments),
     source: 'derived',
   };
 }
@@ -993,13 +1037,16 @@ export async function rerankForQuery(query: string, candidates: Passage[]): Prom
     relevance[candidate.passageKey] = clamp01(result.answers[`r${i}`]?.value ?? 0);
   });
 
-  const silence = clamp01(result.answers.corpus?.value ?? 0);
+  // A Noul reports the probability of the *true* outcome, so the corpus question
+  // above answers "these passages do address the query". Silence is its complement.
+  // No answer at all is not evidence of silence, so it stays undecided.
+  const corpus = result.answers.corpus?.value;
 
   return {
     order: [...shortlist].sort((a, b) => relevance[b.passageKey] - relevance[a.passageKey]).map((p) => p.passageKey),
     relevance,
-    verdict: verdictFromSilence(silence),
-    silence,
+    verdict: corpus === undefined ? 'unknown' : verdictFromSilence(clamp01(1 - corpus)),
+    silence: corpus === undefined ? 0 : clamp01(1 - corpus),
     source: 'jev',
   };
 }
@@ -1047,7 +1094,13 @@ export interface QueryExpansion {
  * Jev picks from a closed set — the taxonomy — rather than inventing synonyms.
  * That keeps the answer consumable as code, which a generated term list would not.
  */
+const memoExpand = createBoundedMemo<Promise<QueryExpansion>>(200);
+
 export async function expandQueryTheme(query: string): Promise<QueryExpansion> {
+  return memoExpand(normalizeQueryKey(query), () => expandQueryThemeUncached(query));
+}
+
+async function expandQueryThemeUncached(query: string): Promise<QueryExpansion> {
   const local = localQueryTheme(query);
   const jev = getJevJudge();
   if (!jev.available) return local;
@@ -1135,7 +1188,24 @@ const INTENT_KEYWORDS: Array<[SearchIntent, string[]]> = [
 ];
 
 /** Classify what the user is trying to do. Falls back to keyword matching. */
+/**
+ * Intent depends on nothing but the query text, and the search page offers the same
+ * theme chips and suggestions on every visit, so this is memoised. Without it each
+ * repeat of a popular query paid for a request that could only return the same
+ * answer.
+ */
+/** Case and spacing must not create two cache entries for one question. */
+function normalizeQueryKey(query: string): string {
+  return query.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+const memoIntent = createBoundedMemo<Promise<IntentResult>>(200);
+
 export async function classifySearchIntent(query: string): Promise<IntentResult> {
+  return memoIntent(normalizeQueryKey(query), () => classifySearchIntentUncached(query));
+}
+
+async function classifySearchIntentUncached(query: string): Promise<IntentResult> {
   const jev = getJevJudge();
 
   if (!jev.available) return localIntent(query);

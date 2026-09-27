@@ -7,7 +7,13 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { TextIdSchema, TextId, RecommendationWeightsInputSchema, PassageKeySchema as SharedPassageKeySchema } from '@ilm/shared';
+import {
+  TextIdSchema,
+  TextId,
+  RecommendationWeightsInputSchema,
+  PassageKeySchema as SharedPassageKeySchema,
+  ComparisonRequestSchema,
+} from '@ilm/shared';
 import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
 import {
   getPassageById,
@@ -32,6 +38,7 @@ import {
 } from '../services/recommendation';
 import { comparePassages, getParallelTranslations, generateComparisonUrl, computeSharedThemes } from '../services/comparison';
 import { getCrossReferencesForPassage } from '../services/crossrefs';
+import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge } from '../services/typesafe-client';
 import { isIndexReady, invalidateOramaIndex } from '../search/orama';
@@ -72,17 +79,9 @@ const RecommendationBodySchema = z.object({
   minScore: z.number().min(0).max(1).default(0.15),
 });
 
-const ComparisonBodySchema = z.object({
-  passageIds: z.array(z.string().min(1)).min(2).max(5),
-  options: z
-    .object({
-      includeAlignments: z.boolean().default(true),
-      includeThemes: z.boolean().default(true),
-      includeCrossRefs: z.boolean().default(true),
-      syncScrolling: z.boolean().default(true),
-    })
-    .default({ includeAlignments: true, includeThemes: true, includeCrossRefs: true, syncScrolling: true }),
-});
+// The comparison body is validated by the shared schema rather than a second copy
+// here. Two copies is how the passage cap came to disagree with the one the web
+// client enforces.
 
 const WeightsBodySchema = z
   .object({
@@ -167,6 +166,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.get('/api/themes', async () => ok({ themes: await listThemes() }));
+
+  // ---------------------------------------------------------------- lexicon
+  app.get('/api/lexicon', async (request: FastifyRequest<{ Querystring: { word?: string } }>) => {
+    const word = (request.query.word ?? '').trim();
+    if (!word) throw new HttpError(400, 'VALIDATION_ERROR', 'A word is required');
+    // Bounded so a long sentence cannot be sent as one lookup.
+    if (word.length > 64) throw new HttpError(400, 'VALIDATION_ERROR', 'That is too long to be a single word');
+    return ok(await lookupWord(word));
+  });
 
   app.get('/api/search/stats', async () => ok(await getIndexStats()));
 
@@ -301,7 +309,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   // ---------------------------------------------------------------- comparison
   app.post('/api/compare', async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = parse(ComparisonBodySchema, request.body);
+    const body = parse(ComparisonRequestSchema, request.body);
     const result = await comparePassages(body);
     return ok({ ...result, shareUrl: generateComparisonUrl(result.passages.map((p) => p.passageKey)) });
   });

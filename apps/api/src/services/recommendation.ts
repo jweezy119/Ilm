@@ -33,6 +33,87 @@ const SHORTLIST_SIZE = Number(process.env.RECOMMEND_SHORTLIST ?? 20);
 const CANDIDATES_PER_TEXT = 120;
 
 // ============================================================================
+// AFFINITY CACHE
+// ============================================================================
+
+/**
+ * Cached per-dimension scores for one ordered pair.
+ *
+ * The five dimensions are asked of the model once and do not depend on the
+ * reader's weights — only the composite does. Caching the dimensions and
+ * recomputing the composite on read is what makes a weight change free, and what
+ * makes a second visit to a passage cost nothing.
+ */
+interface CachedAffinity {
+  scores: ScoreBreakdown;
+  source: ScoreSource;
+  confidence: number;
+}
+
+function toCachedAffinity(row: { scores: unknown; source: string; confidence: number }): CachedAffinity | null {
+  const scores = (row.scores ?? {}) as Record<string, unknown>;
+  const numbers = AFFINITY_DIMENSIONS.map((dim) => scores[dim]);
+
+  // A row missing any dimension is not usable: a partial row would silently pull
+  // the composite down and read as a weaker relation than it is.
+  if (numbers.some((n) => typeof n !== 'number')) return null;
+
+  const dimensions = Object.fromEntries(AFFINITY_DIMENSIONS.map((dim, i) => [dim, numbers[i] as number]));
+  return {
+    scores: { ...dimensions, composite: 0 } as ScoreBreakdown,
+    source: row.source === 'jev' ? 'jev' : 'derived',
+    confidence: row.confidence,
+  };
+}
+
+async function readCachedAffinities(sourcePassageId: string, targetIds: string[]): Promise<Map<string, CachedAffinity>> {
+  if (targetIds.length === 0) return new Map();
+
+  const rows = await prisma.passageAffinity.findMany({
+    where: { sourcePassageId, targetPassageId: { in: targetIds } },
+    select: { targetPassageId: true, scores: true, source: true, confidence: true },
+  });
+
+  const out = new Map<string, CachedAffinity>();
+  for (const row of rows) {
+    const cached = toCachedAffinity(row);
+    if (cached) out.set(row.targetPassageId, cached);
+  }
+  return out;
+}
+
+/** Store freshly judged pairs, keyed on the ordered pair so the reverse is separate. */
+async function writeCachedAffinities(
+  sourcePassageId: string,
+  entries: Array<{ targetPassageId: string; scores: ScoreBreakdown; source: ScoreSource; confidence: number }>
+): Promise<void> {
+  if (entries.length === 0) return;
+
+  await prisma.$transaction(
+    entries.map((entry) => {
+      const { composite: _drop, ...dims } = entry.scores;
+      return prisma.passageAffinity.upsert({
+        where: { sourcePassageId_targetPassageId: { sourcePassageId, targetPassageId: entry.targetPassageId } },
+        create: {
+          sourcePassageId,
+          targetPassageId: entry.targetPassageId,
+          scores: dims as object,
+          confidence: entry.confidence,
+          source: entry.source,
+        },
+        update: { scores: dims as object, confidence: entry.confidence, source: entry.source },
+      });
+    })
+  );
+}
+
+/** Recompute the composite from the current weights. Never stored. */
+function withComposite(scores: ScoreBreakdown, weights: Record<AffinityDimension, number>): ScoreBreakdown {
+  const dimensions = scores as unknown as Record<AffinityDimension, number>;
+  return { ...scores, composite: AFFINITY_DIMENSIONS.reduce((sum, dim) => sum + dimensions[dim] * weights[dim], 0) };
+}
+
+// ============================================================================
 // RECOMMENDATIONS
 // ============================================================================
 
@@ -40,6 +121,8 @@ export interface ScoredRecommendation {
   passage: Passage;
   scores: ScoreBreakdown;
   source: ScoreSource;
+  /** True when the dimension scores came from the cache rather than this request. */
+  cached: boolean;
   confidence: number;
   matchedThemes: string[];
   matchedTerms: string[];
@@ -50,7 +133,7 @@ export async function rankCandidates(
   source: Passage,
   weights: RecommendationWeights,
   options: { limit: number; excludeTexts?: TextId[]; excludeSameBook?: boolean; minScore?: number; shortlist?: number }
-): Promise<{ ranked: ScoredRecommendation[]; source: ScoreSource }> {
+): Promise<{ ranked: ScoredRecommendation[]; source: ScoreSource; cachedCount: number }> {
   const { limit, excludeTexts, excludeSameBook } = options;
   const minScore = options.minScore ?? 0.15;
   const shortlistSize = options.shortlist ?? SHORTLIST_SIZE;
@@ -58,10 +141,10 @@ export async function rankCandidates(
   const excluded = new Set(excludeTexts ?? []);
   const candidateKeys = await retrieveCandidateKeys(source, excluded, excludeSameBook ? source.book : undefined);
 
-  if (candidateKeys.length === 0) return { ranked: [], source: 'derived' };
+  if (candidateKeys.length === 0) return { ranked: [], source: 'derived', cachedCount: 0 };
 
   const candidates = await getPassagesByKeys(candidateKeys);
-  if (candidates.length === 0) return { ranked: [], source: 'derived' };
+  if (candidates.length === 0) return { ranked: [], source: 'derived', cachedCount: 0 };
 
   // Stage 1: local ranking, no AI. Embeddings help when they exist; themes and
   // terms always do.
@@ -75,19 +158,53 @@ export async function rankCandidates(
 
   const shortlist = interleaveByText(locally.map((c) => c.candidate), Math.max(shortlistSize, limit * 2));
 
-  if (shortlist.length === 0) return { ranked: [], source: 'derived' };
+  if (shortlist.length === 0) return { ranked: [], source: 'derived', cachedCount: 0 };
 
-  // Stage 2: Jev scores the shortlist in one request.
-  const scored = await scoreCandidates(source, shortlist, weights as Record<AffinityDimension, number>);
+  // Stage 2: Jev scores the shortlist in one request — but only the pairs that
+  // have never been judged. A passage the reader has already visited, or a pair
+  // scored before a weight change, is recombined from the cache instead.
+  const cached = await readCachedAffinities(
+    source.id,
+    shortlist.map((p) => p.id)
+  );
+  const misses = shortlist.filter((p) => !cached.has(p.id));
 
-  const scoreSource: ScoreSource = scored.some((s) => s.source === 'jev') ? 'jev' : 'derived';
+  const fresh = misses.length > 0 ? await scoreCandidates(source, misses, weights as Record<AffinityDimension, number>) : [];
 
-  const ranked: ScoredRecommendation[] = scored
+  if (fresh.length > 0) {
+    await writeCachedAffinities(
+      source.id,
+      fresh.map((f) => ({ targetPassageId: f.candidate.id, scores: f.scores, source: f.source, confidence: f.confidence }))
+    );
+  }
+
+  let cachedCount = 0;
+  const scored = shortlist.map((candidate) => {
+    const hit = cached.get(candidate.id);
+    if (hit) {
+      cachedCount += 1;
+      return { candidate, scores: hit.scores, source: hit.source, confidence: hit.confidence, cached: true };
+    }
+    const judged = fresh.find((f) => f.candidate.id === candidate.id);
+    if (!judged) return null;
+    return { candidate, scores: judged.scores, source: judged.source, confidence: judged.confidence, cached: false };
+  });
+
+  // The composite is derived here from whichever dimension scores we ended up
+  // with, so a cache hit and a fresh judgement are ranked on the same footing.
+  const weighted = scored
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .map((s) => ({ ...s, scores: withComposite(s.scores, weights as Record<AffinityDimension, number>) }));
+
+  const scoreSource: ScoreSource = weighted.some((s) => s.source === 'jev') ? 'jev' : 'derived';
+
+  const ranked: ScoredRecommendation[] = weighted
     .filter((s) => s.scores.composite >= minScore)
     .map((s) => ({
       passage: s.candidate,
       scores: s.scores as ScoreBreakdown,
       source: s.source,
+      cached: s.cached,
       confidence: s.confidence,
       matchedThemes: sharedThemes(source, s.candidate),
       matchedTerms: sharedTerms(source, s.candidate),
@@ -96,7 +213,7 @@ export async function rankCandidates(
     .sort((a, b) => b.scores.composite - a.scores.composite)
     .slice(0, limit);
 
-  return { ranked, source: scoreSource };
+  return { ranked, source: scoreSource, cachedCount };
 }
 
 /**
@@ -211,7 +328,7 @@ export async function generateRecommendations(request: RecommendationRequest): P
 
   const weights = normalizeWeights(request.weights);
 
-  const { ranked } = await rankCandidates(sourcePassage, weights, {
+  const { ranked, source, cachedCount } = await rankCandidates(sourcePassage, weights, {
     limit: request.limit ?? 10,
     excludeTexts: request.excludeTexts,
     excludeSameBook: request.excludeSameBook,
@@ -231,9 +348,13 @@ export async function generateRecommendations(request: RecommendationRequest): P
       reasoning: r.reasoning,
       matchedThemes: r.matchedThemes,
       matchedTerms: r.matchedTerms,
+      source: r.source,
+      cached: r.cached,
     })),
     sourcePassage,
     weights,
+    source,
+    cachedCount,
     generatedAt: new Date(),
   };
 }
@@ -246,6 +367,8 @@ export async function getRecommendationExplanation(
 ): Promise<{
   scores: ScoreBreakdown;
   source: ScoreSource;
+  /** True when these scores were read from the affinity cache. */
+  cached: boolean;
   breakdown: Array<{ dimension: string; score: number; weight: number; contribution: number; evidence: string[] }>;
   summary: string;
 }> {
@@ -253,14 +376,27 @@ export async function getRecommendationExplanation(
   if (!source || !target) throw new NotFoundError('One or both passages were not found');
 
   const resolved = normalizeWeights(weights);
-  const judged = await scoreAffinity(source, target, resolved);
+
+  // The explanation asks for the same five dimensions the relations list already
+  // scored for this pair, so it is read from the cache rather than asking the model
+  // again. Clicking "why this passage?" should not cost a request.
+  const cached = (await readCachedAffinities(source.id, [target.id])).get(target.id);
+
+  const judged = cached
+    ? { value: withComposite(cached.scores, resolved as Record<AffinityDimension, number>), source: cached.source, confidence: cached.confidence }
+    : await scoreAffinity(source, target, resolved);
+
   const scores = judged.value as ScoreBreakdown;
+
+  // Computed once. Calling this inside the filter below re-derived the set for
+  // every candidate noun.
+  const targetNouns = properNouns(target.translation);
 
   const evidence: Record<AffinityDimension, string[]> = {
     thematic: sharedThemes(source, target),
     linguistic: sharedTerms(source, target).slice(0, 10),
     historical: historicalEvidence(source, target),
-    narrative: [...properNouns(source.translation)].filter((n) => properNouns(target.translation).has(n)),
+    narrative: [...properNouns(source.translation)].filter((n) => targetNouns.has(n)),
     theological: sharedThemes(source, target).filter(isDoctrinal),
   };
 
@@ -277,6 +413,7 @@ export async function getRecommendationExplanation(
   return {
     scores,
     source: judged.source,
+    cached: Boolean(cached),
     breakdown,
     summary:
       `Composite ${(scores.composite * 100).toFixed(1)}%` +

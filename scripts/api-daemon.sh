@@ -19,13 +19,14 @@ start() {
   mkdir -p "$(dirname "$LOG")"
   cd "$ROOT/apps/api"
 
-  # The app reads configuration from the environment only; there is no .env file
-  # and none is needed. Defaults are supplied here purely so local checks work.
-  export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5433/ilm?schema=public}"
-  export TYPESAFE_API_KEY="${TYPESAFE_API_KEY:-}"
-  export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
-  export CORS_ORIGIN="${CORS_ORIGIN:-http://localhost:3000}"
-  export LOG_LEVEL="${LOG_LEVEL:-info}"
+  # The app reads configuration from the environment, and loads apps/api/.env on
+  # top of it outside production. Nothing is forced here: an empty export would
+  # count as "set" and shadow the key in .env, so only real values are passed on.
+  [[ -n "${DATABASE_URL:-}" ]] && export DATABASE_URL || true
+  [[ -n "${TYPESAFE_API_KEY:-}" ]] && export TYPESAFE_API_KEY || true
+  [[ -n "${OPENROUTER_API_KEY:-}" ]] && export OPENROUTER_API_KEY || true
+  [[ -n "${CORS_ORIGIN:-}" ]] && export CORS_ORIGIN || true
+  [[ -n "${LOG_LEVEL:-}" ]] && export LOG_LEVEL || true
 
   setsid npx tsx src/index.ts > "$LOG" 2>&1 < /dev/null &
   echo $! > "$PIDFILE"

@@ -1,8 +1,10 @@
 import type {
   Alignment,
   BookMetadata,
+  ComparisonRequest,
   CorpusVerdict,
   CrossRef,
+  LexiconLookup,
   Passage,
   Recommendation,
   RecommendationWeights,
@@ -11,6 +13,9 @@ import type {
   TextId,
   ThemeJourneyStep,
 } from '@ilm/shared';
+
+/** The comparison options the API accepts, as the client sends them. */
+type CompareOptions = ComparisonRequest['options'];
 
 /**
  * API client.
@@ -99,7 +104,14 @@ export interface ComparisonResult {
   passages: Passage[];
   alignments: Alignment[];
   sharedThemes: Array<{ theme: string; passages: Record<string, string[]>; avgScore: number }>;
-  metadata: { textCount: number; totalVerses: number; generatedAt: string };
+  crossReferences: Array<{
+    sourcePassageId: string;
+    targetPassageId: string;
+    type: string;
+    strength: number;
+    notes: string;
+  }>;
+  metadata: { textCount: number; totalVerses: number; totalPairs: number; jevConfigured: boolean; cachedPairs: number; generatedAt: string };
   shareUrl: string;
 }
 
@@ -107,6 +119,10 @@ export interface RecommendationResponse {
   recommendations: Array<Recommendation & { passageKey: string }>;
   sourcePassage: Passage;
   weights: RecommendationWeights;
+  /** Whether any recommendation here was model-judged. */
+  source: 'jev' | 'derived';
+  /** How many came from the affinity cache rather than this request. */
+  cachedCount: number;
   generatedAt: string;
 }
 
@@ -173,8 +189,25 @@ export const api = {
   explain: (sourceId: string, targetId: string) =>
     get<RecommendationExplanation>(`/api/recommendations/explain/${encodeURIComponent(sourceId)}/${encodeURIComponent(targetId)}`),
 
-  compare: (passageKeys: string[]) =>
-    post<ComparisonResult>('/api/compare', { passageIds: passageKeys, options: { includeAlignments: true, includeThemes: true, includeCrossRefs: true, syncScrolling: true } }),
+  /**
+   * `syncScrolling` is the one option the server cannot act on — it is a display
+   * instruction, and passing it keeps the request shape honest about what the page
+   * is doing rather than silently dropping it.
+   */
+  compare: (passageKeys: string[], options?: Partial<CompareOptions>) =>
+    post<ComparisonResult>('/api/compare', {
+      passageIds: passageKeys,
+      options: { includeAlignments: true, includeThemes: true, includeCrossRefs: true, syncScrolling: true, ...options },
+    }),
+
+  /**
+   * Dictionary entries for a word in its original script.
+   *
+   * The Sefaria lexicons are Hebrew and Aramaic, so this answers for the Torah,
+   * Talmud and Old Testament and returns `notFound` elsewhere rather than
+   * pretending an Arabic or Greek word has no entry because nothing was asked.
+   */
+  lexicon: (word: string) => get<LexiconLookup>(`/api/lexicon?word=${encodeURIComponent(word)}`),
 
   journey: (theme: string, limit = 20) =>
     get<{ theme: string; journey: Array<ThemeJourneyStep & { passageKey: string }> }>(

@@ -108,6 +108,8 @@ model Passage {
   crossRefsTarget       CrossReference[] @relation("CrossRefTarget")
   alignmentsSource      Alignment[] @relation("AlignmentSource")
   alignmentsTarget      Alignment[] @relation("AlignmentTarget")
+  affinitiesSource      PassageAffinity[] @relation("AffinitySource")
+  affinitiesTarget      PassageAffinity[] @relation("AffinityTarget")
 
   @@index([textId, verseOrder])
   @@index([textId, bookSlug, chapterNum, verseNum])
@@ -239,10 +241,61 @@ model Alignment {
   @@map("alignments")
 }
 
+/// Per-dimension affinity between two passages, as judged once and reused.
+///
+/// The five dimension scores do not depend on the reader's weights — only the
+/// composite does — so they are stored without a composite and recombined on read.
+/// That is what lets the weight sliders re-rank instantly and for free, which is
+/// what the settings page promises.
+model PassageAffinity {
+  id              String   @id @default(cuid())
+  sourcePassageId String   @map("source_passage_id")
+  sourcePassage   Passage  @relation("AffinitySource", fields: [sourcePassageId], references: [id], onDelete: Cascade)
+  targetPassageId String   @map("target_passage_id")
+  targetPassage   Passage  @relation("AffinityTarget", fields: [targetPassageId], references: [id], onDelete: Cascade)
+  /// The five dimension scores. Deliberately no composite: it depends on weights.
+  scores          Json     @default("{}")
+  confidence      Float    @default(0)
+  /// Whether a model judged this pair or a local rule did.
+  source          String   @default("jev")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([sourcePassageId, targetPassageId])
+  @@index([sourcePassageId])
+  @@map("passage_affinities")
+}
+
+/// A lexicon entry, as published by a historical dictionary.
+///
+/// Reference data, not generated text: these are the real entries from BDB,
+/// Jastrow, Klein and Strong's, each kept with the dictionary it came from so the
+/// reader can see which tradition is defining the word.
+model LexiconEntry {
+  id            String   @id @default(cuid())
+  /// The word as looked up, with vowel points and cantillation removed, so every
+  /// vocalisation of one root shares a cache row.
+  lookupWord    String   @map("lookup_word")
+  /// The dictionary's own headword, with its pointing, which is what to display.
+  headword      String
+  lexicon       String
+  language      String   @default("hebrew")
+  transliteration String?
+  strongNumber  String?  @map("strong_number")
+  morphology    String?
+  /// The entry's senses, verbatim, as an array of strings.
+  senses        Json     @default("[]")
+  /// Attribution for the dictionary itself.
+  source        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([lookupWord, lexicon, headword])
+  @@index([lookupWord])
+  @@map("lexicon_entries")
+}
+
 // ============================================================================
 // Search & Analytics
 // ============================================================================
-
 model SearchLog {
   id        String   @id @default(cuid())
   query     String
