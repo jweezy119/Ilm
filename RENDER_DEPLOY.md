@@ -40,7 +40,9 @@ This file documents the services and environment variables needed for deploying 
 | `DATABASE_URL` | `postgresql://...` | From `ilm-db` External URL |
 | `REDIS_URL` | `redis://...` | From `ilm-redis` External URL |
 | `TYPESAFE_API_KEY` | `your-typesafe-key` | From typesafe.ai |
-| `OPENAI_API_KEY` | `your-openai-key` | From platform.openai.com |
+| `OPENROUTER_API_KEY` | `your-openrouter-key` | From openrouter.ai |
+| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | - |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Or `nomic-embed-text`, `bge-large-en-v1.5` |
 | `CORS_ORIGIN` | `https://ilm-web.onrender.com` | Your web URL |
 | `PORT` | `4000` | - |
 | `LOG_LEVEL` | `info` | - |
@@ -101,8 +103,12 @@ services:
           property: connectionString
       - key: TYPESAFE_API_KEY
         sync: false
-      - key: OPENAI_API_KEY
+      - key: OPENROUTER_API_KEY
         sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: EMBEDDING_MODEL
+        value: text-embedding-3-small
       - key: CORS_ORIGIN
         value: https://ilm-web.onrender.com
       - key: PORT
@@ -126,7 +132,7 @@ services:
 
 2. **Set secret environment variables** in `ilm-api`:
    - `TYPESAFE_API_KEY`
-   - `OPENAI_API_KEY`
+   - `OPENROUTER_API_KEY`
 
 3. **Deploy in order**:
    - Database → Redis → API → Web

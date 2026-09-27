@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import { batchScorePassages, batchDetectCrossReferences } from '../src/services/typesafe';
 import { Passage } from '@ilm/shared';
 import { buildOramaIndex, persistOramaIndex } from '../src/search/orama';
+import { generateEmbeddingsBatch } from '../src/services/embeddings';
 
 const prisma = new PrismaClient();
 
@@ -237,19 +238,19 @@ async function saveCrossReference(sourceId: string, ref: any) {
 }
 
 async function generateEmbeddings(passages: Passage[]) {
-  // Placeholder - in production use OpenAI embeddings or local model
-  for (const passage of passages) {
-    const textToEmbed = `${passage.translation} ${passage.originalText}`;
-    // const embedding = await openai.embeddings.create({ model: 'text-embedding-3-small', input: textToEmbed });
-    // await prisma.passage.update({ where: { id: passage.id }, data: { embeddings: embedding.data[0].embedding } });
-    
-    // Mock embedding for now
-    const mockEmbedding = new Array(1536).fill(0).map(() => Math.random() - 0.5);
+  console.log(`  🧮 Generating embeddings for ${passages.length} passages...`);
+  
+  const texts = passages.map(p => `${p.translation} ${p.originalText}`);
+  const embeddings = await generateEmbeddingsBatch(texts);
+  
+  for (let i = 0; i < passages.length; i++) {
     await prisma.passage.update({
-      where: { id: passage.id },
-      data: { embeddings: mockEmbedding },
+      where: { id: passages[i].id },
+      data: { embeddings: embeddings[i] },
     });
   }
+  
+  console.log(`  ✅ Stored ${passages.length} embeddings`);
 }
 
 async function computeAlignments(textId?: string) {
