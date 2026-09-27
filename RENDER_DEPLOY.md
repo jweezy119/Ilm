@@ -22,18 +22,15 @@ This file documents the services and environment variables needed for deploying 
 - **Start Command**: `cd apps/api && npm run start`
 - **Environment**: Node
 - **Region**: Same as database
-- **Plan**: Starter (or higher)
+- **Plan**: Starter (or higher) - **Need at least 512MB RAM for Orama index**
 
-### 4. Static Site (Web) - `ilm-web`
-- **Type**: Static Site
-- **Build Command**: `cd apps/web && npm ci && npm run build`
-- **Publish Directory**: `apps/web/out` (if using `output: 'export'`) OR use Web Service instead
-
-**Alternative**: Deploy web as Web Service:
+### 4. Web Service (Frontend) - `ilm-web`
 - **Type**: Web Service
 - **Build Command**: `cd apps/web && npm ci && npm run build`
 - **Start Command**: `cd apps/web && npm run start`
 - **Environment**: Node
+- **Region**: Same as database
+- **Plan**: Starter
 
 ## Environment Variables for `ilm-api`
 
@@ -42,29 +39,13 @@ This file documents the services and environment variables needed for deploying 
 | `NODE_ENV` | `production` | - |
 | `DATABASE_URL` | `postgresql://...` | From `ilm-db` External URL |
 | `REDIS_URL` | `redis://...` | From `ilm-redis` External URL |
-| `MEILISEARCH_HOST` | `https://your-meilisearch.render.com` | See below |
-| `MEILISEARCH_API_KEY` | `your-master-key` | Set in Meilisearch |
-| `QDRANT_URL` | `https://your-qdrant.render.com` | See below |
-| `QDRANT_API_KEY` | `your-api-key` | Set in Qdrant |
 | `TYPESAFE_API_KEY` | `your-typesafe-key` | From typesafe.ai |
 | `OPENAI_API_KEY` | `your-openai-key` | From platform.openai.com |
 | `CORS_ORIGIN` | `https://ilm-web.onrender.com` | Your web URL |
 | `PORT` | `4000` | - |
 | `LOG_LEVEL` | `info` | - |
 
-## Meilisearch & Qdrant on Render
-
-### Option A: Render Private Services (Recommended)
-Create as **Private Services** in same region:
-- **Meilisearch**: Docker image `getmeili/meilisearch:v1.10`
-  - Env: `MEILI_MASTER_KEY=your-key`
-  - Port: 7700
-- **Qdrant**: Docker image `qdrant/qdrant:v1.8`
-  - Port: 6333
-
-### Option B: External Managed Services
-- **Meilisearch Cloud**: https://cloud.meilisearch.com
-- **Qdrant Cloud**: https://cloud.qdrant.io
+**Note**: No Meilisearch or Qdrant needed! OramaJS runs in-memory inside the API process.
 
 ## Environment Variables for `ilm-web`
 
@@ -99,29 +80,10 @@ services:
           type: pserv
           property: connectionString
 
-  # Meilisearch (Private Service)
-  - type: pserv
-    name: ilm-meilisearch
-    plan: starter
-    region: oregon
-    dockerfilePath: ./Dockerfile.meilisearch
-    envVars:
-      - key: MEILI_MASTER_KEY
-        generateValue: true
-    port: 7700
-
-  # Qdrant (Private Service)
-  - type: pserv
-    name: ilm-qdrant
-    plan: starter
-    region: oregon
-    dockerfilePath: ./Dockerfile.qdrant
-    port: 6333
-
   # API Web Service
   - type: web
     name: ilm-api
-    plan: starter
+    plan: starter  # Need 512MB+ for Orama index
     region: oregon
     buildCommand: cd apps/api && npm ci && npm run build
     startCommand: cd apps/api && npm run start
@@ -137,15 +99,6 @@ services:
           name: ilm-redis
           type: pserv
           property: connectionString
-      - key: MEILISEARCH_HOST
-        value: http://ilm-meilisearch:7700
-      - key: MEILISEARCH_API_KEY
-        fromService:
-          name: ilm-meilisearch
-          type: pserv
-          envVarKey: MEILI_MASTER_KEY
-      - key: QDRANT_URL
-        value: http://ilm-qdrant:6333
       - key: TYPESAFE_API_KEY
         sync: false
       - key: OPENAI_API_KEY
@@ -171,12 +124,12 @@ services:
 
 1. **Create services in Render dashboard** (or use `render.yaml` via "New Blueprint Instance")
 
-2. **Set secret environment variables** in each service:
-   - `ilm-api`: `TYPESAFE_API_KEY`, `OPENAI_API_KEY`
-   - `ilm-meilisearch`: `MEILI_MASTER_KEY` (auto-generated)
+2. **Set secret environment variables** in `ilm-api`:
+   - `TYPESAFE_API_KEY`
+   - `OPENAI_API_KEY`
 
 3. **Deploy in order**:
-   - Database → Redis → Meilisearch → Qdrant → API → Web
+   - Database → Redis → API → Web
 
 4. **Run migrations** after API deploys:
    ```bash
@@ -188,9 +141,28 @@ services:
    ```bash
    # In Render shell for ilm-api
    npx tsx scripts/ingest.ts
+   # Index builds automatically on first search, or trigger:
    npx tsx scripts/index.ts
    ```
+
+## Memory Considerations
+
+- **OramaJS is in-memory** - the index lives in the API process RAM
+- For ~43k verses with text + embeddings: ~200-500MB
+- **Use at least Starter plan (512MB)** on Render
+- Index rebuilds on startup from PostgreSQL (fast - few seconds)
 
 ## Custom Domains (Optional)
 - API: `api.ilm.app` → `ilm-api.onrender.com`
 - Web: `ilm.app` → `ilm-web.onrender.com`
+
+## Persistence Note
+
+Orama index is persisted to disk (`data/orama-index/`) on Render's ephemeral filesystem. On restart:
+1. API starts
+2. Orama loads index from disk (if exists) or rebuilds from PostgreSQL
+3. First request may be slower if rebuild needed
+
+For production, consider:
+- Using Render Disk (persistent volume) for `/app/data`
+- Or accepting rebuild-on-start (fast enough for this dataset size)

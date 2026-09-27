@@ -432,3 +432,23 @@ export const THEME_TAXONOMY = [
 ] as const;
 
 export type Theme = typeof THEME_TAXONOMY[number];
+
+// ============================================================================
+// Recommendation Weights
+// ============================================================================
+
+export interface RecommendationWeights {
+  thematic: number;
+  linguistic: number;
+  historical: number;
+  narrative: number;
+  theological: number;
+}
+
+export const DEFAULT_WEIGHTS: RecommendationWeights = {
+  thematic: 0.3,
+  linguistic: 0.2,
+  historical: 0.15,
+  narrative: 0.15,
+  theological: 0.2,
+};

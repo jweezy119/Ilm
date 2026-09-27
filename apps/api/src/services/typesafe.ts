@@ -4,22 +4,19 @@
  * All recommendations are SCORE-BASED only - no generated inferences
  */
 
-import { TypeSafe } from '@typesafe-ai/sdk';
+import { createTypeSafeClient, TypeSafeClient, ScoreResult, ChoiceResult, NoulResult } from './typesafe-client';
 import { Passage, ThemeScore, CrossRef, CrossRefType, TextId, THEME_TAXONOMY, Theme } from '@ilm/shared';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 // TypeSafe client - initialized lazily
-let typesafeClient: TypeSafe | null = null;
+let typesafeClient: TypeSafeClient | null = null;
 
-function getTypeSafeClient(): TypeSafe {
+function getTypeSafeClient(): TypeSafeClient {
   if (!typesafeClient) {
     const apiKey = process.env.TYPESAFE_API_KEY;
-    if (!apiKey) {
-      throw new Error('TYPESAFE_API_KEY not configured');
-    }
-    typesafeClient = new TypeSafe({ apiKey });
+    typesafeClient = createTypeSafeClient(apiKey);
   }
   return typesafeClient;
 }

@@ -9,6 +9,7 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { registerRoutes } from './routes/api';
 import { PrismaClient } from '@prisma/client';
+import { initializeOramaIndex } from './search/orama';
 
 const prisma = new PrismaClient();
 
@@ -44,6 +45,16 @@ async function main() {
     timeWindow: parseInt(process.env.RATE_LIMIT_WINDOW || '60000'),
     keyGenerator: (req) => req.ip,
   });
+
+  // Initialize Orama search index
+  app.log.info('🔍 Initializing Orama search index...');
+  try {
+    await initializeOramaIndex();
+    app.log.info('✅ Orama search index ready');
+  } catch (error) {
+    app.log.error({ err: error }, '❌ Failed to initialize Orama index');
+    // Don't exit - allow API to start, index will be built on first search
+  }
 
   // Register routes
   await registerRoutes(app);
@@ -114,7 +125,7 @@ async function main() {
     await app.listen({ port, host });
     app.log.info(`🚀 Ilm API running on http://${host}:${port}`);
     app.log.info(`📚 Texts: Quran, Talmud, Torah, Old Testament, New Testament`);
-    app.log.info(`🔍 Search: Semantic + Full-text`);
+    app.log.info(`🔍 Search: OramaJS (in-memory, no external service)`);
     app.log.info(`⚖️  Comparison: Side-by-side with Jev alignments`);
     app.log.info(`💡 Recommendations: Pure scoring-based (no inferences)`);
   } catch (err) {

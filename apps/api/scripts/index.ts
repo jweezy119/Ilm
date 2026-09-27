@@ -1,11 +1,12 @@
 /**
- * Indexing Pipeline with TypeSafe/Jev
- * Processes passages for semantic search, themes, cross-references, and alignments
+ * Indexing Pipeline with TypeSafe/Jev + OramaJS
+ * Processes passages for themes, cross-references, embeddings, and builds Orama search index
  */
 
 import { PrismaClient } from '@prisma/client';
 import { batchScorePassages, batchDetectCrossReferences } from '../src/services/typesafe';
 import { Passage } from '@ilm/shared';
+import { buildOramaIndex, persistOramaIndex } from '../src/search/orama';
 
 const prisma = new PrismaClient();
 
@@ -15,10 +16,18 @@ interface IndexingOptions {
   skipThemes?: boolean;
   skipCrossRefs?: boolean;
   skipEmbeddings?: boolean;
+  skipOrama?: boolean;
 }
 
 export async function runIndexingPipeline(options: IndexingOptions = {}) {
-  const { textId, batchSize = 10, skipThemes = false, skipCrossRefs = false, skipEmbeddings = true } = options;
+  const { 
+    textId, 
+    batchSize = 10, 
+    skipThemes = false, 
+    skipCrossRefs = false, 
+    skipEmbeddings = true,
+    skipOrama = false
+  } = options;
   
   console.log('🔍 Starting indexing pipeline...');
   
@@ -43,7 +52,7 @@ export async function runIndexingPipeline(options: IndexingOptions = {}) {
     
     console.log(`📊 Processing ${totalPassages} passages...`);
     
-    // Process in batches
+    // Process in batches for TypeSafe operations
     let processed = 0;
     let offset = 0;
     
@@ -137,6 +146,13 @@ export async function runIndexingPipeline(options: IndexingOptions = {}) {
     console.log('  ⚖️  Computing alignments...');
     await computeAlignments(textId);
     
+    // Step 5: Build Orama search index
+    if (!skipOrama) {
+      console.log('  🔍 Building Orama search index...');
+      await buildOramaIndex(1000);
+      await persistOramaIndex();
+    }
+    
     await prisma.indexingJob.update({
       where: { id: job.id },
       data: { 
@@ -222,7 +238,6 @@ async function saveCrossReference(sourceId: string, ref: any) {
 
 async function generateEmbeddings(passages: Passage[]) {
   // Placeholder - in production use OpenAI embeddings or local model
-  // For each passage, generate embedding and store
   for (const passage of passages) {
     const textToEmbed = `${passage.translation} ${passage.originalText}`;
     // const embedding = await openai.embeddings.create({ model: 'text-embedding-3-small', input: textToEmbed });
@@ -239,17 +254,13 @@ async function generateEmbeddings(passages: Passage[]) {
 
 async function computeAlignments(textId?: string) {
   // Compute pairwise alignments for passages that might be compared
-  // This is expensive - only compute for likely comparison pairs
-  
   const where = textId ? { textId } : {};
   const passages = await prisma.passage.findMany({
     where,
     select: { id: true, textId: true, bookId: true, chapterNum: true, verseNum: true },
-    take: 1000, // Limit for performance
+    take: 1000,
   });
   
-  // For now, compute alignments within same chapter across texts
-  // In production, use more sophisticated candidate selection
   console.log('  Alignment computation would run here (expensive operation)');
 }
 
@@ -269,93 +280,6 @@ function categorizeTheme(theme: string): string {
     if (themes.includes(theme)) return cat;
   }
   return 'other';
-}
-
-// ============================================================================
-// MEILISEARCH INDEXING
-// ============================================================================
-
-export async function indexToMeilisearch(textId?: string) {
-  const MeiliSearch = require('meilisearch');
-  const client = new MeiliSearch({
-    host: process.env.MEILISEARCH_HOST || 'http://localhost:7700',
-    apiKey: process.env.MEILISEARCH_API_KEY,
-  });
-  
-  const index = client.index('passages');
-  
-  const where = textId ? { textId } : {};
-  const passages = await prisma.passage.findMany({
-    where,
-    include: {
-      themes: { include: { theme: true } },
-    },
-  });
-  
-  console.log(`📇 Indexing ${passages.length} passages to Meilisearch...`);
-  
-  const documents = passages.map(p => ({
-    id: p.id,
-    passageKey: p.passageKey,
-    textId: p.textId,
-    book: p.bookId,
-    chapter: p.chapterNum,
-    verse: p.verseNum,
-    originalText: p.originalText,
-    translation: p.primaryTranslation,
-    language: 'english',
-    verseOrder: p.verseOrder,
-    themes: p.themes.map(t => t.theme.name),
-    themeScores: p.themes.reduce((acc, t) => ({ ...acc, [t.theme.name]: t.score }), {}),
-    embeddings: p.embeddings,
-    metadata: p.metadata,
-  }));
-  
-  await index.addDocumentsInBatches(documents, 1000);
-  console.log('✅ Meilisearch indexing complete');
-}
-
-// ============================================================================
-// QDRANT VECTOR INDEXING
-// ============================================================================
-
-export async function indexToQdrant(textId?: string) {
-  const qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
-  const collection = 'passages';
-  
-  const where = textId ? { textId } : {};
-  const passages = await prisma.passage.findMany({
-    where,
-    where: { embeddings: { not: [] } },
-  });
-  
-  console.log(`🔢 Indexing ${passages.length} passages to Qdrant...`);
-  
-  const points = passages.map((p, i) => ({
-    id: i + 1, // Qdrant needs numeric IDs
-    vector: p.embeddings,
-    payload: {
-      passageId: p.id,
-      passageKey: p.passageKey,
-      textId: p.textId,
-      book: p.bookId,
-      chapter: p.chapterNum,
-      verse: p.verseNum,
-    },
-  }));
-  
-  // Batch upsert
-  const batchSize = 100;
-  for (let i = 0; i < points.length; i += batchSize) {
-    const batch = points.slice(i, i + batchSize);
-    await fetch(`${qdrantUrl}/collections/${collection}/points`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ points: batch }),
-    });
-  }
-  
-  console.log('✅ Qdrant indexing complete');
 }
 
 // Run if called directly

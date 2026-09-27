@@ -31,36 +31,6 @@ services:
       timeout: 5s
       retries: 5
 
-  meilisearch:
-    image: getmeili/meilisearch:v1.10
-    container_name: ilm-meilisearch
-    environment:
-      MEILI_MASTER_KEY: your_master_key_here
-      MEILI_ENV: development
-    ports:
-      - "7700:7700"
-    volumes:
-      - meilisearch_data:/meili_data
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:7700/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  qdrant:
-    image: qdrant/qdrant:v1.8
-    container_name: ilm-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   api:
     build:
       context: ./apps/api
@@ -70,10 +40,8 @@ services:
       NODE_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ilm?schema=public
       REDIS_URL: redis://redis:6379
-      MEILISEARCH_HOST: http://meilisearch:7700
-      MEILISEARCH_API_KEY: your_master_key_here
-      QDRANT_URL: http://qdrant:6333
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       PORT: 4000
       CORS_ORIGIN: http://localhost:3000
     ports:
@@ -82,10 +50,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      meilisearch:
-        condition: service_healthy
-      qdrant:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
@@ -112,5 +76,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  meilisearch_data:
-  qdrant_data:
