@@ -508,14 +508,21 @@ function toPassage(row: PassageRow): Passage {
     verse: row.verseNum,
     originalText: row.originalText,
     translation: row.primaryTranslation,
-    alternativeTranslations: row.passageTranslations.map((t) => ({
-      id: t.translation.id,
-      language: (t.translation.language as never) ?? 'english',
-      translator: t.translation.translator ?? t.translation.name,
-      year: t.translation.year ?? undefined,
-      text: t.text,
-      isPrimary: t.translation.isPrimary,
-    })),
+    primaryTranslationName:
+      row.passageTranslations.find((t) => t.translation.isPrimary)?.translation.name ??
+      row.passageTranslations[0]?.translation.name,
+    // The primary is filtered out: it is already in `translation`, and offering it
+    // as an "alternative" showed the reader a second copy of the text on screen.
+    alternativeTranslations: row.passageTranslations
+      .filter((t) => !t.translation.isPrimary && t.text.trim() !== row.primaryTranslation.trim())
+      .map((t) => ({
+        id: t.translation.id,
+        language: (t.translation.language as never) ?? 'english',
+        translator: t.translation.translator ?? t.translation.name,
+        year: t.translation.year ?? undefined,
+        text: t.text,
+        isPrimary: t.translation.isPrimary,
+      })),
     metadata: {
       language: (row.language as never) ?? 'english',
       writingSystem: WRITING_SYSTEM[row.language] ?? 'Latin',

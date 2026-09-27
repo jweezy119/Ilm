@@ -8,6 +8,7 @@ import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Shell, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
+import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
 import { useComparisonStore, useSettingsStore } from '@/store';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, TEXT_STYLES } from '@/lib/utils';
 
@@ -24,6 +25,7 @@ export default function PassagePage() {
   const passageKey = (params?.key ?? []).map(decodeURIComponent).join(':');
 
   const [passage, setPassage] = useState<Passage | null>(null);
+  const translation = useTranslationChoice(passage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,25 +126,16 @@ export default function PassagePage() {
 
             <section>
               <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">Translation</h2>
-              <p className="text-lg leading-relaxed text-ink-800 dark:text-ink-200">{passage.translation}</p>
+              {/* Driven by the reader's choice, so the text under the heading is
+                  always the one the switcher has selected. */}
+              <p className="text-lg leading-relaxed text-ink-800 dark:text-ink-200">{translation.active.text}</p>
+              <TranslationSwitcher
+                options={translation.options}
+                activeName={translation.active.name}
+                onChoose={translation.choose}
+                className="mt-2"
+              />
             </section>
-
-            {passage.alternativeTranslations.length > 0 ? (
-              <details className="mt-4 rounded-lg border border-ink-200 p-3 dark:border-ink-800">
-                <summary className="cursor-pointer text-sm font-medium">
-                  {passage.alternativeTranslations.length} other translation
-                  {passage.alternativeTranslations.length === 1 ? '' : 's'}
-                </summary>
-                <div className="mt-3 space-y-3">
-                  {passage.alternativeTranslations.map((alt) => (
-                    <div key={alt.id}>
-                      <p className="text-xs font-medium text-ink-500">{alt.translator}</p>
-                      <p className="text-sm text-ink-700 dark:text-ink-300">{alt.text}</p>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            ) : null}
           </article>
 
           {passage.themes.length > 0 ? (

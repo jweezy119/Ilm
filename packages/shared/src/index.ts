@@ -76,6 +76,18 @@ export const PassageSchema = z.object({
   verse: z.number().int().positive(),
   originalText: z.string(),
   translation: z.string(), // Primary English translation
+  /**
+   * Name of the primary translation, so a switcher can say what you are reading
+   * without the reader having to infer it from the text.
+   */
+  primaryTranslationName: z.string().optional(),
+  /**
+   * Translations other than the primary.
+   *
+   * The primary is excluded deliberately: it is already in `translation`, and
+   * listing it here too made the UI offer "1 other translation" whose text was
+   * identical to the one on screen.
+   */
   alternativeTranslations: z.array(TranslationSchema).default([]),
   metadata: PassageMetadataSchema,
   embeddings: z.array(z.number()).default([]), // Semantic vector
