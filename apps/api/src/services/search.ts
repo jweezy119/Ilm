@@ -134,7 +134,7 @@ function queryTerms(query: string): string[] {
 function termCoverage(passage: Passage, terms: string[]): number {
   if (terms.length === 0) return 1;
 
-  const haystack = `${passage.translation} ${passage.originalText}`.toLowerCase();
+  const haystack = passage.translation.toLowerCase();
   let hits = 0;
   for (const term of terms) {
     if (haystack.includes(term)) hits += 1;
@@ -166,7 +166,7 @@ async function runFullText(term: string, query: SearchQuery) {
     themes: query.filters?.themes,
     limit: Math.min(query.limit + query.offset + EXAMINATION_SLACK, MAX_HYDRATE),
     offset: 0,
-    properties: ['translation', 'originalText', 'book', 'themes'],
+    properties: ['translation', 'book', 'themes'],
   });
 }
 
@@ -219,7 +219,6 @@ async function runExpanded(term: string, query: SearchQuery, theme: string) {
 function matchedFields(passage: Passage, term: string): string[] {
   const fields: string[] = [];
   if (matches(passage.translation, term)) fields.push('translation');
-  if (passage.originalText && matches(passage.originalText, term)) fields.push('originalText');
   if (passage.themes.some((theme: { theme: string }) => theme.theme.includes(term.toLowerCase()))) fields.push('themes');
   return fields;
 }
@@ -240,7 +239,6 @@ function buildHighlights(passage: Passage, term: string): Record<string, string[
   if (!term.trim()) return highlights;
 
   if (matches(passage.translation, term)) highlights.translation = [snippet(passage.translation, term)];
-  if (passage.originalText && matches(passage.originalText, term)) highlights.originalText = [snippet(passage.originalText, term)];
   if (passage.themes.length > 0) highlights.themes = passage.themes.slice(0, 3).map((t) => t.theme);
 
   return highlights;

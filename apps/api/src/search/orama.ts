@@ -19,13 +19,16 @@ const prisma = new PrismaClient();
 // SCHEMA
 // ============================================================================
 
+// `originalText` is deliberately NOT indexed. Orama's default tokenizer returns
+// zero matches for Arabic, Hebrew and Aramaic, so the field cost ~36 MB of a
+// 512 MB budget to provide no working search. The original text is still served
+// from Postgres in passage responses; only full-text search over it is absent.
 const passageSchema = {
   passageKey: 'string',
   textId: 'string',
   book: 'string',
   chapter: 'number',
   verse: 'number',
-  originalText: 'string',
   translation: 'string',
   language: 'string',
   verseOrder: 'number',
@@ -51,7 +54,6 @@ export type PassageDoc = {
   book: string;
   chapter: number;
   verse: number;
-  originalText: string;
   translation: string;
   language: string;
   verseOrder: number;
@@ -61,7 +63,7 @@ export type PassageDoc = {
 
 type IndexDB = Orama<typeof passageSchema>;
 
-type SearchProps = 'originalText' | 'translation' | 'book' | 'themes';
+type SearchProps = 'translation' | 'book' | 'themes';
 
 export interface IndexFilters {
   textIds?: TextId[];
@@ -166,7 +168,6 @@ export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
       book: p.bookSlug,
       chapter: p.chapterNum,
       verse: p.verseNum,
-      originalText: p.originalText,
       translation: p.primaryTranslation,
       language: p.language,
       verseOrder: p.verseOrder,
@@ -226,7 +227,7 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
     term,
     limit = 20,
     offset = 0,
-    properties = ['translation', 'originalText'],
+    properties = ['translation', 'book', 'themes'],
     sortBy = 'relevance',
     sortOrder = 'desc',
   } = options;
