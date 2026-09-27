@@ -47,6 +47,7 @@ Thumbs.db
 logs/
 *.log
 
-# Local runtime data
+# Local runtime data: the search index is generated and can reach ~100 MB
 apps/api/data/
+data/
 apps/api/.env.local
