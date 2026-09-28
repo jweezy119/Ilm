@@ -135,15 +135,28 @@ async function coverageCache(passages: number): Promise<Coverage> {
   // engine has to ask the database, and the route used to call this a second time
   // for the same answer.
   const indexedTexts = await indexedTextIds();
-  // DISTINCT rather than Prisma's groupBy, which pulls every row through the
-  // client; this is one index scan.
+
+  /*
+   * The Postgres engine indexes every text, so there is no subset to describe and
+   * the DISTINCT plus per-text count below is pure cost on the one route the
+   * platform polls. It was enough to push /health past 500ms on a cold pool and
+   * get the service restarted for being slow — three queries to report a
+   * coverage gap that does not exist.
+   */
+  /*
+   * The corpus list comes from the `texts` table, which holds one row per corpus.
+   * A DISTINCT over `passages` is the obvious way to get the same five values and
+   * scans 45,453 rows to do it; the texts table is a five-row lookup.
+   */
   const rows = await prisma.$queryRaw<Array<{ text_id: string }>>`
-    SELECT DISTINCT text_id FROM passages ORDER BY text_id
+    SELECT text_id FROM texts ORDER BY text_id
   `;
   const allTexts = rows.map((r) => r.text_id);
   const value: Coverage = {
     allTexts,
     indexedTexts,
+    // A per-text count is only meaningful when the engine holds a subset. When it
+    // holds everything, counting again is the same number the caller already has.
     indexedPassages: indexedTexts
       ? await prisma.passage.count({ where: { textId: { in: indexedTexts as never[] } } })
       : passages,
