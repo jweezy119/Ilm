@@ -118,32 +118,29 @@ DATABASE_URL=... npm run ingest
 DATABASE_URL=... npm run index
 ```
 
-### Memory: the search index decides your instance size
+### Search: Postgres, not an in-process index
 
-Full-text retrieval runs in an in-process Orama index, so the corpus is held in
-RAM. Measured on the full 45,453-passage corpus, a **one-property** index already
-needed **745 MB** — the document count is the floor, so no amount of schema
-trimming fits a small instance. A Render Starter (512 MB) is killed by
-`SIGKILL` partway through the build, and because the build is retried on every
-boot it never finishes: the service crash-loops and search never becomes ready.
+Full-text retrieval runs in the database, in a `tsvector` column on `passages` with
+a GIN index, maintained by triggers so it cannot drift from the data. Nothing is
+held in the API's memory, so the whole corpus is searchable on a 512 MB instance
+and the API boots in seconds instead of rebuilding an index first.
 
-So the index covers a subset of the corpus, whole texts at a time, and
-`/health` reports which texts are searchable under `search.indexedTexts` and
-`search.unindexedTexts`. A text that is not indexed is reported rather than
-quietly returning nothing.
+The in-process Orama index (`SEARCH_ENGINE=orama`) is still there and still
+working, because switching between them changed what "search" means and a rollback
+should be one word of configuration. It also has two limitations worth remembering
+if it is ever turned back on:
 
-| `SEARCH_INDEX_TEXTS` | Passages | Peak RSS |
-| --- | --- | --- |
-| `quran` | 6,236 | ~340 MB |
-| `quran,torah` (default) | 12,082 | ~430 MB |
-| `quran,torah,talmud` | 14,351 | ~510 MB — too tight for 512 MB |
-| `all` | 45,453 | ~1.5 GB |
+- It held every indexed passage in RAM at a measured ~35 KB each, which caps a
+  512 MB instance at roughly 13,000 of the 45,453 passages. That is why it was
+  restricted to `quran,torah`.
+- **It never contained the scripture.** It indexed theme names, book slugs and
+  translation names, so "mercy" matched because passages carry a theme called
+  mercy, not because the word appears in them. A word absent from the theme
+  vocabulary returned nothing however common it was in the text — "nitre" found
+  nothing at all. The Postgres index searches the English translation and still
+  indexes themes, so everything findable before remains findable.
 
-The Talmud is disproportionately expensive: 2,269 passages add roughly 200 MB.
-
-`API_HEAP_MB` (default 320) pins V8's heap so it cannot grow into the container
-limit. On a larger instance, set `SEARCH_INDEX_TEXTS=all` and raise
-`API_HEAP_MB`; no code change is needed.
+`SEARCH_INDEX_TEXTS` and `API_HEAP_MB` apply only to the Orama engine.
 
 Migrations are **not** a manual step for the API service: it runs
 `prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if

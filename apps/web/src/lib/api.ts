@@ -99,6 +99,8 @@ export interface Health {
    */
   search: {
     ready: boolean;
+    /** 'postgres' searches the scripture; 'orama' matches theme names and book slugs. */
+    engine?: 'postgres' | 'orama';
     passagesIndexed: number;
     passagesTotal: number;
     /** Texts a search will cover. */

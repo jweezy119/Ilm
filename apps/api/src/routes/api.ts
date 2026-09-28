@@ -41,7 +41,7 @@ import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
-import { isIndexReady, invalidateOramaIndex, indexedTextIds } from '../search/orama';
+import { isIndexReady, invalidateOramaIndex, indexedTextIds, engineName } from '../search/engine';
 import { getEmbeddingConfig } from '../services/embeddings';
 import { HttpError } from '../lib/errors';
 
@@ -121,6 +121,8 @@ function parse<T extends z.ZodTypeAny>(schema: T, input: unknown): z.infer<T> {
 interface Coverage {
   indexedPassages: number;
   allTexts: string[];
+  /** Texts the engine has, or null when it has all of them. */
+  indexedTexts: string[] | null;
 }
 
 let coverageMemo: { at: number; value: Coverage } | null = null;
@@ -129,7 +131,10 @@ let coverageMemo: { at: number; value: Coverage } | null = null;
 async function coverageCache(passages: number): Promise<Coverage> {
   if (coverageMemo && Date.now() - coverageMemo.at < 60_000) return coverageMemo.value;
 
-  const indexedTexts = indexedTextIds();
+  // Awaited once, here. The Orama engine answers from configuration; the Postgres
+  // engine has to ask the database, and the route used to call this a second time
+  // for the same answer.
+  const indexedTexts = await indexedTextIds();
   // DISTINCT rather than Prisma's groupBy, which pulls every row through the
   // client; this is one index scan.
   const rows = await prisma.$queryRaw<Array<{ text_id: string }>>`
@@ -138,6 +143,7 @@ async function coverageCache(passages: number): Promise<Coverage> {
   const allTexts = rows.map((r) => r.text_id);
   const value: Coverage = {
     allTexts,
+    indexedTexts,
     indexedPassages: indexedTexts
       ? await prisma.passage.count({ where: { textId: { in: indexedTexts as never[] } } })
       : passages,
@@ -179,8 +185,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // health check that slow is a health check the platform stops trusting. The
     // corpus only moves when something is ingested, so a short TTL is enough.
     const coverage = await coverageCache(passages);
-    const { indexedPassages, allTexts } = coverage;
-    const indexedTexts = indexedTextIds();
+    const { indexedPassages, allTexts, indexedTexts } = coverage;
     const indexed = indexedTexts ? new Set(indexedTexts) : new Set(allTexts);
 
     return ok({
@@ -189,6 +194,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       version: process.env.npm_package_version ?? '0.1.0',
       search: {
         ready: isIndexReady(),
+        // Which engine answered, because the two rank differently: the in-process
+        // index matches theme names and book slugs, Postgres matches the scripture.
+        engine: engineName,
         passagesIndexed: indexedPassages,
         passagesTotal: passages,
         // Texts a search will cover, and texts it will not. `null` means all.
@@ -427,7 +435,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       await invalidateOramaIndex();
-      const { initializeOramaIndex } = await import('../search/orama');
+      const { initializeOramaIndex } = await import('../search/engine');
       await initializeOramaIndex();
       await prisma.indexingJob.update({ where: { id: job.id }, data: { status: 'completed', completedAt: new Date(), progress: 100 } });
       return ok({ jobId: job.id, status: 'completed' });

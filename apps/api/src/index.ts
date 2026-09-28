@@ -14,7 +14,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import { ZodError } from 'zod';
 import { registerRoutes } from './routes/api';
 import { HttpError } from './lib/errors';
-import { initializeOramaIndex } from './search/orama';
+import { initializeOramaIndex } from './search/engine';
 import { prisma } from './services/passage';
 import { getJevJudge } from './services/typesafe-client';
 

@@ -7,7 +7,7 @@
  */
 
 import { SearchQuery, SearchResponse, SearchResult, Passage, TextId, SearchIntent, CorpusVerdict } from '@ilm/shared';
-import { searchIndex, getIndexedPassage, getIndexedThemes, initializeOramaIndex, type PassageDoc } from '../search/orama';
+import { searchIndex, getIndexedPassage, getIndexedThemes, initializeOramaIndex, type PassageDoc } from '../search/engine';
 import { getPassagesByKeys, prisma } from './passage';
 import { classifySearchIntent, localIntent, expandQueryTheme, rerankForQuery, blendSearchScore, themeSearchTerms, significantTerms, type QueryExpansion, type ScoreSource } from './typesafe';
 

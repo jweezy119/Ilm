@@ -22,7 +22,7 @@ import {
 } from './typesafe';
 import { getPassageById, getPassagesByKeys, prisma } from './passage';
 import { NotFoundError } from '../lib/errors';
-import { searchIndex } from '../search/orama';
+import { searchIndex } from '../search/engine';
 
 const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
 
