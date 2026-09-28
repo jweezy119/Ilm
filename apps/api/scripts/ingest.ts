@@ -32,7 +32,7 @@ const QURAN_TRANSLATIONS = [
   { id: 22, name: 'Yusuf Ali', primary: false },
 ];
 
-const BIBLE_BOOKS: Record<'ot' | 'nt', string[]> = {
+export const BIBLE_BOOKS: Record<'ot' | 'nt', string[]> = {
   ot: [
     'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
     'Joshua', 'Judges', 'Ruth', '1 Samuel', '2 Samuel',

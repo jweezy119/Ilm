@@ -105,8 +105,26 @@ async function main(): Promise<void> {
     });
 
     let bookFilled = 0;
+    let skippedChapters = 0;
 
     for (const { chapterNum } of chapters) {
+      /*
+       * Checked before the request, not after.
+       *
+       * A completed chapter has nothing to update, and asking Sefaria for 929
+       * chapters on every re-run turns an idempotent script into an hour of
+       * network calls. The count is a cheap indexed read; the request is not.
+       * This is what makes retrying the handful of chapters that failed on a
+       * transient error a minute of work instead of a full re-ingest.
+       */
+      const remaining = await prisma.passage.count({
+        where: { bookRef: book.id, chapterNum, originalText: '' },
+      });
+      if (remaining === 0) {
+        skippedChapters += 1;
+        continue;
+      }
+
       const ref = `${title}.${chapterNum}`;
       const data = await getJson<SefariaChapter>(
         `${SEFARIA_API}/texts/${encodeURIComponent(ref)}?context=0&commentary=0&pad=0&wrap_per_vertex=0`,
@@ -165,7 +183,7 @@ async function main(): Promise<void> {
       await sleep(50);
     }
 
-    console.log(`  ${book.bookId.padEnd(20)} ${bookFilled} verses filled`);
+    console.log(`  ${book.bookId.padEnd(20)} ${bookFilled} verses filled${skippedChapters > 0 ? ` (${skippedChapters} chapters already complete)` : ''}`);
   }
 
   const remaining = await prisma.passage.count({ where: { textId: 'ot', originalText: '' } });

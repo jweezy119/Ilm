@@ -21,7 +21,9 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "ingest-nt-original": "tsx scripts/ingest-nt-original.ts",
+    "ingest-ot-original": "tsx scripts/ingest-ot-original.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
