@@ -32,6 +32,17 @@ const MODULE = 'grctcgnt';
 const URL = `https://ebible.org/Scriptures/${MODULE}_usfm.zip`;
 const DRY_RUN = process.argv.includes('--dry-run');
 
+/**
+ * Overwrite verses that already have text.
+ *
+ * The script is update-only and skips filled verses, which is what makes a re-run
+ * cheap. That is also why a bad parse could not be corrected: the first ingest
+ * stored Strong's markup on every verse, and a re-run saw 7,957 complete chapters
+ * and did nothing. This flag is the repair path, for that and for a future change
+ * to the parser.
+ */
+const FORCE = process.argv.includes('--force');
+
 /** Text-critical apparatus characters, present in the Greek modules. */
 const CRITICAL = /[\u2E00-\u2E03]/g;
 
@@ -91,25 +102,65 @@ function readZip(buffer: Buffer): Map<string, Buffer> {
  *
  * Order matters: footnote blocks come out first, or fragments of apparatus notes
  * end up embedded in words.
+ *
+ * The `+` in the command pattern is load-bearing. eBible marks a Strong's-tagged
+ * word as `\+w word|strong="G2532"\+w*`, and a pattern of `\\[a-z0-9]+` does not
+ * match a backslash followed by a literal plus — so the markers survived, and
+ * every verse in the corpus rendered as
+ *
+ *   Οὕτω \+w γὰρ|strong="G1063"\+w* ἠγάπησεν
+ *
+ * which is what the first ingest of this corpus actually stored. The attribute is
+ * removed separately because it is not a backslash command at all.
  */
-function stripUsfm(text: string): string {
-  return text
-    .replace(/\\f\s+[^*]*?\\f\*/g, ' ')
-    .replace(/\\f\*/g, ' ')
-    .replace(/\\w\s+([^|]*?)\|[^\\]*\\w\*/g, '$1')
-    .replace(/\\[a-z0-9]+\s*/g, ' ')
-    .replace(CRITICAL, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+export function stripUsfm(text: string): string {
+  return (
+    text
+      .replace(/\\f\s+[^*]*?\\f\*/g, ' ')
+      /*
+       * The footnote *closer* is removed, not spaced.
+       *
+       * eBible writes `Χριστοῦ \f* , υἱοῦ` — with a space on either side of the
+       * marker. Replacing the closer with a space leaves "Χριστοῦ ,", and 6,217
+       * of 7,950 verses came out of the first ingest looking like that.
+       */
+      .replace(/\\f\*/g, '')
+      // |strong="G2532" and any other |name="value" attribute on a word.
+      .replace(/\|[a-zA-Z0-9_-]+="[^"]*"/g, '')
+      /*
+       * Inline markers vanish; standalone commands become a space.
+       *
+       * `\+w`, `\+bd` and `\+sup` sit against a word and mark it up, so
+       * replacing them with a space punctures the text: "κόσμον\+bd," becomes
+       * "κόσμον ,". A real command like `\par` or `\nb` separates words and
+       * does need the space. Two patterns, in that order.
+       */
+      .replace(/\\\+[a-zA-Z0-9*]+/g, '')
+      .replace(/\\[a-zA-Z0-9*]+/g, ' ')
+      .replace(CRITICAL, '')
+      .replace(/[\u00a6\u00b7]/g, ' ')
+      .replace(/\s+/g, ' ')
+      /*
+       * Tidy punctuation spacing, because the source does not.
+       *
+       * Some verses carry a literal space before their comma even with every
+       * marker removed, so this is not redundant with the rules above — it is the
+       * backstop that makes the stored text read as Greek rather than as a
+       * conversion artefact. Closing quote and apostrophe are left alone: a space
+       * before a right single quotation mark is correct in Greek.
+       */
+      .replace(/\s+([,.;:!?·])/g, '$1')
+      .trim()
+  );
 }
 
-interface Verse {
+export interface Verse {
   chapter: number;
   verse: number;
   text: string;
 }
 
-function parseUsfm(source: string): Verse[] {
+export function parseUsfm(source: string): Verse[] {
   const verses: Verse[] = [];
   let chapter = 0;
   let current: Verse | null = null;
@@ -182,9 +233,10 @@ async function main(): Promise<void> {
       greek.get(verse.chapter)!.set(verse.verse, verse.text);
     }
 
-    // Only verses that already exist, and only the ones still empty.
+    // Only verses that already exist, and — unless repairing — only the empty
+    // ones. Never inserts: a verse the Greek does not have must not be minted.
     const passages = await prisma.passage.findMany({
-      where: { textId: 'nt', bookSlug: book, originalText: '' },
+      where: { textId: 'nt', bookSlug: book, ...(FORCE ? {} : { originalText: '' }) },
       select: { id: true, chapterNum: true, verseNum: true },
       orderBy: [{ chapterNum: 'asc' }, { verseNum: 'asc' }],
     });
@@ -219,7 +271,7 @@ async function main(): Promise<void> {
 
   const remaining = await prisma.passage.count({ where: { textId: 'nt', originalText: '' } });
 
-  console.log(`\n${DRY_RUN ? 'would fill' : '✅ filled'} ${filled} verses`);
+  console.log(`\n${DRY_RUN ? 'would fill' : '✅ filled'} ${filled} verses${FORCE ? ' (forced overwrite)' : ''}`);
   // Greek and KJV do not divide every passage identically, so a handful of
   // English verses have no Greek counterpart. They are left empty on purpose:
   // minting a row for them would surface a passage with no translation.
@@ -227,6 +279,11 @@ async function main(): Promise<void> {
   console.log(`   still empty: ${remaining}`);
 }
 
+// Guarded so a test can import the parser without running an ingest. The script
+// is run directly (`npx tsx scripts/ingest-nt-original.ts`), where this is true.
+const isDirectRun = process.argv[1]?.includes('ingest-nt-original');
+
+if (isDirectRun) {
 main()
   .then(() => prisma.$disconnect())
   .catch(async (error) => {
@@ -234,3 +291,4 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
+}
