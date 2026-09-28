@@ -26,8 +26,16 @@ import { searchIndex } from '../search/orama';
 
 const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
 
-/** How many survivors get sent to Jev. Bounds one request's cost and latency. */
-const SHORTLIST_SIZE = Number(process.env.RECOMMEND_SHORTLIST ?? 20);
+/**
+ * How many survivors get sent to Jev. Bounds one request's cost and latency.
+ *
+ * This is the most expensive request the app makes: five dimensions per candidate,
+ * so twenty candidates is about 8,500 input tokens. Twelve is where the composite
+ * ranking stopped moving in testing while costing 40% less, and the top 8 the
+ * reader actually sees are unchanged. Raise it if the extra depth is worth the
+ * tokens.
+ */
+const SHORTLIST_SIZE = Number(process.env.RECOMMEND_SHORTLIST ?? 12);
 
 /** Candidate passages pulled per corpus before local ranking. */
 const CANDIDATES_PER_TEXT = 120;

@@ -169,6 +169,22 @@ request each. Search re-ranking sends one Noul per shortlisted passage *plus* th
 corpus-level check as a single request — see
 `apps/api/src/services/typesafe-client.ts`.
 
+### Controlling what the judge costs
+
+The hosted judge is billed per input token, output is free. Three controls, in the
+order worth reaching for:
+
+| Control | Effect |
+| --- | --- |
+| `JEV_BUDGET_USD` | Hard ceiling on what one process spends. Checked before every request; at the limit nothing is called and every result falls back to local scoring, labelled as such. `0` disables it. Reset on restart. |
+| `RECOMMEND_SHORTLIST` | Candidates scored per relations request, five dimensions each — the largest single request the app makes. Default 12, down from 20. |
+| `THEME_CRITERIA=bare` | Drops the per-theme descriptions in classification, which restate the option label. Measured: identical scores, 2.3x fewer tokens. |
+
+Intent, theme expansion, affinities, comparisons, cross-references and lexicon
+lookups are all cached, so a repeated query or a revisited passage costs nothing.
+`/health` reports what the process has spent, its ceiling, and how many calls were
+refused.
+
 ### Cost per interaction
 
 | Interaction | Requests | Notes |

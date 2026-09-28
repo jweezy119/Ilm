@@ -40,7 +40,7 @@ import { comparePassages, getParallelTranslations, generateComparisonUrl, comput
 import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
-import { getJevJudge, describeJudgeChain } from '../services/typesafe-client';
+import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
 import { isIndexReady, invalidateOramaIndex } from '../search/orama';
 import { getEmbeddingConfig } from '../services/embeddings';
 import { HttpError } from '../lib/errors';
@@ -142,6 +142,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       // Every engine in the order it is tried, so a reader can see whether a result
       // was judged by the hosted model, by something running locally, or not at all.
       judges: describeJudgeChain(),
+      // What this process has spent on the hosted judge, and the ceiling it will
+      // not pass. Surfaced so a budget stop is visible rather than silent.
+      budget: {
+        spentUsd: Number(judgeBudget().spentUsd.toFixed(6)),
+        limitUsd: judgeBudget().limitUsd,
+        exhausted: judgeBudget().exhausted,
+        refused: judgeBudget().refused,
+      },
       embeddings: {
         provider: embeddingConfig?.provider ?? null,
         model: embeddingConfig?.model ?? null,

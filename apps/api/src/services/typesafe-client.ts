@@ -12,8 +12,10 @@
 import { TypeSafeClient, choice, noul, score } from '@typesafe-ai/sdk';
 import type { ChoiceCriteria, EntryType, Questions, ScoreCriteria } from '@typesafe-ai/sdk';
 import type { ScoreSource } from '@ilm/shared';
+import { judgeBudget, recordJudgeUsage, reserveJudgeCall } from './judge-budget';
 
 export type { ChoiceCriteria, EntryType, Questions, ScoreCriteria };
+export { judgeBudget };
 
 export interface JevAnswer {
   /** Probability-weighted 0-1 value for score/noul questions. */
@@ -171,7 +173,17 @@ class SdkJudge implements JevJudge {
       }
     }
 
-    const { answers } = await this.client.systemOne({ state, questions: payload as unknown as Questions });
+    // The budget is checked here, in the one place every hosted request passes
+    // through, so a new caller cannot bypass it. Refusing is not an error: the
+    // chain moves to the next engine and, failing that, the caller falls back to
+    // its deterministic path and labels the result accordingly.
+    if (!reserveJudgeCall()) {
+      throw new Error(`Judge budget reached (${judgeBudget().spentUsd.toFixed(4)} spent)`);
+    }
+
+    const { answers, usage } = await this.client.systemOne({ state, questions: payload as unknown as Questions });
+
+    if (usage) recordJudgeUsage(usage.input_tokens, usage.output_tokens);
 
     const out: Record<string, JevAnswer> = {};
     for (const q of questions) {
