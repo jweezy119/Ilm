@@ -118,6 +118,33 @@ DATABASE_URL=... npm run ingest
 DATABASE_URL=... npm run index
 ```
 
+### Memory: the search index decides your instance size
+
+Full-text retrieval runs in an in-process Orama index, so the corpus is held in
+RAM. Measured on the full 45,453-passage corpus, a **one-property** index already
+needed **745 MB** — the document count is the floor, so no amount of schema
+trimming fits a small instance. A Render Starter (512 MB) is killed by
+`SIGKILL` partway through the build, and because the build is retried on every
+boot it never finishes: the service crash-loops and search never becomes ready.
+
+So the index covers a subset of the corpus, whole texts at a time, and
+`/health` reports which texts are searchable under `search.indexedTexts` and
+`search.unindexedTexts`. A text that is not indexed is reported rather than
+quietly returning nothing.
+
+| `SEARCH_INDEX_TEXTS` | Passages | Peak RSS |
+| --- | --- | --- |
+| `quran` | 6,236 | ~340 MB |
+| `quran,torah` (default) | 12,082 | ~430 MB |
+| `quran,torah,talmud` | 14,351 | ~510 MB — too tight for 512 MB |
+| `all` | 45,453 | ~1.5 GB |
+
+The Talmud is disproportionately expensive: 2,269 passages add roughly 200 MB.
+
+`API_HEAP_MB` (default 320) pins V8's heap so it cannot grow into the container
+limit. On a larger instance, set `SEARCH_INDEX_TEXTS=all` and raise
+`API_HEAP_MB`; no code change is needed.
+
 Migrations are **not** a manual step for the API service: it runs
 `prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if
 that fails — which rolls the deploy back to a commit whose code matches the schema.

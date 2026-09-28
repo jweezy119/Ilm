@@ -41,7 +41,7 @@ import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
-import { isIndexReady, invalidateOramaIndex } from '../search/orama';
+import { isIndexReady, invalidateOramaIndex, indexedTextIds } from '../search/orama';
 import { getEmbeddingConfig } from '../services/embeddings';
 import { HttpError } from '../lib/errors';
 
@@ -118,24 +118,82 @@ function parse<T extends z.ZodTypeAny>(schema: T, input: unknown): z.infer<T> {
 // ROUTES
 // ============================================================================
 
+interface Coverage {
+  indexedPassages: number;
+  allTexts: string[];
+}
+
+let coverageMemo: { at: number; value: Coverage } | null = null;
+
+/** Index coverage, recomputed at most every 60s. See the call site for why. */
+async function coverageCache(passages: number): Promise<Coverage> {
+  if (coverageMemo && Date.now() - coverageMemo.at < 60_000) return coverageMemo.value;
+
+  const indexedTexts = indexedTextIds();
+  // DISTINCT rather than Prisma's groupBy, which pulls every row through the
+  // client; this is one index scan.
+  const rows = await prisma.$queryRaw<Array<{ text_id: string }>>`
+    SELECT DISTINCT text_id FROM passages ORDER BY text_id
+  `;
+  const allTexts = rows.map((r) => r.text_id);
+  const value: Coverage = {
+    allTexts,
+    indexedPassages: indexedTexts
+      ? await prisma.passage.count({ where: { textId: { in: indexedTexts as never[] } } })
+      : passages,
+  };
+  coverageMemo = { at: Date.now(), value };
+  return value;
+}
+
+
+
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------- health
   app.get('/health', async () => {
     const judge = getJevJudge();
     const passages = await prisma.passage.count();
-    // Counted in SQL rather than through Prisma's JSON filter, which does not match
-    // an empty array reliably and reported every row as embedded.
+    // `IS NOT NULL` rather than `jsonb_array_length(embeddings) > 0`, which took
+    // 2.5 s here and made /health slow enough to trip the platform's health check.
+    // Measured on 45,453 rows: 97 ms versus 2,493 ms, and both return the same
+    // count.
+    //
+    // The two are equivalent only because the writer never stores an empty array:
+    // embeddings.ts rejects a zero-length vector before writing, on the grounds
+    // that it "reads as embedded forever while contributing nothing". So the
+    // column is either NULL (not embedded) or a non-empty array. If that guard is
+    // ever relaxed, this has to go back to inspecting the array.
     const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
-      SELECT count(*)::int AS embedded FROM passages
-      WHERE jsonb_typeof(embeddings) = 'array' AND jsonb_array_length(embeddings) > 0
+      SELECT count(*)::int AS embedded FROM passages WHERE embeddings IS NOT NULL
     `;
     const embeddingConfig = getEmbeddingConfig();
+
+    // The in-memory index holds a subset of the corpus on small instances, so
+    // health reports which texts are actually searchable. A caller that cannot
+    // tell "not in the index" from "does not exist" will conclude the texts are
+    // missing, which is the one thing that must not be left ambiguous.
+    //
+    // Cached: a DISTINCT over every passage made this route take seconds, and a
+    // health check that slow is a health check the platform stops trusting. The
+    // corpus only moves when something is ingested, so a short TTL is enough.
+    const coverage = await coverageCache(passages);
+    const { indexedPassages, allTexts } = coverage;
+    const indexedTexts = indexedTextIds();
+    const indexed = indexedTexts ? new Set(indexedTexts) : new Set(allTexts);
 
     return ok({
       status: 'ok',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '0.1.0',
-      search: { ready: isIndexReady(), passagesIndexed: passages },
+      search: {
+        ready: isIndexReady(),
+        passagesIndexed: indexedPassages,
+        passagesTotal: passages,
+        // Texts a search will cover, and texts it will not. `null` means all.
+        indexedTexts: indexedTexts ?? allTexts,
+        unindexedTexts: allTexts.filter((t) => !indexed.has(t)),
+        partial: indexedPassages < passages,
+      },
       // Kept for compatibility with anything already reading `jev`, but the chain
       // below is the real answer: `configured` is true only if some engine can run.
       jev: { configured: judge.available, reason: judge.reason },

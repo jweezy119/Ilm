@@ -23,6 +23,13 @@ const prisma = new PrismaClient();
 // zero matches for Arabic, Hebrew and Aramaic, so the field cost ~36 MB of a
 // 512 MB budget to provide no working search. The original text is still served
 // from Postgres in passage responses; only full-text search over it is absent.
+//
+// `textId` and `language` are `string` and must stay that way, even though they
+// are only ever equality filters and an `enum` would store them without an
+// inverted index (~70 MB across the corpus). Orama rejects `where` clauses on
+// enum properties outright — "You can only use one operation per filter" — and
+// filtering by text is the most-used filter in the app. Correctness wins; the
+// memory is found by narrowing the corpus instead. See SEARCH_INDEX_TEXTS.
 const passageSchema = {
   passageKey: 'string',
   textId: 'string',
@@ -103,6 +110,37 @@ const INDEX_FILE = path.join(DATA_DIR, 'orama.json');
 let index: IndexDB | null = null;
 let initPromise: Promise<IndexDB> | null = null;
 
+/**
+ * Which texts go into the index.
+ *
+ * The index is held in memory, so its size is bounded by the instance, not by the
+ * corpus. Measured on the 45,453-passage corpus, a one-property index already
+ * needed 745 MB, so no amount of schema trimming fits a 512 MB instance: the
+ * document count is the floor. The whole corpus cannot be indexed there, so the
+ * index holds a subset and the app says so rather than pretending the other texts
+ * do not exist.
+ *
+ * Selection is whole-text rather than a truncated slice, so a text is either
+ * searchable or absent, and results within an indexed text stay complete.
+ *
+ *   SEARCH_INDEX_TEXTS=quran,torah   the default: 12,082 passages, measured ~420 MB
+ *   SEARCH_INDEX_TEXTS=all           every text; needs roughly 1.5 GB of headroom
+ *
+ * `all` is the right setting on a larger instance, and requires no code change.
+ * The budget is a property of the host, so the choice belongs in configuration.
+ */
+const INDEX_TEXTS_SETTING = (process.env.SEARCH_INDEX_TEXTS ?? 'quran,torah').trim();
+const INDEX_ALL_TEXTS = INDEX_TEXTS_SETTING.toLowerCase() === 'all';
+
+/** The text ids this process indexes, or null when it indexes all of them. */
+export function indexedTextIds(): string[] | null {
+  if (INDEX_ALL_TEXTS) return null;
+  return INDEX_TEXTS_SETTING.split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+
 function buildSchema() {
   return passageSchema;
 }
@@ -147,8 +185,19 @@ function count(db: IndexDB): number {
 export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
   initPromise = null;
   const db: IndexDB = create({ schema: buildSchema() });
+  const textIds = indexedTextIds();
   const total = await prisma.passage.count();
-  console.log(`[search] indexing ${total} passages`);
+  const corpus = textIds
+    ? await prisma.passage.count({ where: { textId: { in: textIds as never[] } } })
+    : total;
+
+  if (textIds) {
+    console.log(
+      `[search] indexing ${corpus} of ${total} passages (SEARCH_INDEX_TEXTS=${INDEX_TEXTS_SETTING})`,
+    );
+  } else {
+    console.log(`[search] indexing ${total} passages (all texts)`);
+  }
 
   let cursor: string | undefined;
   let inserted = 0;
@@ -158,6 +207,7 @@ export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
       take: batchSize,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: { id: 'asc' },
+      where: textIds ? { textId: { in: textIds as never[] } } : undefined,
       include: { themes: { include: { theme: true } } },
     });
     if (passages.length === 0) break;
@@ -179,7 +229,7 @@ export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
     inserted += documents.length;
     cursor = passages[passages.length - 1].id;
 
-    if (inserted % 10000 === 0) console.log(`[search]   ${inserted}/${total}`);
+    if (inserted % 10000 === 0) console.log(`[search]   ${inserted}/${corpus}`);
   }
 
   console.log(`[search] index built with ${inserted} passages`);
@@ -263,14 +313,17 @@ export async function getIndexedPassage(passageKey: string): Promise<PassageDoc 
   return hit ? (hit.document as unknown as PassageDoc) : null;
 }
 
+/**
+ * Every theme in the corpus, not just the indexed ones.
+ *
+ * This reads Postgres rather than walking the index. The index holds a subset of
+ * the texts (see SEARCH_INDEX_TEXTS), so enumerating themes from it would report
+ * an incomplete vocabulary, and a full scan of 45k documents to collect them was
+ * slow besides. Theme relations belong to Postgres; the index only ranks.
+ */
 export async function getIndexedThemes(): Promise<string[]> {
-  const db = await initializeOramaIndex();
-  const results = await search(db, { term: '', limit: 0, threshold: 0 });
-  const themes = new Set<string>();
-  for (const hit of results.hits) {
-    for (const theme of (hit.document as unknown as PassageDoc).themes) themes.add(theme);
-  }
-  return [...themes].sort();
+  const rows = await prisma.theme.findMany({ select: { name: true }, orderBy: { name: 'asc' } });
+  return rows.map((r) => r.name);
 }
 
 // ============================================================================
