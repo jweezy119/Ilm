@@ -223,9 +223,16 @@ export async function setPassageThemesBatch(entries: PassageThemeInput[]): Promi
 
   const passageIds = withThemes.map((entry) => entry.passageId);
 
-  await prisma.passageTheme.deleteMany({
-    where: { passageId: { in: passageIds }, themeId: { in: names } },
-  });
+  /**
+   * Deleted by passage, not by passage-and-theme.
+   *
+   * Scoping the delete to the theme names about to be written leaves any theme the
+   * new answer dropped still attached, so repeated runs accumulate: passages were
+   * found carrying more themes than the five-theme cap allows, and rows whose
+   * `source` was a stale `derived` sitting beside a fresh `jev`. Both callers write
+   * a passage's complete theme set, so the whole set is what gets replaced.
+   */
+  await prisma.passageTheme.deleteMany({ where: { passageId: { in: passageIds } } });
 
   await prisma.passageTheme.createMany({
     data: withThemes.flatMap((entry) =>

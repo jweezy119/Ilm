@@ -254,10 +254,9 @@ npm run index -- --crossrefs            also detect cross-references
 npm run index -- --only-uncertain --dry-run     report what it would judge, and the cost
 npm run index -- --only-uncertain
 
-# Roughly 2.3x cheaper per call, by dropping the redundant per-theme
-# descriptions ("The passage addresses mercy" restates the option label).
-# Not A/B'd yet — run both on 2,000 passages and diff the theme rows first.
-THEME_CRITERIA=bare npm run index -- --themes 2000
+# A failed model call leaves the passage's existing themes alone rather than
+# overwriting them with keyword guesses. The count is reported as `deferred`.
+npm run index
 
 # Embeddings. Runs locally by default: no key, no cost, no data leaving the machine.
 # Roughly two hours for the whole corpus on CPU.

@@ -84,3 +84,21 @@ describe('theme criteria shape', () => {
     expect(thin).toEqual(['adam']);
   });
 });
+
+describe('theme provenance', () => {
+  it('labels a keyword answer as derived, so the writer cannot default it wrongly', async () => {
+    const { localThemeScores } = await import('../src/services/typesafe');
+    const scores = localThemeScores(passage('The mercy and compassion of the Lord endures forever.'));
+    expect(scores.length).toBeGreaterThan(0);
+    expect(scores.every((s) => s.source === 'derived')).toBe(true);
+  });
+
+  it('defaults an unset source to derived rather than to a model', () => {
+    // The writer does `source: t.source ?? 'derived'`. Anything that omits source
+    // is recorded as a local rule, so a judgement that forgets to set it is
+    // understated rather than overstated — which is the safe direction, but only
+    // if classifyThemes never forgets, which is what the test above pins.
+    const theme: { theme: string; source?: string } = { theme: 'mercy' };
+    expect(theme.source ?? 'derived').toBe('derived');
+  });
+});

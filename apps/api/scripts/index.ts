@@ -127,6 +127,9 @@ async function main(): Promise<void> {
     let done = 0;
     let judged = 0;
     let skipped = 0;
+    // Passages whose model call failed. Their existing themes are left in place
+    // rather than replaced, so they are reported and can be re-run.
+    let deferred = 0;
     let cursor: string | undefined;
 
     for (;;) {
@@ -148,32 +151,53 @@ async function main(): Promise<void> {
       const toJudge = options.onlyUncertain ? batch.filter((row) => needsJudgement(toPassage(row))) : batch;
       skipped += batch.length - toJudge.length;
 
-      const scored = await Promise.all(
-        toJudge.map(async (row) => {
-          const passage = toPassage(row);
-          // Density is a property of the passage, not of a theme, so it is
-          // stored on the passage and reused by search ranking.
-          const [themes, density] = await Promise.all([classifyThemes(passage, 5), scoreSemanticDensity(passage)]);
+      // Bounded rather than a Promise.all over the whole batch. A hundred
+      // simultaneous requests is enough to trip the connection layer, and the
+      // failures arrive as "Connection error: fetch failed" with no status to
+      // distinguish them from a rejection.
+      const CONCURRENCY = 8;
+      let carriedOver = 0;
 
-          if (density !== null) {
-            await prisma.passage.update({
-              where: { id: row.id },
-              data: { metadata: { ...(typeof row.metadata === 'object' && row.metadata ? row.metadata : {}), density } },
-            });
-          }
+      for (let i = 0; i < toJudge.length; i += CONCURRENCY) {
+        const slice = toJudge.slice(i, i + CONCURRENCY);
 
-          return { passageId: row.id, themes };
-        })
-      );
-      if (!options.dryRun) await setPassageThemesBatch(scored);
+        const scored = await Promise.all(
+          slice.map(async (row) => {
+            const passage = toPassage(row);
+            // Density is a property of the passage, not of a theme, so it is
+            // stored on the passage and reused by search ranking.
+            const [themes, density] = await Promise.all([
+              // A failed call returns nothing rather than the keyword answer, so a
+              // transient failure cannot overwrite judged rows with local guesses
+              // while still counting as progress.
+              classifyThemes(passage, 5, { requireJudge: jev.available && !options.dryRun }),
+              scoreSemanticDensity(passage),
+            ]);
 
+            if (themes.length === 0) carriedOver += 1;
+
+            if (density !== null) {
+              await prisma.passage.update({
+                where: { id: row.id },
+                data: { metadata: { ...(typeof row.metadata === 'object' && row.metadata ? row.metadata : {}), density } },
+              });
+            }
+
+            return { passageId: row.id, themes };
+          })
+        );
+
+        if (!options.dryRun) await setPassageThemesBatch(scored);
+
+        // Jev is billed per request; pace so a full corpus does not trip rate limits.
+        if (jev.available) await sleep(250);
+      }
+
+      deferred += carriedOver;
       judged += toJudge.length;
       cursor = rows[rows.length - 1].id;
       done += batch.length;
       process.stdout.write(`  ${judged} judged, ${skipped} confident\r`);
-
-      // Jev is billed per request; pace so a full corpus does not trip rate limits.
-      if (jev.available && toJudge.length > 0) await sleep(250);
     }
 
     process.stdout.write('\n');
@@ -182,6 +206,7 @@ async function main(): Promise<void> {
       const scanned = judged + skipped;
       const share = scanned > 0 ? (judged / scanned) * 100 : 0;
       console.log(`   scanned ${scanned}, judged ${judged} (${share.toFixed(1)}%), left as-is ${skipped}`);
+      if (deferred > 0) console.log(`   deferred: ${deferred} calls failed, existing themes left untouched — re-run to pick them up`);
       // Two requests per judged passage: the 80-option choice and the strength rubric.
       const tokens = judged * (THEME_CLASSIFY_TOKENS + THEME_STRENGTH_TOKENS);
       console.log(`   ~${(tokens / 1e6).toFixed(1)}M input tokens ≈ $${((tokens / 1e6) * JEV_INPUT_USD_PER_M).toFixed(2)}`);
