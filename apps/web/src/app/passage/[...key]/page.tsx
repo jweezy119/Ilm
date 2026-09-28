@@ -264,9 +264,22 @@ function CrossReferences({ passageId, initial }: { passageId: string; initial: A
           return (
             <li key={`${ref.targetPassageId}-${ref.type}`} className="flex flex-wrap items-center gap-2 text-sm">
               <span className={getTextChipClass(ref.targetText)}>{getTextLabel(ref.targetText, true)}</span>
+              {/*
+                The link names the passage being cited, and never the note.
+                It used to prefer the note, which meant a detected quotation
+                rendered as "Longest verbatim run 8 words" where the reader needed
+                to see Hosea 1:10 — the one thing the citation is for. The note
+                carries the evidence and belongs in the tooltip.
+              */}
               {key ? (
-                <a href={`/passage/${key.split('/').map(encodeURIComponent).join('/')}`} className="font-medium hover:underline">
-                  {ref.notes && !ref.notes.includes(':') ? ref.notes : ref.targetPassageId.slice(0, 18)}
+                <a
+                  href={`/passage/${key.split('/').map(encodeURIComponent).join('/')}`}
+                  className="font-medium hover:underline"
+                  title={ref.notes ?? undefined}
+                >
+                  {/* Drop the leading corpus id (`ot:Hosea:1:10` -> `Hosea:1:10`) so
+                      the book is named. The corpus is already on the chip beside it. */}
+                  {key.split(':').slice(1).join(':')}
                 </a>
               ) : (
                 <span className="font-mono text-xs text-ink-500">{ref.targetPassageId.slice(0, 18)}</span>
