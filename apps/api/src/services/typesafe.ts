@@ -432,6 +432,27 @@ export async function classifyThemes(passage: Passage, maxThemes = 5): Promise<{
     return localThemeScores(passage, maxThemes);
   }
 
+  // The option label is already the theme name, so a description of "The passage
+  // addresses mercy" restates it. Dropping the descriptions takes this question from
+  // about 1,150 input tokens to about 500 — most of the cost of a backfill is this
+  // one list.
+  //
+  // A null description rather than a bare array, because the SDK rejects a list:
+  // "Choice criteria must be a map of labels to descriptions, not a list."
+  //
+  // Switchable rather than default, because it has not been A/B'd: the concern is
+  // that removing the description gives the model nothing extra to reason about,
+  // which may matter for an ambiguous word like "power". Run both and diff the
+  // theme rows before trusting it:
+  //
+  //   THEME_CRITERIA=bare  npx tsx --env-file=.env scripts/index.ts --themes 2000
+  //   npx tsx --env-file=.env scripts/index.ts --themes 2000
+  //
+  const bare = process.env.THEME_CRITERIA === 'bare';
+  const criteria = bare
+    ? Object.fromEntries(THEME_TAXONOMY.map((t) => [t, null]))
+    : Object.fromEntries(THEME_TAXONOMY.map((t) => [t, `The passage addresses ${t.replace(/_/g, ' ')}`]));
+
   const result = await askJev({ passage: passageView(passage) }, [
     {
       kind: 'choice',
@@ -441,7 +462,7 @@ export async function classifyThemes(passage: Passage, maxThemes = 5): Promise<{
         chooseAllThatApply: true,
         note: 'Select every theme the passage genuinely addresses, most relevant first.',
       },
-      criteria: Object.fromEntries(THEME_TAXONOMY.map((t) => [t, `The passage addresses ${t.replace(/_/g, ' ')}`])),
+      criteria: criteria as never,
     },
   ]);
 
@@ -496,6 +517,46 @@ export function localThemeScores(passage: Passage, maxThemes = 5): { theme: stri
     confidence: Math.min(0.6, raw),
     evidence: hits.slice(0, 3),
   }));
+}
+
+/**
+ * How much clearer than the runner-up the top theme must be for the keyword
+ * classifier to be trusted.
+ *
+ * Calibrated against the real distribution, not guessed. On this corpus the median
+ * passage scores 0.150 on its top theme with a 0.100 margin, so any setting tight
+ * enough to be meaningful catches most of the corpus: at the loosest useful value
+ * this skips about a third. 0.05 is that value — a passage is only skipped when one
+ * theme is genuinely ahead of the next.
+ */
+const UNCERTAIN_MARGIN = Number(process.env.THEME_JUDGE_MARGIN ?? 0.05);
+
+/**
+ * And how strong the top theme must be in absolute terms. A passage below 0.2
+ * matched at most one of its theme's keywords, which is a weak answer. Raising this
+ * catches *more* passages, not fewer.
+ */
+const UNCERTAIN_MIN_SCORE = Number(process.env.THEME_JUDGE_MIN_SCORE ?? 0.2);
+
+/**
+ * Whether a model could plausibly improve on the keyword answer for this passage.
+ *
+ * Three ways to be unsure, in order of how much they matter:
+ *   - nothing matched at all, so the passage has no themes whatsoever;
+ *   - the top theme is weak in absolute terms, whatever the margin;
+ *   - the top two themes are close, so the ordering is a coin flip.
+ *
+ * Anything else is a passage where the keyword list already answers clearly, and a
+ * model call would only confirm it.
+ */
+export function needsJudgement(passage: Passage, margin = UNCERTAIN_MARGIN, minScore = UNCERTAIN_MIN_SCORE): boolean {
+  const local = localThemeScores(passage, 5);
+
+  if (local.length === 0) return true;
+  if (local[0].score < minScore) return true;
+  if (local.length === 1) return false;
+
+  return local[0].score - local[1].score < margin;
 }
 
 const THEME_KEYWORDS: Record<string, string[]> = {

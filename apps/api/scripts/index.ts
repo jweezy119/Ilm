@@ -13,10 +13,10 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { TextId, Passage } from '@ilm/shared';
+import { TextId, type Passage } from '@ilm/shared';
 import { loadLocalEnv } from '../src/lib/env';
 import { prisma, setPassageThemesBatch } from '../src/services/passage';
-import { classifyThemes, scoreSemanticDensity } from '../src/services/typesafe';
+import { classifyThemes, scoreSemanticDensity, needsJudgement } from '../src/services/typesafe';
 import { getJevJudge } from '../src/services/typesafe-client';
 import { embedMissingPassages, isEmbeddingConfigured } from '../src/services/embeddings';
 import { getCrossReferencesForPassage } from '../src/services/crossrefs';
@@ -34,7 +34,49 @@ interface Options {
   crossrefs: boolean;
   only: TextId[];
   skipEmbeddings: boolean;
+  /**
+   * Send only passages the keyword classifier is unsure about to the model.
+   *
+   * Most passages have an obvious theme and the keyword answer is already right, so
+   * a model call on them buys nothing. This spends the budget on the ones where a
+   * model could actually change the answer.
+   */
+  onlyUncertain: boolean;
+  /** Report what would be judged and what it would cost, without calling anything. */
+  dryRun: boolean;
 }
+
+/**
+ * How much clearer than the runner-up the top theme must be for the keyword
+ * classifier to be trusted.
+ *
+ * Calibrated against the real distribution, not guessed. On this corpus the median
+ * passage scores 0.150 on its top theme with a 0.100 margin, so any setting tight
+ * enough to be meaningful catches most of the corpus. 0.05 is the loosest useful
+ * value: it skips a passage only when one theme is genuinely ahead of the next.
+ */
+const UNCERTAIN_MARGIN = Number(process.env.THEME_JUDGE_MARGIN ?? 0.05);
+
+/**
+ * And how strong the top theme must be in absolute terms.
+ *
+ * A passage scoring below 0.2 matched at most one of its theme's keywords, which is
+ * a weak answer. Raising this catches *more* passages, not fewer, so it is set at
+ * the point where the keyword list starts producing a real hit rate.
+ */
+const UNCERTAIN_MIN_SCORE = Number(process.env.THEME_JUDGE_MIN_SCORE ?? 0.2);
+
+/**
+ * Input tokens per judged passage, measured from the actual payloads at
+ * ~3.2 characters per token: an 80-option choice question is dominated by its
+ * criteria list, and the strength rubric is small by comparison. Used only to
+ * report what a run will cost before it runs.
+ */
+const THEME_CLASSIFY_TOKENS = 1201;
+const THEME_STRENGTH_TOKENS = 120;
+
+/** TypeSafe's published rate: $0.042 per million input tokens, output free. */
+const JEV_INPUT_USD_PER_M = 0.042;
 
 function parseArgs(): Options {
   const args = process.argv.slice(2);
@@ -51,8 +93,11 @@ function parseArgs(): Options {
     crossrefs: args.includes('--crossrefs'),
     only,
     skipEmbeddings: args.includes('--skip-embeddings'),
+    onlyUncertain: args.includes('--only-uncertain'),
+    dryRun: args.includes('--dry-run'),
   };
 }
+
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -73,8 +118,15 @@ async function main(): Promise<void> {
     const take = options.themes;
     const total = await prisma.passage.count({ where });
     console.log(`\n🏷️  Scoring themes for ${take ?? total} passages...`);
+    if (options.onlyUncertain) {
+      console.log(`   Only passages the keyword list is unsure about will be judged.`);
+      console.log(`   Confident: top theme ≥ ${UNCERTAIN_MIN_SCORE} and clear of the runner-up by ≥ ${UNCERTAIN_MARGIN}.`);
+    }
+    if (options.dryRun) console.log('   DRY RUN: no model calls, nothing written.');
 
     let done = 0;
+    let judged = 0;
+    let skipped = 0;
     let cursor: string | undefined;
 
     for (;;) {
@@ -91,8 +143,13 @@ async function main(): Promise<void> {
       if (remaining === 0) break;
       const batch = rows.slice(0, remaining);
 
+      // Filtered before any model call, so a confident passage costs nothing at all
+      // and keeps the theme rows it already has.
+      const toJudge = options.onlyUncertain ? batch.filter((row) => needsJudgement(toPassage(row))) : batch;
+      skipped += batch.length - toJudge.length;
+
       const scored = await Promise.all(
-        batch.map(async (row) => {
+        toJudge.map(async (row) => {
           const passage = toPassage(row);
           // Density is a property of the passage, not of a theme, so it is
           // stored on the passage and reused by search ranking.
@@ -108,17 +165,27 @@ async function main(): Promise<void> {
           return { passageId: row.id, themes };
         })
       );
-      await setPassageThemesBatch(scored);
+      if (!options.dryRun) await setPassageThemesBatch(scored);
 
+      judged += toJudge.length;
       cursor = rows[rows.length - 1].id;
       done += batch.length;
-      process.stdout.write(`  ${done}/${take ?? total}\r`);
+      process.stdout.write(`  ${judged} judged, ${skipped} confident\r`);
 
       // Jev is billed per request; pace so a full corpus does not trip rate limits.
-      if (jev.available) await sleep(250);
+      if (jev.available && toJudge.length > 0) await sleep(250);
     }
 
     process.stdout.write('\n');
+
+    if (options.onlyUncertain) {
+      const scanned = judged + skipped;
+      const share = scanned > 0 ? (judged / scanned) * 100 : 0;
+      console.log(`   scanned ${scanned}, judged ${judged} (${share.toFixed(1)}%), left as-is ${skipped}`);
+      // Two requests per judged passage: the 80-option choice and the strength rubric.
+      const tokens = judged * (THEME_CLASSIFY_TOKENS + THEME_STRENGTH_TOKENS);
+      console.log(`   ~${(tokens / 1e6).toFixed(1)}M input tokens ≈ $${((tokens / 1e6) * JEV_INPUT_USD_PER_M).toFixed(2)}`);
+    }
   }
 
   // ---------------------------------------------------------------- embeddings

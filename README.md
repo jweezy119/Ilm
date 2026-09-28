@@ -249,6 +249,16 @@ npm run index           score themes, then build the search index
 npm run index -- --themes 0             rebuild the search index only
 npm run index -- --crossrefs            also detect cross-references
 
+# Spend model budget only where it can change an answer. Skips passages whose
+# top theme is clear of the runner-up; on this corpus that is about a third.
+npm run index -- --only-uncertain --dry-run     report what it would judge, and the cost
+npm run index -- --only-uncertain
+
+# Roughly 2.3x cheaper per call, by dropping the redundant per-theme
+# descriptions ("The passage addresses mercy" restates the option label).
+# Not A/B'd yet — run both on 2,000 passages and diff the theme rows first.
+THEME_CRITERIA=bare npm run index -- --themes 2000
+
 # Embeddings. Runs locally by default: no key, no cost, no data leaving the machine.
 # Roughly two hours for the whole corpus on CPU.
 EMBEDDING_PROVIDER=local npx tsx --env-file=apps/api/.env apps/api/scripts/embed.ts
