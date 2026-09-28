@@ -27,6 +27,18 @@ export function getTextDirection(textId: TextId): 'rtl' | 'ltr' {
   return TEXT_METADATA[textId]?.direction ?? 'ltr';
 }
 
+/**
+ * Which way a given string reads.
+ *
+ * The direction of a *corpus* is not the direction of a *verse*. The Old Testament's
+ * corpus direction is ltr, because the text a reader searches is English, and using
+ * it to lay out a Hebrew original rendered the Hebrew left to right. Arabic, Hebrew
+ * and Aramaic are right to left; everything else the corpus holds is not.
+ */
+export function getLanguageDirection(language: string): 'rtl' | 'ltr' {
+  return language === 'arabic' || language === 'hebrew' || language === 'aramaic' ? 'rtl' : 'ltr';
+}
+
 /** The script a passage's original text is written in. */
 export function getScriptFont(language: string): string {
   switch (language) {

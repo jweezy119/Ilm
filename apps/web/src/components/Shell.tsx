@@ -21,6 +21,7 @@ import { useUiStore, useComparisonStore, useSearchStore } from '@/store';
 
 const NAV = [
   { href: '/', label: 'Search', icon: Search },
+  { href: '/read', label: 'Read', icon: BookOpen },
   { href: '/explore', label: 'Explore', icon: Sparkles },
   { href: '/compare', label: 'Compare', icon: ArrowLeftRight },
   { href: '/settings', label: 'Settings', icon: Settings },

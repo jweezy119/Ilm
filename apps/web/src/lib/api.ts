@@ -102,6 +102,39 @@ export interface CorpusStats {
   embeddings: { provider: string | null; model: string | null; embedded: number; of: number };
 }
 
+/** A book opened for reading. One chapter, with the means to turn the page. */
+export interface BookReading {
+  textId: TextId;
+  bookId: string;
+  bookName: string;
+  bookNameOriginal: string | null;
+  chapterCount: number;
+  verseCount: number;
+  previous: { bookId: string; name: string } | null;
+  next: { bookId: string; name: string } | null;
+  chapters: Array<{ chapter: number; verseCount: number }>;
+  translations: Array<{
+    id: string;
+    name: string;
+    translator: string | null;
+    year: number | null;
+    isPrimary: boolean;
+  }>;
+  translationId: string;
+  chapter: number;
+  verses: Array<{
+    passageKey: string;
+    chapter: number;
+    verse: number;
+    text: string;
+    originalText: string;
+    language: string;
+    translationId: string;
+    translationName: string;
+    themes: string[];
+  }>;
+}
+
 export interface Health {
   status: string;
   /**
@@ -187,6 +220,15 @@ export const api = {
   themes: () => get<{ themes: string[] }>('/api/themes'),
 
   corpus: () => get<CorpusStats>('/api/texts'),
+
+  /** One chapter of a book, in English, with navigation and translations attached. */
+  readBook: (textId: TextId, bookId: string, options: { chapter?: number; translation?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (options.chapter) params.set('chapter', String(options.chapter));
+    if (options.translation) params.set('translation', options.translation);
+    const query = params.toString();
+    return get<BookReading>(`/api/texts/${textId}/books/${encodeURIComponent(bookId)}/read${query ? `?${query}` : ''}`);
+  },
 
   text: (textId: TextId) => get<TextStats>(`/api/texts/${textId}`),
 

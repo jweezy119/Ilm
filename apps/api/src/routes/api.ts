@@ -27,6 +27,7 @@ import {
   getCorpusStats,
   prisma,
 } from '../services/passage';
+import { getBookReading } from '../services/reader';
 import {
   generateRecommendations,
   getRecommendationExplanation,
@@ -359,6 +360,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const book = await getBook(textId, request.params.bookId);
     if (!book) return fail(reply, 404, 'NOT_FOUND', `No book ${request.params.bookId} in ${textId}`);
     return ok(book);
+  });
+
+  /*
+   * Reading, as against searching.
+   *
+   * One chapter per request, with the chapter list, the English translations and
+   * the neighbouring books attached, so turning a page needs no further round trip.
+   * The original text travels with the English rather than behind a toggle: a
+   * reader working through a Hebrew or Arabic scripture wants both at once, and
+   * naming the source beside the rendering is this project's standing rule.
+   */
+  app.get('/api/texts/:textId/books/:bookId/read', async (request: FastifyRequest<{ Params: { textId: string; bookId: string }; Querystring: { chapter?: string; translation?: string } }>, reply: FastifyReply) => {
+    const textId = parse(TextIdSchema, request.params.textId);
+    const bookId = request.params.bookId;
+    const reading = await getBookReading(textId, bookId, {
+      chapter: request.query.chapter ? Number(request.query.chapter) : undefined,
+      translationId: request.query.translation,
+    });
+    if (!reading) {
+      return fail(reply, 404, 'NOT_FOUND', `No book ${bookId} in ${textId}, or it has no English translation`);
+    }
+    return ok(reading);
   });
 
   app.get(

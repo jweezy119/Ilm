@@ -238,6 +238,27 @@ with. A local labeller can therefore serve as an aid for searching and exploring
 concrete themes. It cannot stand in for the model, and no threshold will change
 that.
 
+### Reading
+
+`/read` opens a book and reads it a chapter at a time: verse numbers, the English
+translation with the original above it, a chapter jump, and previous/next book in the
+corpus's own order. `GET /api/texts/:textId/books/:bookId/read?chapter=&translation=`
+backs it, and returns the chapter list, the available English translations and the
+neighbouring books in the same response, so turning a page needs no second call.
+
+English is the point of the endpoint. Every corpus has an English primary, and the
+Old Testament carries five — KJV, ASV, JPS 1917, Koren and WEB — so a reader arriving
+at an Aramaic or Hebrew scripture can work in English and check the original beside
+it. Requested translations fall back per verse rather than per book, so one missing
+psalm does not cost the reader the chapter, and the response says which translation
+each verse actually used.
+
+Scoped search is on the same page, because working through a chapter and hunting a
+phrase inside it are the same activity. It filters by the corpus search rather than
+filtering its results, and filters on the book's **id** rather than its name — a
+surah's name is "Al-Fatihah" while its slug is "1", so filtering by name returns
+nothing for the one corpus whose books are not named after their slugs.
+
 Migrations are **not** a manual step for the API service: it runs
 `prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if
 that fails — which rolls the deploy back to a commit whose code matches the schema.
