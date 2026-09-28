@@ -6,7 +6,7 @@
  * it annotates results and shapes suggestions, it does not gate them.
  */
 
-import { SearchQuery, SearchResponse, SearchResult, Passage, TextId, SearchIntent, CorpusVerdict } from '@ilm/shared';
+import { SearchQuery, SearchResponse, SearchResult, Passage, TextId, SearchIntent, CorpusVerdict, MatchMode } from '@ilm/shared';
 import { searchIndex, getIndexedPassage, getIndexedThemes, initializeOramaIndex, type PassageDoc } from '../search/engine';
 import { getPassagesByKeys, prisma } from './passage';
 import { classifySearchIntent, localIntent, expandQueryTheme, rerankForQuery, blendSearchScore, themeSearchTerms, significantTerms, type QueryExpansion, type ScoreSource } from './typesafe';
@@ -107,6 +107,9 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
     // Off the reply, so a fallback engine is reported as itself.
     rerankSource: reranked?.source ?? 'derived',
     expandedTheme: expansion.theme,
+    // Carried through from the retrieval layer so the UI can say when the
+    // results came from the trigram fallback rather than the query as typed.
+    matchMode: (indexResult.matchMode ?? 'exact') as MatchMode,
   };
 }
 
@@ -192,7 +195,8 @@ async function runExpanded(term: string, query: SearchQuery, theme: string) {
   };
 
   // Literal matches first, so an exact hit is never demoted by the widening.
-  add((await runFullText(term, query)).hits);
+  const literal = await runFullText(term, query);
+  add(literal.hits);
 
   for (const themeTerm of terms.slice(0, 3)) {
     add(
@@ -214,6 +218,9 @@ async function runExpanded(term: string, query: SearchQuery, theme: string) {
     hits: candidates.map((document, i) => ({ document, score: Math.max(0.1, 1 - i / candidates.length) })),
     count: candidates.length,
     elapsedMs: 0,
+    // The theme terms are always matched exactly, so the widened set is only as
+    // relaxed as the literal query the reader actually typed was.
+    matchMode: literal.matchMode,
   };
 }
 

@@ -39,6 +39,7 @@ import {
 } from '../services/recommendation';
 import { comparePassages, getParallelTranslations, generateComparisonUrl, computeSharedThemes } from '../services/comparison';
 import { getCrossReferencesForPassage } from '../services/crossrefs';
+import { getPassageJourney, DEFAULT_PER_GROUP } from '../services/journey';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
@@ -294,6 +295,34 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const result = await getCrossReferencesForPassage(passage.id, { refresh: request.query.refresh === '1' });
     return ok({ references: result.references, computed: result.computed });
+  });
+
+  /**
+   * The themed journey outward from one passage.
+   *   GET /api/passages/:id/journey[?limit=n&texts=a,b]
+   *
+   * Distinct from /cross-references: those are detected links to this passage,
+   * capped and flat. This walks the themes the passage carries and collects the
+   * other passages sharing each one, so the answer is grouped by context rather
+   * than by strength.
+   *
+   * `texts` restricts the corpora searched, which is how the reader narrows a
+   * journey to the traditions they care about instead of scrolling five of them.
+   */
+  app.get('/api/passages/:id/journey', async (request: FastifyRequest<{ Params: { id: string }; Querystring: { limit?: string; texts?: string } }>, reply: FastifyReply) => {
+    const id = decodeURIComponent(request.params.id);
+    const passage = await getPassageById(id);
+    if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with id ${id}`);
+
+    // A limit of 0 or 1000 is a client bug, not a request for everything, so it
+    // is clamped rather than honoured. `slice(0, 0)` would return no groups and
+    // look like a passage with no themes.
+    // Clamped like the theme journey's limit: a per-group page size, not a
+    // request for the whole corpus.
+    const limit = clamp(Number(request.query.limit ?? DEFAULT_PER_GROUP), 1, 20);
+    const texts = request.query.texts?.split(',').filter((t): t is TextId => TextIdSchema.safeParse(t).success);
+
+    return ok(await getPassageJourney(passage, { limit, texts }));
   });
 
   app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys?: unknown } }>, reply: FastifyReply) => {

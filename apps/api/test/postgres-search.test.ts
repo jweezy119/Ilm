@@ -33,10 +33,26 @@ describe('postgres retrieval', () => {
   it('fetches themes after ranking rather than joining them per match', () => {
     // A join is evaluated before LIMIT, so aggregating themes inline ran for
     // every matching row in the corpus rather than the forty on the page.
-    const ranked = source.indexOf('const rows = await prisma.$queryRaw');
+    //
+    // The ranking query lives in the `run` helper now that search falls back
+    // from full-text to trigram, so the marker is the $queryRaw call itself and
+    // not the `const rows =` binding that used to introduce it.
+    const ranked = source.indexOf('prisma.$queryRaw<Array<Record<string, unknown>>>');
     const themes = source.indexOf('const themeRows');
     expect(ranked).toBeGreaterThan(-1);
     expect(themes).toBeGreaterThan(ranked);
+  });
+
+  it('keeps a misspelled term findable without loosening the first pass', () => {
+    // "merce" must reach the passages containing "mercy", but a search that
+    // already works must not pay for the trigram pass or lose its ordering.
+    expect(source).toContain('p.primary_translation %>>');
+    expect(source).toContain("label: 'exact'");
+    expect(source).toContain("label: 'relaxed'");
+    // `%>>` is the index-assisted operator. Spelling it as a plain
+    // `word_similarity(...) > 0.4` comparison passes review and then scans
+    // every row, which is the multi-second case this replaced.
+    expect(source).not.toMatch(/word_similarity\([^)]*\)\s*>\s*0?\./);
   });
 
   it('indexes theme membership as a relation, not a denormalised column', () => {

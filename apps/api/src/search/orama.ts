@@ -98,6 +98,12 @@ export interface IndexSearchResult {
   hits: IndexHit[];
   count: number;
   elapsedMs: number;
+  /**
+   * Which pass matched. Orama has no relaxed fallback, so it only ever reports
+   * 'exact'; the Postgres engine can return 'relaxed'. Declared here so the two
+   * engines satisfy the same shape.
+   */
+  matchMode: 'exact' | 'relaxed' | 'filters-only';
 }
 
 // ============================================================================
@@ -302,7 +308,13 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
     score: hit.score,
   }));
 
-  return { hits, count: results.count, elapsedMs: Date.now() - startedAt };
+  return {
+    hits,
+    count: results.count,
+    elapsedMs: Date.now() - startedAt,
+    // Orama has no relaxed fallback, so its results are always an exact match.
+    matchMode: 'exact' as const,
+  };
 }
 
 /** Fetch a single indexed document by its canonical key. */

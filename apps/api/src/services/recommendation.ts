@@ -458,19 +458,35 @@ export async function getThematicJourney(
     take: limit * 4,
   });
 
-  return rows
-    .map((row) => ({
-      passageId: row.passage.id,
-      passageKey: row.passage.passageKey,
-      textId: row.passage.textId as TextId,
-      book: row.passage.bookSlug,
-      chapter: row.passage.chapterNum,
-      verse: row.passage.verseNum,
-      preview: row.passage.primaryTranslation.slice(0, 200),
-      score: row.score,
-      chronologicalOrder: row.passage.verseOrder,
-    }))
-    .sort((a, b) => b.score - a.score)
+  const steps = rows.map((row) => ({
+    passageId: row.passage.id,
+    passageKey: row.passage.passageKey,
+    textId: row.passage.textId as TextId,
+    book: row.passage.bookSlug,
+    chapter: row.passage.chapterNum,
+    verse: row.passage.verseNum,
+    preview: row.passage.primaryTranslation.slice(0, 200),
+    score: row.score,
+    chronologicalOrder: row.passage.verseOrder,
+  }));
+
+  /*
+   * Selection and ordering are two different questions, and this used to answer
+   * both with the score.
+   *
+   * Score decides *which* steps make the journey: the take above already ordered
+   * by it, so the strongest instances of the theme are the ones available.
+   * Chronological order decides how they are *shown*, grouped corpus by corpus.
+   *
+   * Sorting the output by score made the `chronologicalOrder` field dead weight —
+   * it was in every response and nothing read it — and it made a journey read as
+   * a ranked list rather than a walk through a text. `verseOrder` is only
+   * meaningful within one corpus, so corpora are separated first; Genesis 1 and
+   * Quran 19:1 have no common sequence and pretending otherwise puts them in a
+   * false order.
+   */
+  return steps
+    .sort((a, b) => ALL_TEXTS.indexOf(a.textId) - ALL_TEXTS.indexOf(b.textId) || a.chronologicalOrder - b.chronologicalOrder)
     .slice(0, limit);
 }
 

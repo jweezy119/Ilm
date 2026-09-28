@@ -64,10 +64,20 @@ export interface IndexHit {
   score: number;
 }
 
+/**
+ * Which pass produced the results.
+ *
+ * Reported rather than applied silently: a result set from the typo pass is a
+ * guess, and the reader should be able to see that it was relaxed to find
+ * anything at all. Surfaced on the response as `matchMode`.
+ */
+export type MatchMode = 'exact' | 'relaxed' | 'filters-only';
+
 export interface IndexSearchResult {
   hits: IndexHit[];
   count: number;
   elapsedMs: number;
+  matchMode: MatchMode;
 }
 
 const DEFAULT_LIMIT = 20;
@@ -82,6 +92,22 @@ function toQuery(term: string): string | null {
   const trimmed = term.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+
+/**
+ * Trigram similarity, for a misspelled or half-typed term.
+ *
+ * pg_trgm's `word_similarity` asks "does this long text contain a word resembling
+ * the query", which is the right shape for verses. `%>>` is the index-assisted
+ * form of `word_similarity(...) > pg_trgm.word_similarity_threshold` (0.6 by
+ * default), so the match uses passages_trgm_idx instead of scanning the corpus.
+ *
+ * This replaces an earlier prefix pass (`to_tsquery('...:*')`). Prefixes do not
+ * work here: the English stemmer rewrites "merce:*" to 'merc':*, so a typo is
+ * silently stemmed into a different word's prefix and the results rank like
+ * noise. Trigram also covers the mid-typing case that motivated the prefix pass
+ * — "forgiv" is a near-match for "forgive" — so one pass does both jobs.
+ */
+const trigramRank = (term: string) => Prisma.sql`word_similarity(${term}, p.primary_translation)`;
 
 function filterConditions(filters: IndexFilters): Prisma.Sql[] {
   const clauses: Prisma.Sql[] = [];
@@ -129,28 +155,52 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
    */
   const tsq = query ? Prisma.sql`websearch_to_tsquery('english', ${query})` : null;
 
-  // Aliased `relevance`, not `rank`: RANK is reserved in PostgreSQL as a window
-  // function, so `ORDER BY rank` is a syntax error (42601).
-  const rank = tsq ? Prisma.sql`ts_rank_cd(p.search_vector, ${tsq})` : Prisma.sql`0`;
-
   /*
-   * Conditions are collected first and wrapped in WHERE exactly once.
+   * Two passes, strictest first, the second run only if the first found nothing.
+   * A reader gets forgiving matching without paying for it on the searches that
+   * already work — the trigram pass is a separate indexed lookup, not a
+   * re-ranking of the first result set.
    *
-   * The keyword used to live inside the filters fragment, so a search with no
-   * filters — which is every ordinary search — appended the text predicate bare
-   * and Postgres rejected it with "syntax error at or near p". A term-only
-   * search was the case that broke, and the case most likely to be tried.
+   *   1. websearch_to_tsquery  — the query as typed
+   *   2. pg_trgm word_similarity — "merce" finds "mercy", "forgiv" finds "forgive"
    */
-  const conditions = filterConditions(options);
-  if (tsq) conditions.push(Prisma.sql`p.search_vector @@ ${tsq}`);
-  const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
-
-  const order =
+  const base = filterConditions(options);
+  const sortSql =
     sortBy === 'verseOrder'
       ? Prisma.sql`ORDER BY p.verse_order ${Prisma.raw(sortOrder === 'asc' ? 'ASC' : 'DESC')}`
       : query
         ? Prisma.sql`ORDER BY relevance DESC, p.verse_order ASC`
         : Prisma.sql`ORDER BY p.verse_order ASC`;
+
+  /**
+   * Conditions are collected first and wrapped in WHERE exactly once.
+   *
+   * The keyword used to live inside the filters fragment, so a search with no
+   * filters — which is every ordinary search — appended the text predicate bare
+   * and Postgres rejected it with "syntax error at or near p". A term-only search
+   * was the case that broke, and the case most likely to be tried.
+   */
+  const run = async (match: { rank: Prisma.Sql; condition: Prisma.Sql } | null) => {
+    const conditions = [...base];
+    if (match) conditions.push(match.condition);
+    const where = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
+
+    // Aliased `relevance`, not `rank`: RANK is reserved in PostgreSQL as a window
+    // function, so `ORDER BY rank` is a syntax error (42601).
+    const rank = match?.rank ?? Prisma.sql`0`;
+
+    return prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
+      SELECT
+        p.id, p.passage_key, p.text_id, p.book_slug, p.chapter_num, p.verse_num,
+        p.primary_translation, p.language, p.verse_order, p.metadata,
+        ${rank} AS relevance,
+        count(*) OVER () AS total
+      FROM passages p
+      ${where}
+      ${sortSql}
+      LIMIT ${limit} OFFSET ${offset}
+    `);
+  };
 
   /*
    * Two queries rather than one.
@@ -161,19 +211,37 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
    * page. "nitre" measured 1,087 ms that way. Ranking first and then fetching
    * themes for the page keys costs one extra round trip and none of that.
    */
-  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(
-    Prisma.sql`
-      SELECT
-        p.id, p.passage_key, p.text_id, p.book_slug, p.chapter_num, p.verse_num,
-        p.primary_translation, p.language, p.verse_order, p.metadata,
-        ${rank} AS relevance,
-        count(*) OVER () AS total
-      FROM passages p
-      ${where}
-      ${order}
-      LIMIT ${limit} OFFSET ${offset}
-    `
-  );
+  const passes: Array<{ label: string; match: { rank: Prisma.Sql; condition: Prisma.Sql } | null }> = [];
+
+  if (tsq) {
+    passes.push({ label: 'exact', match: { rank: Prisma.sql`ts_rank_cd(p.search_vector, ${tsq})`, condition: Prisma.sql`p.search_vector @@ ${tsq}` } });
+  }
+
+  // A one- or two-letter term matches nearly everything by trigram, so require
+  // enough characters for the comparison to mean something.
+  if (query && query.length >= 4) {
+    passes.push({
+      label: 'relaxed',
+      match: { rank: trigramRank(query), condition: Prisma.sql`p.primary_translation %>> ${query}` },
+    });
+  }
+
+  // No text at all: filters only, one pass.
+  if (passes.length === 0) passes.push({ label: 'filters-only', match: null });
+
+  let rows: Array<Record<string, unknown>> = [];
+  // Defaults to the most forgiving pass so a search that found nothing is
+  // reported as having tried everything, rather than claiming an exact match it
+  // did not have. Overwritten as soon as a pass returns rows.
+  let usedPass = passes[passes.length - 1].label;
+
+  for (const pass of passes) {
+    rows = await run(pass.match);
+    if (rows.length > 0) {
+      usedPass = pass.label;
+      break;
+    }
+  }
 
   const themeRows =
     rows.length === 0
@@ -218,6 +286,7 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
 
   return {
     hits,
+    matchMode: usedPass as MatchMode,
     // The window count is the total matching the filters, which is what the
     // header reports. Falls back to the page size when offset pushed the window
     // out of view, which cannot happen for count(*) OVER (), but is guarded anyway.

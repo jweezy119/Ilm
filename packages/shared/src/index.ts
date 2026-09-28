@@ -168,6 +168,13 @@ export type SearchResult = z.infer<typeof SearchResultSchema>;
 export const CorpusVerdictSchema = z.enum(['addressed', 'partial', 'unaddressed', 'unknown']);
 export type CorpusVerdict = z.infer<typeof CorpusVerdictSchema>;
 
+/**
+ * Which retrieval pass produced the results. See the relaxed pass in
+ * apps/api/src/search/postgres.ts.
+ */
+export const MatchModeSchema = z.enum(['exact', 'relaxed', 'filters-only']);
+export type MatchMode = z.infer<typeof MatchModeSchema>;
+
 export const SearchResponseSchema = z.object({
   results: z.array(SearchResultSchema),
   total: z.number().int().nonnegative(),
@@ -184,8 +191,68 @@ export const SearchResponseSchema = z.object({
   rerankSource: ScoreSourceSchema.default('derived'),
   /** Theme the query was widened with, when one was recognised. */
   expandedTheme: z.string().nullable().default(null),
+  /**
+   * How the results were matched.
+   *
+   * 'relaxed' means full-text found nothing and the search fell back to trigram
+   * similarity, so these passages resemble the term rather than contain it. The
+   * UI shows that, because a result the reader did not type is a different kind
+   * of claim than one they did.
+   */
+  matchMode: MatchModeSchema.default('exact'),
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
+
+// ============================================================================
+// Passage Journey
+// ============================================================================
+
+/**
+ * One passage inside a journey group.
+ *
+ * `score` is this passage's own confidence on the group's theme, which is not the
+ * score of the passage the reader started from — keeping them separate is what
+ * stops a strong-looking number from being read as a claim about the source.
+ */
+export const JourneyMemberSchema = z.object({
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  book: z.string(),
+  chapter: z.number().int(),
+  verse: z.number().int(),
+  preview: z.string(),
+  score: z.number(),
+  chronologicalOrder: z.number().int(),
+  source: z.string(),
+});
+
+/**
+ * A context, and the passages that share it.
+ *
+ * `crossText` is false when every member is from one corpus. That is not a failed
+ * journey, but it is a weaker finding and the UI labels it as one.
+ */
+export const JourneyGroupSchema = z.object({
+  theme: z.string(),
+  category: z.string().nullable().default(null),
+  sourceScore: z.number(),
+  members: z.array(JourneyMemberSchema),
+  corpora: z.array(TextIdSchema),
+  books: z.array(z.string()),
+  crossText: z.boolean(),
+});
+
+export const PassageJourneySchema = z.object({
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  book: z.string(),
+  chapter: z.number().int(),
+  verse: z.number().int(),
+  groups: z.array(JourneyGroupSchema),
+});
+export type PassageJourney = z.infer<typeof PassageJourneySchema>;
+export type JourneyMember = z.infer<typeof JourneyMemberSchema>;
+export type JourneyGroup = z.infer<typeof JourneyGroupSchema>;
 
 // ============================================================================
 // Comparison Models
