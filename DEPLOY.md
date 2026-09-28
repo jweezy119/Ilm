@@ -207,10 +207,36 @@ So no labels are written. A 40%-precision labeller would put a confident,
 checkable-looking theme on roughly six passages in ten, which is the failure this
 app is specifically built to avoid.
 
-The obvious next attempt is lexical features — the corpus already has a
-`tsvector` with a GIN index from the Postgres search work, and topic is a lexical
-property in a way that similarity is not. That is a hypothesis worth testing, not
-a known quantity.
+That hypothesis was then tested. `npm run train-lexical-classifier -w @ilm/api`
+trains the same 80 classes on TF-IDF over stemmed, word-boundary-matched lexemes
+taken from the passage text — never from `search_vector`, which contains the theme
+names and would hand the model its own answers.
+
+| | dense embeddings | lexical features |
+| --- | --- | --- |
+| micro F1 | 40.7% | 40.4% |
+| macro F1 | 37.4% | **43.6%** |
+| themes clearing F1 0.55 on 100+ examples | 3 of 80 | 3 of 80 |
+| label mass covered | 6% | 5% |
+
+Better on the per-theme average and no better in bulk. The reason is visible in the
+label distribution rather than in the model: **half of all label mass sits in fifteen
+themes**, led by `judgment` at 12.6%, and those are the broad overlapping ones —
+`judgment`, `prophets`, `sin`, `worship`, `prayer`, `power`, `ritual`. Whether a
+passage is about `sin` or `judgment` is a matter of reading, not of vocabulary, and
+a classifier that could settle it would be claiming to do something no model does
+reliably.
+
+The themes that *are* predictable are the narrow concrete ones, and they predict
+well: `sabbath` 75%, `light` 73%, `sacrifice` 68%, `satan` 65%, `angels` 64%. They
+also carry almost none of the label mass.
+
+So the honest conclusion is not "classification is impossible here" but that the
+task splits in two: a local labeller is credible for concrete themes and useless for
+the broad ones, and the broad ones are the majority of what the corpus is labelled
+with. A local labeller can therefore serve as an aid for searching and exploring
+concrete themes. It cannot stand in for the model, and no threshold will change
+that.
 
 Migrations are **not** a manual step for the API service: it runs
 `prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if
