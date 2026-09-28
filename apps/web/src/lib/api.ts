@@ -87,8 +87,32 @@ export interface CorpusStats {
 
 export interface Health {
   status: string;
-  search: { ready: boolean; passagesIndexed: number };
+  /**
+   * Coverage, not just a count.
+   *
+   * The search index lives in memory and on a small instance it holds a subset of
+   * the corpus, so `passagesIndexed` alone is misleading: it reads as "the corpus
+   * is 12,082 passages long" when the truth is "12,082 of 45,453 are searchable
+   * and the rest are not". The unindexed text ids are carried so the interface
+   * can say which, rather than leaving a reader to conclude those texts are
+   * simply missing.
+   */
+  search: {
+    ready: boolean;
+    passagesIndexed: number;
+    passagesTotal: number;
+    /** Texts a search will cover. */
+    indexedTexts: string[];
+    /** Texts a search will not cover, and why they were left out. */
+    unindexedTexts: string[];
+    partial: boolean;
+  };
   jev: { configured: boolean; reason: string };
+  /** Every engine in the order it is tried. */
+  judges: Array<{ id: string; label: string; available: boolean; reason: string }>;
+  /** What this process has spent on the hosted judge, and the ceiling it will not pass. */
+  budget: { spentUsd: number; limitUsd: number | null; exhausted: boolean; refused: number };
+  embeddings: { provider: string | null; model: string | null; embedded: number; of: number };
 }
 
 export type { CorpusVerdict };

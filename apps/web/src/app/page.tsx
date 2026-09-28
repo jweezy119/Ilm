@@ -8,6 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
 import { useComparisonStore, useSearchStore } from '@/store';
+import { fetchCoverage } from '@/lib/coverage';
 import { cn, getTextLabel, TEXT_IDS } from '@/lib/utils';
 
 const SUGGESTED = [
@@ -57,8 +58,21 @@ function SearchInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [semantic, setSemantic] = useState(true);
+  // Which texts this deployment can actually search. Null until it arrives, and
+  // the filters stay neutral until then rather than guessing.
+  const [unindexed, setUnindexed] = useState<string[] | null>(null);
 
   const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, remember } = useSearchStore();
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchCoverage().then((health) => {
+      if (!cancelled && health) setUnindexed(health.search.unindexedTexts);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const { passageKeys, toggle, has } = useComparisonStore();
 
   const runSearch = useCallback(
@@ -149,10 +163,12 @@ function SearchInner() {
       <span className="mr-1 text-[11px] font-medium uppercase tracking-wider text-fg-faint">Texts</span>
       {TEXT_IDS.map((textId) => {
         const on = activeTexts.includes(textId);
+        const missing = unindexed?.includes(textId) ?? false;
         return (
           <button
             key={textId}
             type="button"
+            disabled={missing}
             onClick={() => {
               toggleText(textId);
               if (query) {
@@ -160,7 +176,19 @@ function SearchInner() {
               }
             }}
             aria-pressed={on}
-            className={cn('toggle-pill', on ? 'toggle-pill-on' : 'toggle-pill-off')}
+            title={
+              missing
+                ? 'This deployment cannot search this text: the index is held in memory and does not fit all five corpora here.'
+                : undefined
+            }
+            className={cn(
+              'toggle-pill',
+              missing
+                ? 'cursor-not-allowed text-fg-faint/60 line-through decoration-fg-faint/40'
+                : on
+                  ? 'toggle-pill-on'
+                  : 'toggle-pill-off'
+            )}
           >
             {getTextLabel(textId, true)}
           </button>
@@ -349,8 +377,9 @@ function SearchInner() {
             ) : (
               <div className="mt-8">
                 <Empty icon={Search} title="Nothing matched">
-                  Try a single common noun, or clear the text filters. Terms are matched literally unless
-                  semantic ranking is on and a TypeSafe key is configured.
+                  {unindexed && unindexed.length > 0
+                    ? `This deployment searches ${unindexed.length < TEXT_IDS.length ? 'only some of' : 'none of'} the texts, because the search index is held in memory and does not fit all five corpora here. Settings lists which ones.`
+                    : 'Try a single common noun, or clear the text filters. Terms are matched literally unless semantic ranking is on and a TypeSafe key is configured.'}
                 </Empty>
               </div>
             )}

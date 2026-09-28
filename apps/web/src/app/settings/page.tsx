@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Loader2, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Check, Loader2, AlertTriangle, RotateCcw, Database, Cpu, Wallet } from 'lucide-react';
 import type { RecommendationWeights } from '@ilm/shared';
 import { DEFAULT_WEIGHTS } from '@ilm/shared';
 import { api, ApiError, type Health, type CorpusStats } from '@/lib/api';
@@ -18,6 +18,7 @@ const DIMENSIONS: Array<{ key: keyof RecommendationWeights; label: string; help:
 ];
 
 const USER_ID = 'local';
+type TextId = (typeof TEXT_IDS)[number];
 
 export default function SettingsPage() {
   const { weights, setWeights, resetWeights } = useSettingsStore();
@@ -70,29 +71,29 @@ export default function SettingsPage() {
   };
 
   return (
-    <Page>
+    <Page wide>
       <PageHeader
         title="Settings"
         description="Recommendation weights decide how the five affinity dimensions combine. Because Jev scores are cached per pair, moving a slider re-ranks instantly without new model calls."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-ink-200 bg-white p-5 dark:border-ink-800 dark:bg-ink-900">
-          <h2 className="mb-1 text-sm font-semibold">Recommendation weights</h2>
-          <p className="mb-4 text-xs text-ink-500">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <section className="card p-5">
+          <h2 className="mb-1 text-sm font-medium">Recommendation weights</h2>
+          <p className="mb-5 text-xs text-fg-muted">
             Total: <span className="font-mono">{total.toFixed(2)}</span> — normalised to 1.0 when ranking and when saved.
           </p>
 
-          <ul className="space-y-4">
+          <ul className="space-y-5">
             {DIMENSIONS.map((dim) => {
               const share = normalized.find((n) => n.key === dim.key)?.value ?? 0;
               return (
                 <li key={dim.key}>
-                  <div className="mb-1 flex items-baseline justify-between">
+                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
                     <label htmlFor={dim.key} className="text-sm font-medium">
                       {dim.label}
                     </label>
-                    <span className="font-mono text-xs text-ink-500">
+                    <span className="shrink-0 font-mono text-xs tabular-nums text-fg-muted">
                       {weights[dim.key].toFixed(2)} → {percent(share)}
                     </span>
                   </div>
@@ -104,21 +105,16 @@ export default function SettingsPage() {
                     step={0.05}
                     value={weights[dim.key]}
                     onChange={(e) => change(dim.key, Number(e.target.value))}
-                    className="w-full accent-emerald-700"
+                    className="w-full accent-[rgb(var(--accent))]"
                   />
-                  <p className="text-xs text-ink-500">{dim.help}</p>
+                  <p className="mt-1 text-xs text-fg-faint">{dim.help}</p>
                 </li>
               );
             })}
           </ul>
 
-          <div className="mt-5 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={save}
-              disabled={status === 'saving'}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-900 disabled:opacity-50 dark:bg-emerald-700"
-            >
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={save} disabled={status === 'saving'} className="btn btn-primary !py-1.5">
               {status === 'saving' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               {status === 'saved' ? <Check className="h-3.5 w-3.5" /> : null}
               {status === 'saved' ? 'Saved' : 'Save to this browser'}
@@ -129,57 +125,56 @@ export default function SettingsPage() {
                 resetWeights();
                 setStatus('idle');
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-300 px-3 py-1.5 text-sm hover:border-ink-500 dark:border-ink-700"
+              className="btn btn-secondary !py-1.5"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Reset
             </button>
-            {error ? <span className="text-xs text-red-700 dark:text-red-300">{error}</span> : null}
+            {error ? <span className="text-xs text-red-700">{error}</span> : null}
           </div>
         </section>
 
-        <aside className="space-y-4">
-          <section className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-            <h2 className="mb-2 text-sm font-semibold">Services</h2>
-            <dl className="space-y-1.5 text-xs">
+        <div className="space-y-5">
+          <section className="card p-4">
+            <h2 className="mb-3 text-sm font-medium">Services</h2>
+            <dl className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <dt className="text-ink-500">API</dt>
-                <dd>{health ? <span className="text-emerald-700 dark:text-emerald-400">online</span> : <span className="text-ink-500">unknown</span>}</dd>
+                <dt className="text-fg-muted">API</dt>
+                <dd>{health ? <span className="text-emerald-700">online</span> : <span className="text-fg-faint">unknown</span>}</dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-ink-500">Search index</dt>
-                <dd className="font-mono">
-                  {health ? `${health.search.passagesIndexed.toLocaleString()} passages` : '—'}
-                </dd>
-              </div>
-              <div className="flex items-start justify-between gap-2">
-                <dt className="text-ink-500">Jev (TypeSafe)</dt>
-                <dd className="text-right">
+                <dt className="text-fg-muted">Jev (TypeSafe)</dt>
+                <dd>
                   {health?.jev.configured ? (
-                    <span className="text-emerald-700 dark:text-emerald-400">configured</span>
+                    <span className="text-emerald-700">configured</span>
                   ) : (
-                    <span className="text-amber-700 dark:text-amber-400">local scoring</span>
+                    <span className="text-amber-700">local scoring</span>
                   )}
-                  {health && !health.jev.configured ? (
-                    <span className="mt-0.5 block text-[10px] text-ink-500">{health.jev.reason}</span>
-                  ) : null}
                 </dd>
               </div>
+              {health ? (
+                <div className="flex items-center justify-between">
+                  <dt className="text-fg-muted">Embeddings</dt>
+                  <dd className="font-mono tabular-nums">
+                    {health.embeddings.embedded.toLocaleString()} / {health.embeddings.of.toLocaleString()}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
             {health && !health.jev.configured ? (
-              <p className="mt-3 flex items-start gap-1.5 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                Add <code>TYPESAFE_API_KEY</code> to <code>apps/api/.env</code> and restart to switch scoring from keyword overlap to
-                semantic Jev judgments.
+                Add <code className="rounded bg-raised px-1">TYPESAFE_API_KEY</code> and restart to switch scoring from
+                keyword overlap to semantic Jev judgments.
               </p>
             ) : null}
           </section>
 
           {corpus ? (
-            <section className="rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
-              <h2 className="mb-2 text-sm font-semibold">Corpus</h2>
+            <section className="card p-4">
+              <h2 className="mb-2 text-sm font-medium">Corpus</h2>
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="text-ink-500">
+                  <tr className="text-fg-muted">
                     <th className="pb-1 font-normal">Text</th>
                     <th className="pb-1 text-right font-normal">Books</th>
                     <th className="pb-1 text-right font-normal">Passages</th>
@@ -188,21 +183,140 @@ export default function SettingsPage() {
                 <tbody>
                   {TEXT_IDS.map((textId) => {
                     const row = corpus.texts.find((t) => t.textId === textId);
+                    const missing = health?.search.unindexedTexts.includes(textId) ?? false;
                     return (
-                      <tr key={textId} className="border-t border-ink-100 dark:border-ink-800">
-                        <td className="py-1">{getTextLabel(textId, true)}</td>
-                        <td className="py-1 text-right font-mono">{row?.bookCount ?? 0}</td>
-                        <td className="py-1 text-right font-mono">{(row?.passageCount ?? 0).toLocaleString()}</td>
+                      <tr key={textId} className="border-t border-line-soft">
+                        <td className={`py-1.5 ${missing ? 'text-fg-faint line-through decoration-fg-faint/40' : ''}`}>
+                          {getTextLabel(textId, true)}
+                        </td>
+                        <td className="py-1.5 text-right font-mono text-fg-muted">{row?.bookCount ?? 0}</td>
+                        <td className="py-1.5 text-right font-mono text-fg-muted">
+                          {(row?.passageCount ?? 0).toLocaleString()}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-              <p className="mt-2 text-[11px] text-ink-500">{corpus.totals.passages.toLocaleString()} passages total.</p>
+              <p className="mt-2 text-[11px] text-fg-faint">{corpus.totals.passages.toLocaleString()} passages stored.</p>
             </section>
           ) : null}
-        </aside>
+        </div>
       </div>
+
+      {/*
+        What this deployment can and cannot do.
+        Full width rather than a sidebar, because it is prose and prose in a narrow
+        column reads as a wall of hyphenated fragments. Coverage is stated plainly
+        because a partially indexed corpus that looks complete is the worst failure
+        this app can have: a reader searches the New Testament, gets nothing, and
+        concludes the texts do not address it — a claim about scripture, and false.
+      */}
+      {health ? (
+        <section className="mt-5">
+          <h2 className="mb-3 text-sm font-medium">This deployment</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div
+              className={`card p-4 ${health.search.partial ? 'border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}
+            >
+              <h3 className="mb-2 flex items-center gap-2 text-xs font-medium">
+                <Database className="h-3.5 w-3.5 text-fg-muted" /> Search coverage
+              </h3>
+              {health.search.partial ? (
+                <p className="text-[11px] leading-relaxed text-fg-muted">
+                  <span className="font-medium text-fg">
+                    {health.search.passagesIndexed.toLocaleString()} of{' '}
+                    {health.search.passagesTotal.toLocaleString()} passages are searchable.
+                  </span>{' '}
+                  The index is held in memory, and this instance cannot hold all five corpora — a one-property index over
+                  the full corpus already needs 745 MB. The rest is stored and served normally; it just cannot be
+                  full-text searched, and a search will not reach it.
+                </p>
+              ) : (
+                <p className="text-[11px] leading-relaxed text-fg-muted">
+                  All {health.search.passagesTotal.toLocaleString()} passages are searchable.
+                </p>
+              )}
+              <ul className="mt-3 space-y-1">
+                {health.search.indexedTexts.map((textId) => (
+                  <li key={textId} className="flex items-center justify-between text-[11px]">
+                    <span className="font-medium text-accent">{getTextLabel(textId as TextId, true)}</span>
+                    <span className="text-fg-faint">searchable</span>
+                  </li>
+                ))}
+                {health.search.unindexedTexts.map((textId) => (
+                  <li key={textId} className="flex items-center justify-between text-[11px]">
+                    <span className="text-fg-faint line-through decoration-fg-faint/40">
+                      {getTextLabel(textId as TextId, true)}
+                    </span>
+                    <span className="text-fg-faint">not searchable</span>
+                  </li>
+                ))}
+              </ul>
+              {health.search.partial ? (
+                <p className="mt-3 text-[11px] leading-relaxed text-fg-faint">
+                  A setting, not a limitation of the data:{' '}
+                  <code className="rounded bg-panel px-1">SEARCH_INDEX_TEXTS</code> chooses which texts are indexed, and{' '}
+                  <code className="rounded bg-panel px-1">all</code> indexes everything on a larger instance.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="card p-4">
+              <h3 className="mb-2 flex items-center gap-2 text-xs font-medium">
+                <Wallet className="h-3.5 w-3.5 text-fg-muted" /> Model budget
+              </h3>
+              <dl className="space-y-2 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <dt className="text-fg-muted">Spent this process</dt>
+                  <dd className="font-mono tabular-nums">${health.budget.spentUsd.toFixed(4)}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-fg-muted">Ceiling</dt>
+                  <dd className="font-mono tabular-nums">
+                    {health.budget.limitUsd === null ? 'none' : `$${health.budget.limitUsd.toFixed(2)}`}
+                  </dd>
+                </div>
+                {health.budget.refused > 0 ? (
+                  <div className="flex items-center justify-between">
+                    <dt className="text-fg-muted">Calls refused</dt>
+                    <dd className="font-mono tabular-nums text-amber-700">{health.budget.refused}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p className="mt-3 text-[11px] leading-relaxed text-fg-faint">
+                {health.budget.exhausted
+                  ? 'The cap is reached. Results are still returned, ranked by local rules and labelled as such, but no model is being called.'
+                  : health.budget.limitUsd === null
+                    ? 'No cap is set. Results labelled “Ranked by meaning” were judged by the model rather than by keyword overlap.'
+                    : 'Below the cap. Results labelled “Ranked by meaning” were judged by the model rather than by keyword overlap.'}
+              </p>
+            </div>
+
+            <div className="card p-4">
+              <h3 className="mb-2 flex items-center gap-2 text-xs font-medium">
+                <Cpu className="h-3.5 w-3.5 text-fg-muted" /> Embeddings
+              </h3>
+              <p className="text-[11px] leading-relaxed text-fg-muted">
+                <span className="font-medium text-fg">
+                  {health.embeddings.embedded.toLocaleString()} of {health.embeddings.of.toLocaleString()} passages
+                </span>{' '}
+                carry a local vector. These run on CPU and cost nothing, and they are what lets two passages from
+                different traditions be compared without a model call.
+              </p>
+              <p className="mt-3 text-[11px] text-fg-faint">
+                {health.embeddings.provider
+                  ? `Provider: ${health.embeddings.provider}${health.embeddings.model ? ` · ${health.embeddings.model}` : ''}`
+                  : health.embeddings.embedded < health.embeddings.of
+                    ? // Only a problem while passages are still missing. Once they are all
+                      // embedded, the provider is irrelevant to reading them.
+                      'No provider is configured here, so the remaining passages have to be embedded before comparisons can use vectors.'
+                    : 'Generated offline; the vectors are stored, so no provider is needed to read them.'}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
     </Page>
   );
 }
