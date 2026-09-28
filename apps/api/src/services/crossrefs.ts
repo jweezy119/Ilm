@@ -60,6 +60,9 @@ export async function getCrossReferencesForPassage(passageId: string, options: {
 
 /** Read stored references and rehydrate them into the API's shape. */
 async function readStored(passageId: string): Promise<CrossRef[]> {
+  // Both families, not only the one that triggered the short-circuit: a passage
+  // with stored model references can also have detected quotations, and those are
+  // the more checkable claim of the two.
   const rows = await prisma.crossReference.findMany({
     where: { OR: [{ sourcePassageId: passageId }, { targetPassageId: passageId }] },
     orderBy: { strength: 'desc' },

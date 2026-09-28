@@ -371,9 +371,42 @@ export async function getStoredCrossReferences(passageId: string, limit = 20): P
   });
 }
 
-export async function hasStoredCrossReferences(passageId: string): Promise<boolean> {
+/**
+ * Relationship families, kept apart.
+ *
+ * `quotation`, `parallel` and `duplicate` are found by n-gram matching and are
+ * exhaustive: every one of them in the corpus is already stored, so recomputing
+ * them would be wasted work. The rest are model judgements over a candidate pool
+ * and are not.
+ *
+ * They have to be distinguished because a stored reference of any kind used to
+ * suppress the model pass. Once the corpus-wide n-gram detection had been run,
+ * every passage had *some* stored reference, so the short-circuit would have
+ * silently stopped the thematic and linguistic detection everywhere — leaving the
+ * comparison view showing quotations and nothing else.
+ */
+export const NGRAM_REFERENCE_TYPES = ['quotation', 'parallel', 'duplicate'] as const;
+export const MODEL_REFERENCE_TYPES = [
+  'quote',
+  'allusion',
+  'thematic',
+  'linguistic',
+  'narrative',
+  'theological',
+  'historical',
+] as const;
+
+export async function hasStoredCrossReferences(
+  passageId: string,
+  types: readonly string[] = MODEL_REFERENCE_TYPES
+): Promise<boolean> {
   const count = await prisma.crossReference.count({
-    where: { OR: [{ sourcePassageId: passageId }, { targetPassageId: passageId }] },
+    where: {
+      AND: [
+        { OR: [{ sourcePassageId: passageId }, { targetPassageId: passageId }] },
+        { type: { in: [...types] } },
+      ],
+    },
   });
   return count > 0;
 }

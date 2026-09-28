@@ -15,6 +15,7 @@
     "ingest": "tsx scripts/ingest.ts",
     "index": "tsx scripts/index.ts",
     "embed": "tsx scripts/embed.ts",
+    "detect-quotations": "tsx scripts/detect-quotations.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",

@@ -13,6 +13,41 @@ import { TranslationSwitcher, useTranslationChoice } from '@/components/Translat
 import { useComparisonStore, useSettingsStore } from '@/store';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, TEXT_STYLES } from '@/lib/utils';
 
+/**
+ * What produced a cross-reference, stated plainly.
+ *
+ * `ngram` is a verbatim text match, and calling it "derived" alongside a score of
+ * 100% would misrepresent it — a reader would discount a finding a concordance
+ * would confirm. It is a third thing, distinct from both a model's opinion and a
+ * local guess, and it is the most checkable of the three because the matched words
+ * are in the notes.
+ */
+const PRODUCED_BY: Record<string, string> = {
+  jev: 'jev',
+  ngram: 'verbatim match',
+  manual: 'entered by hand',
+  derived: 'derived',
+};
+
+/**
+ * Relationship names in words. `parallel` and `duplicate` are separated from
+ * `quotation` deliberately: a text repeating itself, and the same verse appearing
+ * in two collections, are not citations, and presenting them as ones would
+ * overstate the corpus's lineage.
+ */
+const REFERENCE_LABELS: Record<string, string> = {
+  quotation: 'quotation',
+  parallel: 'parallel (same corpus)',
+  duplicate: 'duplicate witness',
+  quote: 'quotation',
+  allusion: 'allusion',
+  thematic: 'thematic',
+  linguistic: 'linguistic',
+  narrative: 'narrative',
+  theological: 'theological',
+  historical: 'historical',
+};
+
 const DIMENSIONS: Array<{ key: keyof RecommendationWeights; label: string }> = [
   { key: 'thematic', label: 'Thematic' },
   { key: 'linguistic', label: 'Linguistic' },
@@ -236,9 +271,9 @@ function CrossReferences({ passageId, initial }: { passageId: string; initial: A
               ) : (
                 <span className="font-mono text-xs text-ink-500">{ref.targetPassageId.slice(0, 18)}</span>
               )}
-              <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] dark:bg-ink-800">{ref.type}</span>
+              <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] dark:bg-ink-800">{REFERENCE_LABELS[ref.type] ?? ref.type.replace(/_/g, ' ')}</span>
               <span className="font-mono text-xs text-ink-500">{percent(ref.strength)}</span>
-              <span className="text-[11px] text-ink-400">{ref.detectedBy === 'jev' ? 'jev' : 'derived'}</span>
+              <span className="text-[11px] text-ink-400">{PRODUCED_BY[ref.detectedBy] ?? 'derived'}</span>
             </li>
           );
         })}

@@ -142,6 +142,41 @@ if it is ever turned back on:
 
 `SEARCH_INDEX_TEXTS` and `API_HEAP_MB` apply only to the Orama engine.
 
+### Quotation detection
+
+`npm run detect-quotations -w @ilm/api` finds passages that share long word
+sequences with passages elsewhere, and stores them as cross-references. It is a
+script rather than a request path because the n-gram index for the whole corpus
+needs more memory than the web service has.
+
+It is deliberately not a model. A fabricated quotation is indistinguishable from a
+real one to a reader, and this way every claim carries the text it rests on, so a
+finding can be checked by opening both passages. On the current corpus it finds
+3,689 cross-corpus citations, 157 of them sharing seven or more consecutive words
+and 53 sharing more than ten, at a strength of 0.9 or better.
+
+Two parameters control recall, and they pull against each other:
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `--min-run` | 6 | Consecutive shared words required. Six is where shared idiom stops being plausible; ten is safer and finds less. |
+| `--max-df` | 8 | How many passages an n-gram may appear in before it counts as stock phrasing. This is the important one — without it, "and he said unto him" links thousands of passages. |
+
+Findings are stored in three types, because they are three different claims:
+
+- `quotation` — one corpus drawing on another. The lineage this corpus is made of.
+- `parallel` — the same corpus repeating itself: the Quran's formulaic echoes,
+  the synoptic gospels, the duplicate narratives of the Pentateuch. Real, and worth
+  arguing about, but not citation.
+- `duplicate` — the same verse in two collections. The Pentateuch is in both
+  `torah` and `ot`, and without this those arrive as ~1,300 confident-looking
+  "OT cites Torah" claims that are really one text counted twice.
+
+Direction is not stored. Verse order is per corpus, so there is no shared timeline
+to infer which text came first, and asserting one would be inventing evidence.
+
+Re-running is safe: references upsert on (source, target, type).
+
 Migrations are **not** a manual step for the API service: it runs
 `prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if
 that fails — which rolls the deploy back to a commit whose code matches the schema.
