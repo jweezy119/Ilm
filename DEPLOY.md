@@ -177,6 +177,41 @@ to infer which text came first, and asserting one would be inventing evidence.
 
 Re-running is safe: references upsert on (source, target, type).
 
+### Theme classification: measured, and not good enough
+
+`npm run train-theme-classifier -w @ilm/api` trains a multi-label linear classifier
+over the 80 themes, using the 47,007 labels Jev already assigned as its training
+data. The aim is to label the 9,654 passages that have only keyword themes without
+paying for them again.
+
+It does not work, and the numbers are why:
+
+| | |
+| --- | --- |
+| Training data | 35,799 passages, 47,007 labels, 80 classes, 384-dim vectors |
+| Baseline (always the most common theme) | 14% micro F1 |
+| This model, threshold tuned on held-out data | **41% micro F1**, 35% precision |
+| Themes clearing F1 0.55 on 100+ examples | **3 of 80**, covering **6%** of label mass |
+
+More epochs did not help: 14 epochs gave 40%, 45 gave 41%. The ceiling is the
+features, not the model.
+
+The diagnosis is that the current embeddings are the wrong tool for the job.
+`paraphrase-multilingual-MiniLM` is a *similarity* model — trained so that two
+sentences about the same thing are near each other — and topical classification
+wants the opposite: the token-level evidence for what a passage is about. The same
+reason `originalText` is not indexed for Hebrew or Arabic is the reason this is
+weak: the signal is not in what the encoder was trained to preserve.
+
+So no labels are written. A 40%-precision labeller would put a confident,
+checkable-looking theme on roughly six passages in ten, which is the failure this
+app is specifically built to avoid.
+
+The obvious next attempt is lexical features — the corpus already has a
+`tsvector` with a GIN index from the Postgres search work, and topic is a lexical
+property in a way that similarity is not. That is a hypothesis worth testing, not
+a known quantity.
+
 Migrations are **not** a manual step for the API service: it runs
 `prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if
 that fails — which rolls the deploy back to a commit whose code matches the schema.
