@@ -153,18 +153,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health', async () => {
     const judge = getJevJudge();
     const passages = await prisma.passage.count();
-    // `IS NOT NULL` rather than `jsonb_array_length(embeddings) > 0`, which took
-    // 2.5 s here and made /health slow enough to trip the platform's health check.
-    // Measured on 45,453 rows: 97 ms versus 2,493 ms, and both return the same
-    // count.
+    // "Has a real vector", counted by length. Not `IS NOT NULL`, which is true
+    // for an empty array and so reported every row as embedded — it claimed
+    // 45,453 of 45,453 on a corpus where 16,853 passages held '[]', and the
+    // interface repeated that claim. Not the old `jsonb_typeof(...) = 'array'`
+    // version either: correct, but 4.3 s because the type check forces a full
+    // scan.
     //
-    // The two are equivalent only because the writer never stores an empty array:
-    // embeddings.ts rejects a zero-length vector before writing, on the grounds
-    // that it "reads as embedded forever while contributing nothing". So the
-    // column is either NULL (not embedded) or a non-empty array. If that guard is
-    // ever relaxed, this has to go back to inspecting the array.
+    // The index on jsonb_array_length brings this to ~33 ms, and the CHECK
+    // constraint from migration 3 is what makes the bare form safe: it forbids a
+    // JSON null, which is the one input that makes jsonb_array_length raise
+    // 22023 rather than return null. With the constraint in place a row is
+    // either SQL NULL (returns null, comparison drops it) or a real array.
     const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
-      SELECT count(*)::int AS embedded FROM passages WHERE embeddings IS NOT NULL
+      SELECT count(*)::int AS embedded FROM passages WHERE jsonb_array_length(embeddings) > 0
     `;
     const embeddingConfig = getEmbeddingConfig();
 
