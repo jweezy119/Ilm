@@ -19,6 +19,7 @@
  *   npx tsx --env-file=.env scripts/embed.ts --dry-run
  */
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/passage';
 import { embedMissingPassages, getEmbeddingConfig, generateEmbeddings } from '../src/services/embeddings';
 import { loadLocalEnv } from '../src/lib/env';
@@ -41,8 +42,20 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Every way a passage can be un-embedded, and all three are needed. A passage
+  // that has never been embedded holds DbNull, and Prisma's `equals` does not
+  // match it: without that arm the count reads 0 to go on a completely
+  // un-embedded corpus and the backfill exits having done nothing. Verified by
+  // setting one passage to DbNull — the old query reported 0 to go, the
+  // corrected one reported 1.
   const remaining = await prisma.passage.count({
-    where: { OR: [{ embeddings: { equals: '[]' } }, { embeddings: { equals: [] } }] },
+    where: {
+      OR: [
+        { embeddings: { equals: Prisma.DbNull } },
+        { embeddings: { equals: '[]' } },
+        { embeddings: { equals: [] } },
+      ],
+    },
   });
   const total = await prisma.passage.count();
   const embedded = total - remaining;

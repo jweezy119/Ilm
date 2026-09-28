@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "ingest": "tsx scripts/ingest.ts",
     "index": "tsx scripts/index.ts",
+    "embed": "tsx scripts/embed.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
