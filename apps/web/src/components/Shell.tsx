@@ -1,7 +1,7 @@
 'use client';
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
+import { Link, usePathname, usePathname as useLocalizedPathname } from '@/i18n/navigation';
 import {
   BookOpen,
   Sun,
@@ -14,18 +14,81 @@ import {
   PanelLeftOpen,
   Activity,
   Plus,
+  Languages,
+  Compass,
 } from 'lucide-react';
+import { routing, LOCALE_NAMES } from '@/i18n/routing';
 import { useEffect, useState } from 'react';
 import { useTheme } from './ThemeProvider';
 import { useUiStore, useComparisonStore, useSearchStore } from '@/store';
 
+/**
+ * Nav items carry a message key, not a label.
+ *
+ * The label is looked up per locale, so the rail is translated without every page
+ * having to pass a translated string into the shell.
+ */
 const NAV = [
-  { href: '/', label: 'Search', icon: Search },
-  { href: '/read', label: 'Read', icon: BookOpen },
-  { href: '/explore', label: 'Explore', icon: Sparkles },
-  { href: '/compare', label: 'Compare', icon: ArrowLeftRight },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
+  { href: '/', key: 'search', icon: Search },
+  { href: '/read', key: 'read', icon: BookOpen },
+  { href: '/journey', key: 'journey', icon: Compass },
+  { href: '/explore', key: 'explore', icon: Sparkles },
+  { href: '/compare', key: 'compare', icon: ArrowLeftRight },
+  { href: '/settings', key: 'settings', icon: Settings },
+] as const;
+
+/**
+ * Language switcher.
+ *
+ * A `<select>` rather than a menu: three options do not justify a popover, and a
+ * native control is keyboard- and screen-reader-correct for free. It navigates
+ * rather than swapping a cookie, because the language is part of the URL here and
+ * a shared link has to carry it.
+ */
+function LanguageSwitcher({ collapsed }: { collapsed: boolean }) {
+  const t = useTranslations('language');
+  const locale = useLocale();
+  const pathname = useLocalizedPathname();
+
+  return (
+    <div className={collapsed ? 'grid place-items-center' : ''}>
+      <label className="sr-only" htmlFor="ilm-locale">
+        {t('label')}
+      </label>
+      <div className="relative">
+        {!collapsed ? (
+          <Languages
+            className="pointer-events-none absolute inset-y-0 start-2 my-auto h-4 w-4 text-fg-faint"
+            aria-hidden
+          />
+        ) : null}
+        <select
+          id="ilm-locale"
+          value={locale}
+          onChange={(event) => {
+            const next = event.target.value as (typeof routing.locales)[number];
+            // Same page, new language. A plain router.push would drop the query
+            // string, which here is the search term — switching language mid
+            // search should not clear the search.
+            window.location.assign(`/${next}${pathname === '/' ? '' : pathname}`);
+          }}
+          className={[
+            'h-9 w-full appearance-none rounded-lg border border-line bg-panel text-sm text-fg outline-none',
+            'focus-visible:ring-2 focus-visible:ring-accent',
+            collapsed ? 'w-9 px-0 text-center text-xs' : 'ps-8 pe-2',
+          ].join(' ')}
+          title={t('switchTo', { language: LOCALE_NAMES[locale] })}
+        >
+          {routing.locales.map((l) => (
+            <option key={l} value={l} lang={l}>
+              {LOCALE_NAMES[l]}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The application shell: a persistent left rail and one scrolling column.
@@ -40,6 +103,9 @@ const NAV = [
  */
 export function Shell({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
+  const t = useTranslations('nav');
+  // Strip the locale prefix before comparing. usePathname from next-intl already
+  // removes it, which is the point of importing it instead of next/navigation.
   const pathname = usePathname();
   const stored = useUiStore((s) => s.theme);
   const count = useComparisonStore((s) => s.passageKeys.length);
@@ -67,13 +133,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
           independently, which is what makes the app feel like an app. */}
       <aside
         className={[
-          'fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col border-r border-line bg-bg transition-[width,transform] duration-200',
+          'fixed inset-y-0 start-0 z-50 flex shrink-0 flex-col border-e border-line bg-bg transition-[width,transform] duration-200',
           collapsed ? 'w-[68px]' : 'w-[264px]',
           mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0',
         ].join(' ')}
       >
         <div className={['flex h-14 shrink-0 items-center border-b border-line', collapsed ? 'justify-center px-2' : 'gap-2 px-4'].join(' ')}>
-          <Link href="/" onClick={() => setMobileOpen(false)} className="flex min-w-0 items-center gap-2.5" aria-label="Ilm home">
+          <Link href="/" onClick={() => setMobileOpen(false)} className="flex min-w-0 items-center gap-2.5" aria-label={t('home')}>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent text-accent-fg">
               <BookOpen className="h-4 w-4" />
             </span>
@@ -93,29 +159,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
             href="/"
             onClick={() => setMobileOpen(false)}
             className={['btn btn-secondary justify-start', collapsed ? 'px-0' : ''].join(' ')}
-            title="New search"
+            title={t('newSearch')}
           >
             <Plus className="h-4 w-4 shrink-0" />
-            {!collapsed ? 'New search' : null}
+            {!collapsed ? t('newSearch') : null}
           </Link>
 
-          <nav className="mt-1 flex flex-col gap-0.5" aria-label="Main">
+          <nav className="mt-1 flex flex-col gap-0.5" aria-label={t('main')}>
             {NAV.map((item) => {
               const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
               const Icon = item.icon;
+              const label = t(item.key);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
-                  title={collapsed ? item.label : undefined}
+                  title={collapsed ? label : undefined}
                   onClick={() => setMobileOpen(false)}
                   className={`rail-item ${active ? 'rail-item-active' : ''} ${collapsed ? 'justify-center px-0' : ''}`}
                 >
                   <Icon className="h-[18px] w-[18px] shrink-0" />
-                  {!collapsed ? <span className="truncate">{item.label}</span> : null}
+                  {!collapsed ? <span className="truncate">{label}</span> : null}
                   {!collapsed && item.href === '/compare' && count > 0 ? (
-                    <span className="ml-auto rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-fg tabular-nums">
+                    <span className="ms-auto rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-fg tabular-nums">
                       {count}
                     </span>
                   ) : null}
@@ -130,13 +197,13 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {!collapsed && recent.length > 0 ? (
             <div className="mt-5 min-h-0 flex-1">
               <div className="mb-1 flex items-center justify-between px-3">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-fg-faint">Recent</span>
+                <span className="text-[11px] font-medium uppercase tracking-wider text-fg-faint">{t('recent')}</span>
                 <button
                   type="button"
                   onClick={clearRecent}
                   className="rounded px-1 text-[11px] text-fg-faint transition-colors hover:text-fg"
                 >
-                  Clear
+                  {t('clear')}
                 </button>
               </div>
               <ul className="space-y-0.5">
@@ -158,21 +225,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className={`shrink-0 border-t border-line p-3 ${collapsed ? 'flex flex-col items-center gap-1' : ''}`}>
+          <div className={collapsed ? '' : 'mb-2'}>
+            <LanguageSwitcher collapsed={collapsed} />
+          </div>
           {!collapsed ? (
             <p className="mb-1 px-2 text-[11px] leading-relaxed text-fg-faint">
-              Scores are weighted judgements from Jev, not generated interpretations.
+              {t('disclaimer')}
             </p>
           ) : null}
           <div className={['flex items-center gap-1', collapsed ? 'flex-col' : 'justify-between'].join(' ')}>
-            <a href="/api/health" target="_blank" rel="noreferrer" className="icon-btn" title="API status">
+            <a href="/api/health" target="_blank" rel="noreferrer" className="icon-btn" title={t('apiStatus')}>
               <Activity className="h-4 w-4" />
             </a>
             <button
               type="button"
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
               className="icon-btn"
-              aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-              title={resolvedTheme === 'dark' ? 'Light theme' : 'Dark theme'}
+              aria-label={resolvedTheme === 'dark' ? t('switchToLight') : t('switchToDark')}
+              title={resolvedTheme === 'dark' ? t('lightTheme') : t('darkTheme')}
             >
               {resolvedTheme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -180,8 +250,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={toggleCollapsed}
               className="icon-btn hidden lg:grid"
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              title={collapsed ? 'Expand' : 'Collapse'}
+              aria-label={collapsed ? t('expandSidebar') : t('collapseSidebar')}
+              title={collapsed ? t('expandSidebar') : t('collapseSidebar')}
             >
               {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </button>
@@ -198,14 +268,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
         />
       ) : null}
 
-      <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${collapsed ? 'lg:pl-[68px]' : 'lg:pl-[264px]'}`}>
+      <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${collapsed ? 'lg:ps-[68px]' : 'lg:ps-[264px]'}`}>
         {/* The mobile-only trigger for the drawer. */}
         <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur lg:hidden">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
             className="icon-btn"
-            aria-label="Open navigation"
+            aria-label={t('openNavigation')}
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>

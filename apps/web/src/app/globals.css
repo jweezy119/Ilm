@@ -52,6 +52,33 @@
     font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   }
 
+  /*
+   * The interface follows the locale, not just the content.
+   *
+   * Inter has no Arabic or Hebrew glyphs, so an Arabic interface left on it falls
+   * back to a system font per character and the spacing comes apart — the layout
+   * looks translated even though the text is correct. Selecting on `lang` rather
+   * than on the direction keeps this working for a language that is left-to-right
+   * but not English, and it is what makes the switcher look deliberate.
+   */
+  html[lang='ar'] body {
+    font-family: var(--font-arabic), var(--font-sans), system-ui, sans-serif;
+  }
+
+  html[lang='he'] body {
+    font-family: var(--font-hebrew), var(--font-sans), system-ui, sans-serif;
+  }
+
+  /*
+   * Latin text inside an Arabic or Hebrew page still needs Inter. A book slug, a
+   * transliterated name, or a URL in a passage note should not render in Amiri's
+   * Latin, which is a different design with different metrics.
+   */
+  html[lang='ar'] :lang(en),
+  html[lang='he'] :lang(en) {
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+
   html {
     scroll-behavior: smooth;
   }

@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "title": "Ilm — Sacred Text Comparison",
+    "description": "Search, compare, and trace themes across the Quran, Torah, Talmud, Old Testament and New Testament. Recommendations are transparent weighted scores, not generated claims."
+  },
+  "nav": {
+    "search": "Search",
+    "read": "Read",
+    "explore": "Explore",
+    "compare": "Compare",
+    "settings": "Settings",
+    "main": "Main",
+    "newSearch": "New search",
+    "recent": "Recent",
+    "clear": "Clear",
+    "home": "Ilm home",
+    "openNavigation": "Open navigation",
+    "disclaimer": "Scores are weighted judgements from Jev, not generated interpretations.",
+    "apiStatus": "API status",
+    "switchToLight": "Switch to light theme",
+    "switchToDark": "Switch to dark theme",
+    "lightTheme": "Light theme",
+    "darkTheme": "Dark theme",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "journey": "Journey"
+  },
+  "language": {
+    "label": "Language",
+    "switchTo": "Switch to {language}"
+  },
+  "ranking": {
+    "byMeaning": "Ranked by meaning",
+    "literal": "Literal ranking",
+    "generic": "Ranking",
+    "byMeaningTitle": "Jev re-ranked these results by meaning. One extra request per search.",
+    "literalTitle": "Literal term ranking. No model call was made for this search.",
+    "relaxed": "Close spelling match",
+    "relaxedTitle": "Nothing matched that spelling, so results were found by similarity. Check the wording before quoting these."
+  },
+  "search": {
+    "title": "Ilm",
+    "placeholder": "Ask across the Quran, Torah, Talmud, and both Testaments",
+    "submit": "Search",
+    "clear": "Clear",
+    "heroTitle": "What do these texts say?",
+    "heroSubtitle": "Search the Quran, Torah, Talmud, Old and New Testaments together. Results carry their source and their score, so you can check them.",
+    "examples": "Try",
+    "results": "results",
+    "result": "result",
+    "noResults": "Nothing matched that",
+    "noResultsBody": "These texts do not appear to address it. Try fewer words, or a different phrasing.",
+    "partial": "These texts address this only in part.",
+    "cleared": "Search cleared"
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Something went wrong.",
+    "retry": "Try again",
+    "close": "Close",
+    "back": "Back",
+    "cancel": "Cancel",
+    "save": "Save",
+    "empty": "Nothing here yet."
+  },
+  "journey": {
+    "title": "Journey",
+    "description": "Passages grouped by the theme they share with the verse you started from. Each group is one context, drawn from across the corpora.",
+    "back": "Back",
+    "onThisVerse": "on this verse",
+    "sourceScore": "How strongly the passage you started from carries this theme.",
+    "acrossCorpora": "Across {count} corpora",
+    "crossTextTitle": "This group draws on {corpora}.",
+    "singleCorpus": "One corpus",
+    "singleCorpusTitle": "Every passage here is from the same corpus. That is one book agreeing with itself, not a connection between traditions.",
+    "noThemes": "No themes on this passage",
+    "noThemesBody": "This passage carries no scored themes, so there is nothing to group by. Themes are assigned during indexing.",
+    "noPassage": "No passage selected",
+    "failed": "Could not build the journey"
+  }
+}

@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Link } from '@/i18n/navigation';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Scale, Loader2, AlertTriangle, Sparkles, Check, Plus, Minus } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Compass, Loader2, Minus, Plus, Scale, Sparkles } from 'lucide-react';
 import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
@@ -124,7 +124,18 @@ export default function PassagePage() {
       <PageHeader
         title={`${passage.book} ${passage.chapter}:${passage.verse}`}
         description={getTextLabel(passage.textId)}
-        action={<CompareButton passage={passage} />}
+        action={
+          <div className="flex items-center gap-2">
+            {/* The other half of this page. The passages below are the ones that
+                link to this verse; this is where the same verse leads outward
+                through the themes it carries, grouped by context. */}
+            <a href={`/journey?id=${encodeURIComponent(passage.id)}`} className="btn btn-secondary">
+              <Compass className="h-4 w-4" />
+              Journey
+            </a>
+            <CompareButton passage={passage} />
+          </div>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">

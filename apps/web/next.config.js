@@ -1,3 +1,5 @@
+const createNextIntlPlugin = require('next-intl/plugin');
+
 /** @type {import('next').NextConfig} */
 
 // The browser calls /api/* on its own origin and Next proxies to Fastify. One
@@ -37,6 +39,8 @@ if (!configured) {
 
 const API_ORIGIN = configured || 'http://localhost:4000';
 
+const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
+
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -57,4 +61,6 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// next-intl wraps the config last so its alias for the request config and its
+// babel/swc plugins are applied to the user's own configuration.
+module.exports = withNextIntl(nextConfig);

@@ -6,6 +6,7 @@ import type {
   CrossRef,
   LexiconLookup,
   Passage,
+  PassageJourney,
   Recommendation,
   RecommendationWeights,
   ScoreBreakdown,
@@ -249,6 +250,20 @@ export const api = {
     get<{ references: Array<CrossRef & { targetPassageKey: string }>; computed: boolean }>(
       `/api/passages/${encodeURIComponent(passageId)}/cross-references${refresh ? '?refresh=1' : ''}`
     ),
+
+  /**
+   * The themed journey outward from a passage.
+   *
+   * Takes the passage id rather than its key because the API resolves either, and
+   * the passage page already holds the id.
+   */
+  passageJourney: (passageId: string, options: { limit?: number; texts?: string[] } = {}) => {
+    const params = new URLSearchParams();
+    if (options.limit) params.set('limit', String(options.limit));
+    if (options.texts?.length) params.set('texts', options.texts.join(','));
+    const query = params.toString();
+    return get<PassageJourney>(`/api/passages/${encodeURIComponent(passageId)}/journey${query ? `?${query}` : ''}`);
+  },
 
   passagesByKeys: (keys: string[]) => post<{ passages: Passage[] }>('/api/passages/batch', { keys }),
 

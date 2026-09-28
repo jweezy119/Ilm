@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from '@/i18n/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Scale, X, Loader2, AlertTriangle, Copy, Check as CheckIcon, Link2 } from 'lucide-react';
 import type { Alignment, Passage } from '@ilm/shared';
 import { api, ApiError, type ComparisonResult } from '@/lib/api';

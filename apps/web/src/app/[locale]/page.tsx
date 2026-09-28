@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from '@/i18n/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Search, X, Loader2, AlertTriangle, Sparkles, ArrowRight, Layers } from 'lucide-react';
 import { THEME_TAXONOMY, type TextId } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
@@ -27,6 +28,27 @@ const SUGGESTED = [
  * it is diagnostic, but `thematic_study` is not a word a reader wants on screen,
  * so it is humanised and kept in the tooltip.
  */
+/**
+ * Shown when the search had to fall back to trigram matching.
+ *
+ * These results resemble the typed term rather than contain it, which is a
+ * different kind of claim than the reader made. Saying so is the difference
+ * between "no match" and "here is the closest thing, and here is how we found
+ * it" — which matters more here than elsewhere, because the ranking is a number
+ * the UI is otherwise presenting as fact.
+ */
+function RelaxedChip() {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full bg-panel px-2.5 py-1 text-xs font-medium text-fg-muted"
+      title="Nothing matched that spelling, so results were found by similarity. Check the wording before quoting these."
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-fg-faint" />
+      Close spelling match
+    </span>
+  );
+}
+
 function EngineChip({ source, intent }: { source?: string; intent?: string }) {
   const readable = intent?.replace(/_/g, ' ');
   const live = source === 'jev';
@@ -326,6 +348,7 @@ function SearchInner() {
                     {response?.total === 1 ? '' : 's'}
                   </span>
                   <EngineChip source={response?.rerankSource} intent={response?.intent} />
+                  {response?.matchMode === 'relaxed' ? <RelaxedChip /> : null}
                   <span className="text-xs text-fg-faint tabular-nums">{response?.tookMs}ms</span>
                   {passageKeys.length > 0 ? (
                     <button

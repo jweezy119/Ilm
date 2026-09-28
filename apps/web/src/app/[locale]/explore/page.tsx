@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from '@/i18n/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import type { TextId } from '@ilm/shared';
 import { api, ApiError, type ThemeMap } from '@/lib/api';
@@ -56,10 +57,24 @@ function ExploreInner() {
     };
   }, [theme]);
 
+  /*
+   * Bucketed by corpus, then ordered within each bucket.
+   *
+   * The reduce alone left each bucket in whatever order the API returned, and the
+   * API returned global score order — so the page claimed to show each corpus in
+   * its own sequence while actually showing its strongest-scoring verses. Sorting
+   * here is what makes that sentence true. `chronologicalOrder` is the passage's
+   * position inside its own corpus, which is the only sequence that means anything:
+   * Genesis 3 and Quran 19:1 have no order relative to each other.
+   */
   const byText = (steps ?? []).reduce<Record<string, JourneyStep[]>>((acc, step) => {
     (acc[step.textId] ??= []).push(step);
     return acc;
   }, {});
+
+  for (const list of Object.values(byText)) {
+    list.sort((a, b) => a.chronologicalOrder - b.chronologicalOrder);
+  }
 
   return (
     <Page>
