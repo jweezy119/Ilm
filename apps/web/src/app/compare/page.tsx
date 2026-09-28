@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Scale, X, Loader2, AlertTriangle, Copy, Check as CheckIcon, Link2 } from 'lucide-react';
 import type { Alignment, Passage } from '@ilm/shared';
 import { api, ApiError, type ComparisonResult } from '@/lib/api';
-import { Shell, PageHeader, Empty } from '@/components/Shell';
+import { Page, PageHeader, Empty } from '@/components/Shell';
 import { useComparisonStore } from '@/store';
 import { segmentByPhrases } from '@/lib/highlighter';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
@@ -65,7 +65,7 @@ function CompareInner() {
   const registerPanel = useSyncedScroll(syncScroll, result?.passages.length ?? 0);
 
   return (
-    <Shell>
+    <Page wide>
       <PageHeader
         title="Side-by-side comparison"
         description="One column per text, every pair aligned in a single pass. Highlighted phrases are what two passages literally share; the type and score beside each link say whether a model or a local rule produced them."
@@ -256,7 +256,7 @@ function CompareInner() {
           ) : null}
         </>
       ) : null}
-    </Shell>
+    </Page>
   );
 }
 
@@ -450,7 +450,7 @@ function collectPhrases(alignments: Alignment[], passageId: string): Array<{ phr
 
 export default function ComparePage() {
   return (
-    <Suspense fallback={<Shell><p className="py-12 text-sm text-ink-500">Loading comparison…</p></Shell>}>
+    <Suspense fallback={<Page><p className="py-12 text-sm text-ink-500">Loading comparison…</p></Page>}>
       <CompareInner />
     </Suspense>
   );

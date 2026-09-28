@@ -5,7 +5,7 @@ import { Check, Loader2, AlertTriangle, RotateCcw } from 'lucide-react';
 import type { RecommendationWeights } from '@ilm/shared';
 import { DEFAULT_WEIGHTS } from '@ilm/shared';
 import { api, ApiError, type Health, type CorpusStats } from '@/lib/api';
-import { Shell, PageHeader } from '@/components/Shell';
+import { Page, PageHeader } from '@/components/Shell';
 import { useSettingsStore } from '@/store';
 import { getTextLabel, percent, TEXT_IDS } from '@/lib/utils';
 
@@ -70,7 +70,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <Shell>
+    <Page>
       <PageHeader
         title="Settings"
         description="Recommendation weights decide how the five affinity dimensions combine. Because Jev scores are cached per pair, moving a slider re-ranks instantly without new model calls."
@@ -203,6 +203,6 @@ export default function SettingsPage() {
           ) : null}
         </aside>
       </div>
-    </Shell>
+    </Page>
   );
 }

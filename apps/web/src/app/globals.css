@@ -3,27 +3,66 @@
 @tailwind utilities;
 
 @layer base {
+  /*
+   * One set of surfaces, defined once, in both modes.
+   *
+   * Everything in the interface is built from these, so dark mode is a change of
+   * values here rather than a `dark:` variant on every class in the tree. The
+   * colours are Google's: pure white on a near-white page, #f8f9fa for recessed
+   * panels, #dadce0 hairlines, #1a73e8 for anything actionable, and the text
+   * triple 1f1f1f / 5f6368 / 80868b. The scales are chosen so that contrast holds
+   * at every step, not just where a linter happened to look.
+   */
   :root {
-    --background: 40 33% 99%;
-    --foreground: 202 44% 26%;
+    --bg: 255 255 255;
+    --panel: 248 249 250;
+    --raised: 255 255 255;
+    --line: 218 220 224;
+    --line-soft: 241 243 244;
+    --fg: 32 33 36;
+    --fg-muted: 95 99 104;
+    --fg-faint: 128 134 139;
+    --accent: 26 115 232;
+    --accent-hover: 23 78 166;
+    --accent-soft: 232 240 254;
+    --accent-fg: 255 255 255;
   }
 
   .dark {
-    --background: 208 65% 8%;
-    --foreground: 210 40% 96%;
+    --bg: 32 33 36;
+    --panel: 39 40 43;
+    --raised: 46 48 51;
+    --line: 60 64 67;
+    --line-soft: 48 50 53;
+    --fg: 232 234 237;
+    --fg-muted: 174 178 183;
+    --fg-faint: 138 143 148;
+    --accent: 138 180 248;
+    --accent-hover: 190 210 252;
+    --accent-soft: 32 58 92;
+    --accent-fg: 24 30 40;
   }
 
   * {
-    @apply border-ilm-200 dark:border-ilm-800;
+    @apply border-line;
   }
 
   body {
-    @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased;
-    font-family: var(--font-sans), system-ui, sans-serif;
+    @apply bg-bg text-fg antialiased;
+    font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   }
 
   html {
     scroll-behavior: smooth;
+  }
+
+  /* Keyboard focus only. A focus ring on every click is noise. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/60 ring-offset-2 ring-offset-bg;
+  }
+
+  ::selection {
+    @apply bg-accent-soft text-fg;
   }
 }
 
@@ -33,19 +72,35 @@
   }
 
   .btn-primary {
-    @apply btn bg-ilm-700 text-white hover:bg-ilm-800 focus:ring-ilm-500;
+    @apply btn bg-accent text-accent-fg hover:bg-accent-hover focus:ring-accent/40;
   }
 
+  /* Outlined rather than filled. Filled it was the same blue as the active nav
+     item, so the rail showed two things that looked selected at once. */
   .btn-secondary {
-    @apply btn bg-ilm-100 text-ilm-700 hover:bg-ilm-200 focus:ring-ilm-400 dark:bg-ilm-800 dark:text-ilm-200 dark:hover:bg-ilm-700;
+    @apply btn border border-line bg-raised text-fg-muted hover:bg-panel hover:text-fg focus:ring-accent/40;
   }
 
   .btn-ghost {
-    @apply btn bg-transparent text-ilm-600 hover:bg-ilm-100 focus:ring-ilm-400 dark:text-ilm-300 dark:hover:bg-ilm-800;
+    @apply btn bg-transparent text-fg-muted hover:bg-panel hover:text-fg focus:ring-accent/40;
   }
 
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+
+  /* A selected filter. Soft, not solid: these sit in a row of five and a row of
+     black pills reads as a tab bar rather than as a set of switches. */
+  .toggle-pill {
+    @apply rounded-full px-3 py-1 text-xs font-medium transition-colors;
+  }
+
+  .toggle-pill-on {
+    @apply bg-accent-soft text-accent;
+  }
+
+  .toggle-pill-off {
+    @apply text-fg-muted hover:bg-panel hover:text-fg;
   }
 
   .input {
@@ -175,11 +230,70 @@
 }
 
 /* Search highlighting */
+/*
+ * The search-term highlight.
+ *
+ * A dark amber background under default-coloured text was unreadable in dark
+ * mode. The mark now sets its own foreground in both modes, which is the only
+ * reliable way to keep a highlight legible.
+ */
 mark {
-  @apply bg-yellow-200 dark:bg-yellow-800 px-1 rounded;
+  @apply rounded bg-amber-100 px-1 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200;
 }
 
 /* Theme selector */
+/*
+ * The shell.
+ *
+ * A fixed-width rail on the left, a scrolling column on the right. The rail is
+ * the only thing that persists across pages, so navigation never costs a scroll
+ * back to the top — which on a page of forty results was the single most
+ * annoying thing about the old top bar.
+ */
+.rail-item {
+  @apply flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-fg-muted transition-colors hover:bg-panel hover:text-fg;
+}
+
+.rail-item-active {
+  @apply bg-accent-soft font-medium text-accent hover:bg-accent-soft hover:text-accent;
+}
+
+/* The search field. Wide, rounded, quiet until focused. */
+.composer {
+  @apply flex w-full items-center gap-2 rounded-full border border-line bg-raised px-4 py-2.5 transition-all focus-within:border-accent focus-within:ring-4 focus-within:ring-accent/10;
+}
+
+.composer-input {
+  @apply w-full min-w-0 bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-faint;
+}
+
+/* Round icon button, the only kind of button in the rail. */
+.icon-btn {
+  @apply grid h-8 w-8 shrink-0 place-items-center rounded-full text-fg-muted transition-colors hover:bg-panel hover:text-fg;
+}
+
+/*
+ * A question the reader asked, shown as a bubble on the right, the way a
+ * conversation reads. This is not a chat app and the results below are not
+ * generated prose, but the shape communicates "you asked, here is what the texts
+ * say" faster than a heading does.
+ */
+.bubble {
+  @apply ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-fg;
+}
+
+/*
+ * A selectable result. Hairline-separated rather than shadowed cards: forty
+ * shadowed cards read as forty interruptions, forty rows read as a list.
+ */
+.result-row {
+  @apply border-b border-line-soft py-5 transition-colors last:border-b-0 hover:bg-panel/60;
+}
+
+.ref {
+  @apply font-mono text-xs tabular-nums text-fg-muted;
+}
+
 .theme-pill {
   @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition-colors cursor-pointer;
 }

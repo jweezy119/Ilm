@@ -7,6 +7,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Semantic surfaces, all driven by CSS variables so that dark mode is one
+        // switch instead of a `dark:` variant on every utility. That was the single
+        // biggest source of visual inconsistency: a class could easily be written
+        // for light mode and simply not restated for dark, and the result was a
+        // panel that stayed white in a dark page.
+        //
+        // Named for what they are, not for what colour they are, so the markup
+        // reads as `bg-panel text-fg-muted` rather than `bg-ink-100 text-ink-600`
+        // and does not need changing when the palette does.
+        bg: 'rgb(var(--bg) / <alpha-value>)',
+        panel: 'rgb(var(--panel) / <alpha-value>)',
+        raised: 'rgb(var(--raised) / <alpha-value>)',
+        line: 'rgb(var(--line) / <alpha-value>)',
+        'line-soft': 'rgb(var(--line-soft) / <alpha-value>)',
+        fg: 'rgb(var(--fg) / <alpha-value>)',
+        'fg-muted': 'rgb(var(--fg-muted) / <alpha-value>)',
+        'fg-faint': 'rgb(var(--fg-faint) / <alpha-value>)',
+        accent: 'rgb(var(--accent) / <alpha-value>)',
+        'accent-hover': 'rgb(var(--accent-hover) / <alpha-value>)',
+        'accent-soft': 'rgb(var(--accent-soft) / <alpha-value>)',
+        'accent-fg': 'rgb(var(--accent-fg) / <alpha-value>)',
+
         // Ink and paper. Every page styles itself with these two names rather than
         // raw greys, and dark mode is reached by the `dark:` variants on each
         // utility — so these are one fixed scale, not a pair that swaps.
@@ -17,29 +39,29 @@ const config: Config = {
         // inverted one". ink-700 matches --foreground in globals.css, which is why
         // body copy and `text-ink-700` read as the same colour.
         ink: {
-          50: '#f6f8fa',
-          100: '#e9eef3',
-          200: '#d5dee6',
-          300: '#b0bdc9',
-          400: '#8b9aa8',
-          500: '#6b7c8c',
-          600: '#4c6273',
-          700: '#33485a',
-          800: '#22323f',
-          900: '#16242e',
-          950: '#0e1a22',
+          50: 'rgb(var(--fg-faint) / <alpha-value>)',
+          100: 'rgb(var(--panel) / <alpha-value>)',
+          200: 'rgb(var(--line) / <alpha-value>)',
+          300: 'rgb(var(--line) / <alpha-value>)',
+          400: 'rgb(var(--fg-faint) / <alpha-value>)',
+          500: 'rgb(var(--fg-muted) / <alpha-value>)',
+          600: 'rgb(var(--fg-muted) / <alpha-value>)',
+          700: 'rgb(var(--fg) / <alpha-value>)',
+          800: 'rgb(var(--fg) / <alpha-value>)',
+          900: 'rgb(var(--fg) / <alpha-value>)',
+          950: 'rgb(var(--fg) / <alpha-value>)',
         },
         // The page surface: warm cream, matching --background in globals.css, so
         // `bg-paper` and the body background are the same colour to the pixel.
         paper: {
-          DEFAULT: '#fdfcfa',
-          50: '#fefdfb',
-          100: '#faf7f1',
-          200: '#f3ede1',
-          500: '#b9a98c',
-          800: '#2a2f2c',
-          900: '#16211d',
-          950: '#0b1a17',
+          DEFAULT: 'rgb(var(--bg) / <alpha-value>)',
+          50: 'rgb(var(--bg) / <alpha-value>)',
+          100: 'rgb(var(--panel) / <alpha-value>)',
+          200: 'rgb(var(--line-soft) / <alpha-value>)',
+          500: 'rgb(var(--line) / <alpha-value>)',
+          800: 'rgb(var(--fg) / <alpha-value>)',
+          900: 'rgb(var(--fg) / <alpha-value>)',
+          950: 'rgb(var(--bg) / <alpha-value>)',
         },
         // Ilm brand colors - deep, scholarly tones
         ilm: {
@@ -64,6 +86,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        mono2: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
         arabic: ['var(--font-arabic)', 'Noto Naskh Arabic', 'serif'],
         hebrew: ['var(--font-hebrew)', 'Noto Sans Hebrew', 'serif'],
         greek: ['var(--font-greek)', 'Noto Serif', 'serif'],

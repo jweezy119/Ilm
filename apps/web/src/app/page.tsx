@@ -2,15 +2,52 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, X, Loader2, AlertTriangle } from 'lucide-react';
+import { Search, X, Loader2, AlertTriangle, Sparkles, ArrowRight, Layers } from 'lucide-react';
 import { THEME_TAXONOMY, type TextId } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
-import { Shell, Empty, PageHeader } from '@/components/Shell';
+import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
-import { useComparisonStore, useSearchStore, MAX_COMPARISON } from '@/store';
+import { useComparisonStore, useSearchStore } from '@/store';
 import { cn, getTextLabel, TEXT_IDS } from '@/lib/utils';
 
-const SUGGESTED = ['mercy', 'covenant', 'forgiveness', 'light', 'creation', 'justice', 'prayer', 'wisdom'];
+const SUGGESTED = [
+  { term: 'mercy', hint: 'across all five corpora' },
+  { term: 'covenant', hint: 'promise, obligation, breakage' },
+  { term: 'light', hint: 'creation, revelation, guidance' },
+  { term: 'forgiveness', hint: 'repentance and release' },
+  { term: 'justice', hint: 'weighing, judgement, limits' },
+  { term: 'the sabbath', hint: 'rest, obligation, exile' },
+];
+
+/**
+ * How a result set was judged, stated the way a model picker states the model.
+ *
+ * The intent is the classification Jev assigned to the question. It is useful and
+ * it is diagnostic, but `thematic_study` is not a word a reader wants on screen,
+ * so it is humanised and kept in the tooltip.
+ */
+function EngineChip({ source, intent }: { source?: string; intent?: string }) {
+  const readable = intent?.replace(/_/g, ' ');
+  const live = source === 'jev';
+  const label = live ? 'Ranked by meaning' : source === 'derived' ? 'Literal ranking' : 'Ranking';
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+        live ? 'bg-accent-soft text-accent' : 'bg-panel text-fg-muted'
+      )}
+      title={
+        live
+          ? 'Jev re-ranked these results by meaning. One extra request per search.'
+          : 'Literal term ranking. No model call was made for this search.'
+      }
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full', live ? 'bg-accent' : 'bg-fg-faint')} />
+      {label}
+      {readable ? <span className="text-fg-faint">· {readable}</span> : null}
+    </span>
+  );
+}
 
 function SearchInner() {
   const router = useRouter();
@@ -21,7 +58,7 @@ function SearchInner() {
   const [error, setError] = useState<string | null>(null);
   const [semantic, setSemantic] = useState(true);
 
-  const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, remember, clear } = useSearchStore();
+  const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, remember } = useSearchStore();
   const { passageKeys, toggle, has } = useComparisonStore();
 
   const runSearch = useCallback(
@@ -71,222 +108,285 @@ function SearchInner() {
   };
 
   const results = response?.results ?? [];
-  const trayFull = passageKeys.length >= MAX_COMPARISON;
+  const hasSearched = Boolean(query) && !loading;
+  const trayFull = passageKeys.length >= 8;
+
+  // The composer's own text field, duplicated into state that resets on submit so
+  // that a sent question leaves the field empty the way a chat composer does.
+  const composer = (
+    <form onSubmit={submit} className="composer">
+      <Search className="h-[18px] w-[18px] shrink-0 text-fg-faint" />
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="Ask the texts — mercy, covenant, the sabbath…"
+        aria-label="Search sacred texts"
+        className="composer-input"
+      />
+      {input ? (
+        <button
+          type="button"
+          onClick={() => setInput('')}
+          className="icon-btn h-7 w-7"
+          aria-label="Clear"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      ) : null}
+      <button
+        type="submit"
+        disabled={loading || !input.trim()}
+        aria-label="Search"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-40"
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+      </button>
+    </form>
+  );
+
+  const textFilters = (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-[11px] font-medium uppercase tracking-wider text-fg-faint">Texts</span>
+      {TEXT_IDS.map((textId) => {
+        const on = activeTexts.includes(textId);
+        return (
+          <button
+            key={textId}
+            type="button"
+            onClick={() => {
+              toggleText(textId);
+              if (query) {
+                void runSearch(query, activeTexts.includes(textId) ? activeTexts.filter((t) => t !== textId) : [...activeTexts, textId]);
+              }
+            }}
+            aria-pressed={on}
+            className={cn('toggle-pill', on ? 'toggle-pill-on' : 'toggle-pill-off')}
+          >
+            {getTextLabel(textId, true)}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   return (
     <Shell>
-      <PageHeader
-        title="Search the texts"
-        description="Full-text search across the Quran, Torah, Talmud, Old and New Testaments. Every result carries its corpus, reference, original text, and scored themes."
-      />
-
-      <form onSubmit={submit} className="mb-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="mercy, covenant, light, the sabbath…"
-            aria-label="Search sacred texts"
-            className="w-full rounded-lg border border-ink-300 bg-white py-2.5 pl-9 pr-24 text-sm outline-none transition-colors focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 dark:border-ink-700 dark:bg-ink-900"
-          />
-          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-            {input ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setInput('');
-                  clear();
-                  router.replace('/');
-                }}
-                className="grid h-7 w-7 place-items-center rounded text-ink-400 hover:text-ink-700 dark:hover:text-ink-200"
-                aria-label="Clear search"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            ) : null}
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="flex items-center gap-1.5 rounded-md bg-emerald-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-900 disabled:opacity-50 dark:bg-emerald-700"
-            >
-              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Search
-            </button>
-          </div>
-        </div>
-      </form>
-
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-xs text-ink-600 dark:text-ink-400">
-          <input type="checkbox" checked={semantic} onChange={(e) => setSemantic(e.target.checked)} />
-          Rank by meaning
-          <span className="text-ink-400">(Jev re-ranks the shortlist; one extra request)</span>
-        </label>
-        {response && response.rerankSource === 'jev' ? (
-          <span className="text-xs text-emerald-700 dark:text-emerald-400">semantic ranking active</span>
-        ) : (
-          <span className="text-xs text-ink-500">literal ranking — set TYPESAFE_API_KEY for semantic</span>
-        )}
-      </div>
-
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wide text-ink-500">Texts</span>
-        {TEXT_IDS.map((textId) => {
-          const on = activeTexts.includes(textId);
-          return (
-            <button
-              key={textId}
-              type="button"
-              onClick={() => {
-                toggleText(textId);
-                if (query) void runSearch(query, activeTexts.includes(textId) ? activeTexts.filter((t) => t !== textId) : [...activeTexts, textId]);
-              }}
-              aria-pressed={on}
-              className={cn(
-                'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
-                on
-                  ? 'border-ink-900 bg-ink-900 text-white dark:border-ink-100 dark:bg-ink-100 dark:text-ink-950'
-                  : 'border-ink-300 text-ink-600 hover:border-ink-500 dark:border-ink-700 dark:text-ink-300'
-              )}
-            >
-              {getTextLabel(textId, true)}
-            </button>
-          );
-        })}
-      </div>
-
-      {error ? (
-        <p className="mb-6 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          {error}
-        </p>
-      ) : null}
-
-      {trayFull ? (
-        <p className="mb-4 text-xs text-ink-500">
-          Comparison holds {MAX_COMPARISON} passages. Remove one before adding another.
-        </p>
-      ) : null}
-
-      {results.length > 0 && response?.verdict !== 'unaddressed' ? (
-        <>
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm">
-              <span className="font-semibold">{response?.total.toLocaleString()}</span> result
-              {response?.total === 1 ? '' : 's'} for <span className="font-semibold">“{query}”</span>
-              <span className="ml-2 text-xs text-ink-500">
-                {response?.tookMs}ms · intent {response?.intent} ({response?.intentSource})
-                {response?.expandedTheme ? ` · widened with the vocabulary of “${response.expandedTheme}”` : ''}
-              </span>
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-3xl flex-col px-5 pb-40 sm:px-8">
+        {/* The landing state. A greeting and a handful of things to try, which is
+            what makes the tool usable without reading any instructions. */}
+        {!hasSearched ? (
+          <div className="flex flex-1 flex-col justify-center py-10">
+            <h1 className="text-[28px] font-medium tracking-tight sm:text-3xl">What do the texts say?</h1>
+            <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-fg-muted">
+              Search the Quran, Torah, Talmud, Old and New Testaments together. Results carry their source
+              text and a reference — no interpretation is written for you.
             </p>
-            {passageKeys.length > 0 ? (
-              <button type="button" onClick={() => router.push('/compare')} className="text-xs text-emerald-800 underline dark:text-emerald-400">
-                Compare {passageKeys.length} selected
-              </button>
-            ) : null}
-          </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {results.map((result) => (
-              <PassageCard
-                key={result.passage.id}
-                passage={result.passage}
-                score={result.score}
-                semanticScore={result.semanticScore}
-                textScore={result.textScore}
-                query={query}
-                inComparison={has(result.passage.passageKey)}
-                onToggleCompare={toggle}
-              />
-            ))}
-          </div>
-        </>
-      ) : query && !loading && response?.verdict === 'unaddressed' ? (
-        <Empty icon={Search} title={`These texts do not address “${query}”`}>
-          Jev judged the shortlist and found nothing that speaks to it. That is a real answer rather than a failed
-          search — the passages below are simply the closest literal matches. A different wording, or the{' '}
-          <span className="underline">Explore</span> page, may reach what you are after.
-        </Empty>
-      ) : query && !loading && response?.verdict === 'partial' ? (
-        <p className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-          These texts touch on <span className="font-semibold">“{query}”</span> rather than addressing it directly. Treat
-          the results as leads.
-        </p>
-      ) : query && !loading ? (
-        <Empty icon={Search} title={`Nothing matched “${query}”`}>
-          Try a single common noun, or clear the text filters. Terms are matched literally unless semantic ranking is on
-          and a TypeSafe key is configured.
-        </Empty>
-      ) : (
-        <div className="space-y-8">
-          <div>
-            <h2 className="mb-2 text-sm font-medium text-ink-600 dark:text-ink-400">Try a theme</h2>
-            <div className="flex flex-wrap gap-2">
-              {SUGGESTED.map((term) => (
-                <button
-                  key={term}
-                  type="button"
-                  onClick={() => {
-                    setInput(term);
-                    void runSearch(term, activeTexts);
-                  }}
-                  className="rounded-full border border-ink-300 px-3 py-1 text-sm hover:border-emerald-700 hover:text-emerald-800 dark:border-ink-700 dark:hover:border-emerald-500 dark:hover:text-emerald-400"
-                >
-                  {term}
-                </button>
-              ))}
-            </div>
-          </div>
+            <div className="mt-8">{composer}</div>
+            <div className="mt-3">{textFilters}</div>
 
-          {recent.length > 0 ? (
-            <div>
-              <h2 className="mb-2 text-sm font-medium text-ink-600 dark:text-ink-400">Recent searches</h2>
-              <div className="flex flex-wrap gap-2">
-                {recent.map((term) => (
+            <div className="mt-10">
+              <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-fg-faint">Try one</h2>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {SUGGESTED.map((s) => (
                   <button
-                    key={term}
+                    key={s.term}
                     type="button"
                     onClick={() => {
-                      setInput(term);
-                      void runSearch(term, activeTexts);
+                      setInput(s.term);
+                      void runSearch(s.term, activeTexts);
                     }}
-                    className="rounded-full bg-ink-100 px-3 py-1 text-sm text-ink-700 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-200 dark:hover:bg-ink-700"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-line bg-raised px-4 py-3 text-left transition-all hover:border-accent/40 hover:bg-accent-soft/40"
                   >
-                    {term}
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{s.term}</span>
+                      <span className="block truncate text-xs text-fg-faint">{s.hint}</span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-fg-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" />
                   </button>
                 ))}
               </div>
             </div>
-          ) : null}
 
-          <div>
-            <h2 className="mb-2 text-sm font-medium text-ink-600 dark:text-ink-400">Browse by theme</h2>
-            <p className="mb-3 text-xs text-ink-500">
-              {THEME_TAXONOMY.length} themes are scored onto every passage during indexing.
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {THEME_TAXONOMY.slice(0, 40).map((theme) => (
-                <button
-                  key={theme}
-                  type="button"
-                  onClick={() => router.push(`/explore?theme=${theme}`)}
-                  className="rounded bg-ink-100 px-2 py-0.5 text-xs text-ink-700 hover:bg-emerald-100 hover:text-emerald-900 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-emerald-900 dark:hover:text-emerald-200"
-                >
-                  {theme.replace(/_/g, ' ')}
-                </button>
-              ))}
+            {recent.length > 0 ? (
+              <div className="mt-8">
+                <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-fg-faint">Recent</h2>
+                <div className="flex flex-wrap gap-1.5">
+                  {recent.map((term) => (
+                    <button
+                      key={term}
+                      type="button"
+                      onClick={() => {
+                        setInput(term);
+                        void runSearch(term, activeTexts);
+                      }}
+                      className="rounded-full bg-panel px-3 py-1 text-xs text-fg-muted transition-colors hover:bg-line-soft hover:text-fg"
+                    >
+                      {term}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-10">
+              <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-fg-faint">
+                Browse by theme
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {THEME_TAXONOMY.slice(0, 28).map((theme) => (
+                  <button
+                    key={theme}
+                    type="button"
+                    onClick={() => router.push(`/explore?theme=${theme}`)}
+                    className="rounded-full border border-line px-2.5 py-1 text-xs text-fg-muted transition-colors hover:border-accent/40 hover:text-accent"
+                  >
+                    {theme.replace(/_/g, ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* The question, as a bubble on the right, so the page reads as a
+                question and an answer rather than as a report. */}
+            <div className="flex items-start gap-3 pt-8">
+              <p className="bubble">{query}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setInput(query);
+                  void runSearch(query, activeTexts);
+                }}
+                className="icon-btn mt-1"
+                aria-label="Search again"
+                title="Search again"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
+
+            {error ? (
+              <p className="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                {error}
+              </p>
+            ) : null}
+
+            {trayFull ? (
+              <p className="mt-6 text-xs text-fg-muted">
+                Comparison holds 8 passages. Remove one before adding another.
+              </p>
+            ) : null}
+
+            {loading ? (
+              <div className="mt-8 space-y-6">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="skeleton h-3 w-32" />
+                    <div className="skeleton h-4 w-full" />
+                    <div className="skeleton h-4 w-4/5" />
+                  </div>
+                ))}
+              </div>
+            ) : results.length > 0 && response?.verdict !== 'unaddressed' ? (
+              <>
+                <div className="mt-6 flex flex-wrap items-center gap-3 border-b border-line pb-3">
+                  <span className="text-sm text-fg-muted">
+                    <span className="font-medium text-fg">{response?.total.toLocaleString()}</span> result
+                    {response?.total === 1 ? '' : 's'}
+                  </span>
+                  <EngineChip source={response?.rerankSource} intent={response?.intent} />
+                  <span className="text-xs text-fg-faint tabular-nums">{response?.tookMs}ms</span>
+                  {passageKeys.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push('/compare')}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Compare {passageKeys.length}
+                    </button>
+                  ) : null}
+                </div>
+
+                {response?.verdict === 'partial' ? (
+                  <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    These texts touch on this rather than addressing it directly. Treat the results as leads.
+                  </p>
+                ) : null}
+
+                {response?.expandedTheme ? (
+                  <p className="mt-4 text-xs text-fg-faint">
+                    Widened with the vocabulary of “{response.expandedTheme}”.
+                  </p>
+                ) : null}
+
+                <div className="mt-2">
+                  {results.map((result) => (
+                    <PassageCard
+                      key={result.passage.id}
+                      passage={result.passage}
+                      score={result.score}
+                      semanticScore={result.semanticScore}
+                      textScore={result.textScore}
+                      query={query}
+                      inComparison={has(result.passage.passageKey)}
+                      onToggleCompare={toggle}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : response?.verdict === 'unaddressed' ? (
+              <div className="mt-8">
+                <Empty icon={Sparkles} title="These texts do not address this">
+                  Jev judged the shortlist and found nothing that speaks to it. That is a real answer rather than a
+                  failed search — the closest literal matches are below. A different wording, or the Explore page,
+                  may reach what you are after.
+                </Empty>
+              </div>
+            ) : (
+              <div className="mt-8">
+                <Empty icon={Search} title="Nothing matched">
+                  Try a single common noun, or clear the text filters. Terms are matched literally unless
+                  semantic ranking is on and a TypeSafe key is configured.
+                </Empty>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* The composer stays within reach once results are on screen, the way it
+          does in every chat-shaped tool. Backdrop blur so results remain readable
+          underneath it. */}
+      {hasSearched ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-5 pt-10 sm:px-8">
+          <div className="pointer-events-auto mx-auto w-full max-w-3xl">
+            {composer}
+            <div className="mt-2 flex items-center justify-between gap-3">
+              {textFilters}
+              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-fg-faint">
+                <input
+                  type="checkbox"
+                  checked={semantic}
+                  onChange={(e) => setSemantic(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
+                />
+                Rank by meaning
+              </label>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </Shell>
   );
 }
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<Shell><p className="py-12 text-sm text-ink-500">Loading search…</p></Shell>}>
+    <Suspense fallback={<Shell><div className="mx-auto max-w-3xl px-5 py-16"><div className="skeleton h-8 w-56" /></div></Shell>}>
       <SearchInner />
     </Suspense>
   );

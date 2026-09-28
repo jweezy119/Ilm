@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Scale, Loader2, AlertTriangle, Sparkles, Check, Plus, Minus } from 'lucide-react';
 import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
-import { Shell, PageHeader, Empty } from '@/components/Shell';
+import { Page, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
@@ -58,17 +58,17 @@ export default function PassagePage() {
 
   if (loading) {
     return (
-      <Shell>
+      <Page>
         <div className="flex items-center gap-2 py-16 text-sm text-ink-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading passage…
         </div>
-      </Shell>
+      </Page>
     );
   }
 
   if (error || !passage) {
     return (
-      <Shell>
+      <Page>
         <Empty icon={AlertTriangle} title="Passage not available">
           {error ?? `No passage is stored under ${passageKey}.`}{' '}
           <Link href="/" className="underline">
@@ -76,12 +76,12 @@ export default function PassagePage() {
           </Link>
           .
         </Empty>
-      </Shell>
+      </Page>
     );
   }
 
   return (
-    <Shell>
+    <Page>
       <Link href="/" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-600 hover:underline dark:text-ink-400">
         <ArrowLeft className="h-3.5 w-3.5" /> Back to search
       </Link>
@@ -164,7 +164,7 @@ export default function PassagePage() {
 
         <RecommendationPanel passage={passage} />
       </div>
-    </Shell>
+    </Page>
   );
 }
 

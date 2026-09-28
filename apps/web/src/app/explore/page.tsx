@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import type { TextId } from '@ilm/shared';
 import { api, ApiError, type ThemeMap } from '@/lib/api';
-import { Shell, PageHeader, Empty } from '@/components/Shell';
+import { Page, PageHeader, Empty } from '@/components/Shell';
 import { getTextChipClass, getTextLabel, percent, TEXT_IDS } from '@/lib/utils';
 
 interface JourneyStep {
@@ -62,7 +62,7 @@ function ExploreInner() {
   }, {});
 
   return (
-    <Shell>
+    <Page>
       <PageHeader
         title={`Theme: ${theme.replace(/_/g, ' ')}`}
         description="Passages carrying this theme, grouped by corpus and ordered by each corpus’s own sequence. Theme scores are produced during indexing, not at query time."
@@ -77,8 +77,8 @@ function ExploreInner() {
             aria-current={name === theme ? 'true' : undefined}
             className={
               name === theme
-                ? 'rounded bg-ink-900 px-2 py-0.5 text-xs text-white dark:bg-ink-100 dark:text-ink-950'
-                : 'rounded bg-ink-100 px-2 py-0.5 text-xs text-ink-700 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-300'
+                ? 'rounded bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent'
+                : 'rounded bg-panel px-2 py-0.5 text-xs text-fg-muted transition-colors hover:bg-line-soft hover:text-fg'
             }
           >
             {name.replace(/_/g, ' ')}
@@ -93,7 +93,7 @@ function ExploreInner() {
       ) : null}
 
       {loading ? (
-        <p className="flex items-center gap-2 py-12 text-sm text-ink-500">
+        <p className="flex items-center gap-2 py-12 text-sm text-fg-faint">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading theme journey…
         </p>
       ) : null}
@@ -101,7 +101,7 @@ function ExploreInner() {
       {!loading && steps?.length === 0 ? (
         <Empty icon={Sparkles} title={`No passages are tagged “${theme}”`}>
           Themes are assigned by the indexing run. Run{' '}
-          <code className="rounded bg-ink-100 px-1 dark:bg-ink-800">npm run index</code> to (re)score the corpus.
+          <code className="rounded bg-panel px-1">npm run index</code> to (re)score the corpus.
         </Empty>
       ) : null}
 
@@ -112,11 +112,11 @@ function ExploreInner() {
               <section key={textId}>
                 <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold">
                   <span className={getTextChipClass(textId)}>{getTextLabel(textId)}</span>
-                  <span className="text-xs font-normal text-ink-500">{byText[textId].length} passages</span>
+                  <span className="text-xs font-normal text-fg-faint">{byText[textId].length} passages</span>
                 </h2>
                 <ol className="space-y-2">
                   {byText[textId].map((step) => (
-                    <li key={step.passageId} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
+                    <li key={step.passageId} className="rounded-lg border border-line p-3">
                       <div className="mb-1 flex items-center gap-2">
                         <a
                           href={`/passage/${step.passageKey.split('/').map(encodeURIComponent).join('/')}`}
@@ -124,7 +124,7 @@ function ExploreInner() {
                         >
                           {step.book} {step.chapter}:{step.verse}
                         </a>
-                        <span className="ml-auto font-mono text-xs text-ink-500">{percent(step.score)}</span>
+                        <span className="ml-auto font-mono text-xs text-fg-faint">{percent(step.score)}</span>
                       </div>
                       <p className="line-clamp-2 text-sm text-ink-700 dark:text-ink-300">{step.preview}</p>
                     </li>
@@ -164,13 +164,13 @@ function ExploreInner() {
           </aside>
         </div>
       ) : null}
-    </Shell>
+    </Page>
   );
 }
 
 export default function ExplorePage() {
   return (
-    <Suspense fallback={<Shell><p className="py-12 text-sm text-ink-500">Loading…</p></Shell>}>
+    <Suspense fallback={<Page><p className="py-12 text-sm text-ink-500">Loading…</p></Page>}>
       <ExploreInner />
     </Suspense>
   );

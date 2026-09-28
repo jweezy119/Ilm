@@ -31,15 +31,28 @@ export function PassageCard({
   const direction = getTextDirection(passage.textId);
 
   return (
-    <article className="group relative flex flex-col rounded-xl border border-ink-200 bg-white p-4 transition-colors hover:border-ink-400 dark:border-ink-800 dark:bg-ink-900 dark:hover:border-ink-600">
-      <header className="mb-2 flex items-center gap-2">
+    /*
+     * A row in a list, not a card in a grid.
+     *
+     * Forty shadowed cards read as forty interruptions. Forty hairline-separated
+     * rows read as a document, and the reference sits on the left edge where the
+     * eye can find it without reading the passage first.
+     *
+     * The add-to-comparison control stays hidden until hover: an always-present
+     * button on every row competes with the text it sits beside, and on a phone
+     * there is no hover, so it is revealed by focus there instead.
+     */
+    <article className="result-row group relative">
+      {/* pr-9 reserves the corner the compare control occupies. Without it the
+          score rendered underneath the button and was never seen. */}
+      <header className="mb-1.5 flex items-baseline gap-2 pr-9">
         <span className={getTextChipClass(passage.textId)}>{getTextLabel(passage.textId, true)}</span>
-        <Link href={href} className="truncate text-sm font-medium hover:underline">
+        <Link href={href} className="ref truncate transition-colors hover:text-accent hover:underline">
           {passage.book} {passage.chapter}:{passage.verse}
         </Link>
         {score !== undefined ? (
           <span
-            className="ml-auto shrink-0 font-mono text-[11px] text-ink-500 dark:text-ink-400"
+            className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-fg-faint"
             title={
               semanticScore !== undefined && textScore !== undefined
                 ? `Semantic relevance ${percent(semanticScore)} · full-text ${percent(textScore)}`
@@ -52,19 +65,22 @@ export function PassageCard({
       </header>
 
       {passage.originalText ? (
-        <p dir={direction} className={cn('mb-2 text-ink-800 dark:text-ink-200', getScriptFont(passage.metadata.language))}>
+        <p
+          dir={direction}
+          className={cn('mb-1 text-[15px] leading-relaxed text-fg-muted', getScriptFont(passage.metadata.language))}
+        >
           {truncate(passage.originalText, 140)}
         </p>
       ) : null}
 
-      <p className="line-clamp-4 text-sm text-ink-700 dark:text-ink-300">
+      <p className="line-clamp-4 text-[15px] leading-relaxed text-fg">
         {query ? highlightTerm(truncate(passage.translation, 320), query) : truncate(passage.translation, 320)}
       </p>
 
       {showThemes && passage.themes.length > 0 ? (
-        <ul className="mt-3 flex flex-wrap gap-1">
-          {passage.themes.slice(0, 3).map((theme) => (
-            <li key={theme.theme} className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] text-ink-700 dark:bg-ink-800 dark:text-ink-300">
+        <ul className="mt-2.5 flex flex-wrap gap-1">
+          {passage.themes.slice(0, 3).map((theme: { theme: string }) => (
+            <li key={theme.theme} className="rounded bg-panel px-1.5 py-0.5 text-[11px] text-fg-muted">
               {theme.theme}
             </li>
           ))}
@@ -76,15 +92,15 @@ export function PassageCard({
           type="button"
           onClick={() => onToggleCompare(passage)}
           className={cn(
-            'absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-md border transition-colors',
+            'absolute right-0 top-3 grid h-7 w-7 place-items-center rounded-full border transition-colors',
             inComparison
-              ? 'border-emerald-600 bg-emerald-700 text-white'
-              : 'border-ink-300 bg-white text-ink-500 opacity-0 hover:border-ink-500 hover:text-ink-800 group-hover:opacity-100 focus-visible:opacity-100 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-400'
+              ? 'border-accent bg-accent text-accent-fg'
+              : 'border-line bg-raised text-fg-faint hover:border-accent hover:text-accent'
           )}
           aria-label={inComparison ? 'Remove from comparison' : 'Add to comparison'}
           aria-pressed={inComparison}
         >
-          {inComparison ? <Check className="h-3.5 w-3.5" /> : <Scale className="h-3.5 w-3.5" />}
+          {inComparison ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
         </button>
       ) : null}
     </article>
@@ -102,7 +118,15 @@ export function SearchResultCard({
   inComparison: boolean;
   onToggleCompare: (passage: Passage) => void;
 }) {
-  return <PassageCard passage={result.passage} score={result.score} query={query} inComparison={inComparison} onToggleCompare={onToggleCompare} />;
+  return (
+    <PassageCard
+      passage={result.passage}
+      score={result.score}
+      query={query}
+      inComparison={inComparison}
+      onToggleCompare={onToggleCompare}
+    />
+  );
 }
 
-export { Plus };
+export { Plus, Scale };

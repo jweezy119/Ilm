@@ -155,6 +155,8 @@ interface UiState {
   setTheme: (theme: ThemeMode) => void;
   comparisonOpen: boolean;
   setComparisonOpen: (open: boolean) => void;
+  railCollapsed: boolean;
+  toggleRail: () => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -164,6 +166,10 @@ export const useUiStore = create<UiState>()(
       setTheme: (theme) => set({ theme }),
       comparisonOpen: false,
       setComparisonOpen: (comparisonOpen) => set({ comparisonOpen }),
+      // Persisted because the rail is the one piece of layout a reader sets once
+      // and expects to stay set, including across reloads.
+      railCollapsed: false,
+      toggleRail: () => set((state) => ({ railCollapsed: !state.railCollapsed })),
     }),
     { name: 'ilm-ui' }
   )
