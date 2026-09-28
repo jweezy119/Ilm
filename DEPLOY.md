@@ -118,6 +118,13 @@ DATABASE_URL=... npm run ingest
 DATABASE_URL=... npm run index
 ```
 
+Migrations are **not** a manual step for the API service: it runs
+`prisma migrate deploy` on boot, before it accepts traffic, and refuses to start if
+that fails — which rolls the deploy back to a commit whose code matches the schema.
+The build command only generates the Prisma client, so this is what stops code that
+reads a new table from deploying cleanly and then failing every request. Set
+`SKIP_MIGRATE=1` to opt out where a separate migration job owns the schema.
+
 **Pre-deploy check.** `GET /health` on the API reports the search index size and
 whether Jev is configured:
 

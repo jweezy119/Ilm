@@ -2,6 +2,7 @@
  * Ilm API — Fastify entry point.
  */
 
+import { execFileSync } from 'node:child_process';
 import { loadLocalEnv } from './lib/env';
 
 loadLocalEnv();
@@ -99,6 +100,32 @@ async function main(): Promise<void> {
 
   const port = Number(process.env.PORT ?? 4000);
   const host = process.env.HOST ?? '0.0.0.0';
+
+  // Pending migrations are applied before the server accepts traffic.
+  //
+  // The host's build command generates the Prisma client but does not migrate, so
+  // code that reads a new table deploys cleanly and then fails every request that
+  // touches it. Doing it here means a schema change cannot ship ahead of its
+  // migration.
+  //
+  // A failure exits non-zero rather than starting: a half-migrated database
+  // cannot serve requests anyway, and failing the boot rolls the deploy back to a
+  // commit whose code matches the schema, which does work. Starting anyway would
+  // leave the service up and returning 500s.
+  if (process.env.SKIP_MIGRATE !== '1') {
+    app.log.info('applying pending migrations');
+    try {
+      execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
+        cwd: new URL('..', import.meta.url).pathname,
+        stdio: 'inherit',
+        env: process.env,
+        timeout: Number(process.env.MIGRATE_TIMEOUT_MS ?? 120_000),
+      });
+    } catch (error) {
+      app.log.error({ err: error }, 'migrate deploy failed — refusing to start with a schema the code does not match');
+      process.exit(1);
+    }
+  }
 
   await app.listen({ port, host });
   app.log.info(`Ilm API listening on http://${host}:${port}`);
