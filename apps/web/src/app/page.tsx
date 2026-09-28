@@ -66,8 +66,8 @@ function SearchInner() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetchCoverage().then((health) => {
-      if (!cancelled && health) setUnindexed(health.search.unindexedTexts);
+    void fetchCoverage().then((corpus) => {
+      if (!cancelled && corpus) setUnindexed(corpus.search.unindexedTexts);
     });
     return () => {
       cancelled = true;

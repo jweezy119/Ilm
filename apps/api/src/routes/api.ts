@@ -169,37 +169,24 @@ async function coverageCache(passages: number): Promise<Coverage> {
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------- health
+  /*
+   * Liveness only, and deliberately so.
+   *
+   * This route was answering with corpus statistics, which meant it counted every
+   * passage to report `passagesIndexed` and parsed 45,453 JSONB values to count
+   * embedded ones. The second is a full scan by nature — `jsonb_array_length` has
+   * to be evaluated per row, and when every row matches the planner rightly
+   * prefers a sequential scan to an index range — so it measured 1,988 ms. At
+   * that cost the platform's own health check timed out, the service was
+   * restarted for being slow, and it did it again on the next cold pool.
+   *
+   * None of that is a liveness signal. A service that cannot count its own
+   * embeddings is still serving requests. So this answers from memory only, and
+   * the numbers a reader or an operator actually wants live in /api/corpus,
+   * which nothing polls on a timer.
+   */
   app.get('/health', async () => {
     const judge = getJevJudge();
-    const passages = await prisma.passage.count();
-    // "Has a real vector", counted by length. Not `IS NOT NULL`, which is true
-    // for an empty array and so reported every row as embedded — it claimed
-    // 45,453 of 45,453 on a corpus where 16,853 passages held '[]', and the
-    // interface repeated that claim. Not the old `jsonb_typeof(...) = 'array'`
-    // version either: correct, but 4.3 s because the type check forces a full
-    // scan.
-    //
-    // The index on jsonb_array_length brings this to ~33 ms, and the CHECK
-    // constraint from migration 3 is what makes the bare form safe: it forbids a
-    // JSON null, which is the one input that makes jsonb_array_length raise
-    // 22023 rather than return null. With the constraint in place a row is
-    // either SQL NULL (returns null, comparison drops it) or a real array.
-    const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
-      SELECT count(*)::int AS embedded FROM passages WHERE jsonb_array_length(embeddings) > 0
-    `;
-    const embeddingConfig = getEmbeddingConfig();
-
-    // The in-memory index holds a subset of the corpus on small instances, so
-    // health reports which texts are actually searchable. A caller that cannot
-    // tell "not in the index" from "does not exist" will conclude the texts are
-    // missing, which is the one thing that must not be left ambiguous.
-    //
-    // Cached: a DISTINCT over every passage made this route take seconds, and a
-    // health check that slow is a health check the platform stops trusting. The
-    // corpus only moves when something is ingested, so a short TTL is enough.
-    const coverage = await coverageCache(passages);
-    const { indexedPassages, allTexts, indexedTexts } = coverage;
-    const indexed = indexedTexts ? new Set(indexedTexts) : new Set(allTexts);
 
     return ok({
       status: 'ok',
@@ -210,12 +197,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         // Which engine answered, because the two rank differently: the in-process
         // index matches theme names and book slugs, Postgres matches the scripture.
         engine: engineName,
-        passagesIndexed: indexedPassages,
-        passagesTotal: passages,
-        // Texts a search will cover, and texts it will not. `null` means all.
-        indexedTexts: indexedTexts ?? allTexts,
-        unindexedTexts: allTexts.filter((t) => !indexed.has(t)),
-        partial: indexedPassages < passages,
       },
       // Kept for compatibility with anything already reading `jev`, but the chain
       // below is the real answer: `configured` is true only if some engine can run.
@@ -231,16 +212,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         exhausted: judgeBudget().exhausted,
         refused: judgeBudget().refused,
       },
-      embeddings: {
-        provider: embeddingConfig?.provider ?? null,
-        model: embeddingConfig?.model ?? null,
-        embedded,
-        of: passages,
-      },
     });
   });
 
-  // ---------------------------------------------------------------- search
+
   app.post('/api/search', async (request: FastifyRequest, reply: FastifyReply) => {
     const body = parse(SearchBodySchema, request.body);
     const result = await searchPassages(body);
@@ -329,7 +304,44 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ---------------------------------------------------------------- texts
-  app.get('/api/texts', async () => ok(await getCorpusStats()));
+  /*
+   * Corpus statistics, and the home of the numbers that used to sit on /health.
+   *
+   * Nothing polls this on a timer, so it can afford to be thorough. The embedded
+   * count in particular has to parse 45,453 JSONB values, which is ~2s and is why
+   * it moved off the liveness route rather than being made faster — there is no
+   * faster way to evaluate jsonb_array_length across every row, because when every
+   * row matches, a sequential scan is the correct plan.
+   */
+  app.get('/api/texts', async () => {
+    const stats = await getCorpusStats();
+    const passages = stats.totals.passages;
+    const coverage = await coverageCache(passages);
+
+    // Counted in SQL rather than through Prisma's JSON filter, which does not
+    // match an empty array reliably and reported every row as embedded.
+    const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
+      SELECT count(*)::int AS embedded FROM passages WHERE jsonb_array_length(embeddings) > 0
+    `;
+    const embeddingConfig = getEmbeddingConfig();
+
+    return ok({
+      ...stats,
+      search: {
+        passagesIndexed: coverage.indexedPassages,
+        passagesTotal: passages,
+        indexedTexts: coverage.indexedTexts ?? coverage.allTexts,
+        unindexedTexts: coverage.allTexts.filter((t) => !new Set(coverage.indexedTexts ?? coverage.allTexts).has(t)),
+        partial: coverage.indexedPassages < passages,
+      },
+      embeddings: {
+        provider: embeddingConfig?.provider ?? null,
+        model: embeddingConfig?.model ?? null,
+        embedded,
+        of: passages,
+      },
+    });
+  });
 
   app.get('/api/texts/:textId', async (request: FastifyRequest<{ Params: { textId: string } }>, reply: FastifyReply) => {
     const textId = parse(TextIdSchema, request.params.textId);

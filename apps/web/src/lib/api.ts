@@ -83,38 +83,44 @@ export interface TextStats {
 export interface CorpusStats {
   texts: TextStats[];
   totals: { passages: number; books: number; crossReferences: number };
+  /**
+   * Search coverage, not just a count.
+   *
+   * `passagesIndexed` alone would be misleading if the engine held a subset: it
+   * reads as "the corpus is 12,082 passages long" when the truth is "12,082 of
+   * 45,453 are searchable and the rest are not". The unindexed text ids are
+   * carried so the interface can say which, rather than leaving a reader to
+   * conclude those texts are simply missing.
+   */
+  search: {
+    passagesIndexed: number;
+    passagesTotal: number;
+    indexedTexts: string[];
+    unindexedTexts: string[];
+    partial: boolean;
+  };
+  embeddings: { provider: string | null; model: string | null; embedded: number; of: number };
 }
 
 export interface Health {
   status: string;
   /**
-   * Coverage, not just a count.
-   *
-   * The search index lives in memory and on a small instance it holds a subset of
-   * the corpus, so `passagesIndexed` alone is misleading: it reads as "the corpus
-   * is 12,082 passages long" when the truth is "12,082 of 45,453 are searchable
-   * and the rest are not". The unindexed text ids are carried so the interface
-   * can say which, rather than leaving a reader to conclude those texts are
-   * simply missing.
+   * Liveness, deliberately. The corpus counts and embedding totals this used to
+   * carry cost about two seconds — counting embedded passages parses every JSONB
+   * value in the table — and the platform polls this route on a timer, so it was
+   * restarting the service for being slow. Those numbers are on `CorpusStats` now,
+   * which nothing polls.
    */
   search: {
     ready: boolean;
     /** 'postgres' searches the scripture; 'orama' matches theme names and book slugs. */
     engine?: 'postgres' | 'orama';
-    passagesIndexed: number;
-    passagesTotal: number;
-    /** Texts a search will cover. */
-    indexedTexts: string[];
-    /** Texts a search will not cover, and why they were left out. */
-    unindexedTexts: string[];
-    partial: boolean;
   };
   jev: { configured: boolean; reason: string };
   /** Every engine in the order it is tried. */
   judges: Array<{ id: string; label: string; available: boolean; reason: string }>;
   /** What this process has spent on the hosted judge, and the ceiling it will not pass. */
   budget: { spentUsd: number; limitUsd: number | null; exhausted: boolean; refused: number };
-  embeddings: { provider: string | null; model: string | null; embedded: number; of: number };
 }
 
 export type { CorpusVerdict };

@@ -151,11 +151,11 @@ export default function SettingsPage() {
                   )}
                 </dd>
               </div>
-              {health ? (
+              {corpus ? (
                 <div className="flex items-center justify-between">
                   <dt className="text-fg-muted">Embeddings</dt>
                   <dd className="font-mono tabular-nums">
-                    {health.embeddings.embedded.toLocaleString()} / {health.embeddings.of.toLocaleString()}
+                    {corpus.embeddings.embedded.toLocaleString()} / {corpus.embeddings.of.toLocaleString()}
                   </dd>
                 </div>
               ) : null}
@@ -183,7 +183,7 @@ export default function SettingsPage() {
                 <tbody>
                   {TEXT_IDS.map((textId) => {
                     const row = corpus.texts.find((t) => t.textId === textId);
-                    const missing = health?.search.unindexedTexts.includes(textId) ?? false;
+                    const missing = corpus?.search.unindexedTexts.includes(textId) ?? false;
                     return (
                       <tr key={textId} className="border-t border-line-soft">
                         <td className={`py-1.5 ${missing ? 'text-fg-faint line-through decoration-fg-faint/40' : ''}`}>
@@ -212,21 +212,21 @@ export default function SettingsPage() {
         this app can have: a reader searches the New Testament, gets nothing, and
         concludes the texts do not address it — a claim about scripture, and false.
       */}
-      {health ? (
+      {corpus ? (
         <section className="mt-5">
           <h2 className="mb-3 text-sm font-medium">This deployment</h2>
           <div className="grid gap-4 md:grid-cols-3">
             <div
-              className={`card p-4 ${health.search.partial ? 'border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}
+              className={`card p-4 ${corpus.search.partial ? 'border-amber-300 bg-amber-50/60 dark:border-amber-800 dark:bg-amber-950/20' : ''}`}
             >
               <h3 className="mb-2 flex items-center gap-2 text-xs font-medium">
                 <Database className="h-3.5 w-3.5 text-fg-muted" /> Search coverage
               </h3>
-              {health.search.partial ? (
+              {corpus.search.partial ? (
                 <p className="text-[11px] leading-relaxed text-fg-muted">
                   <span className="font-medium text-fg">
-                    {health.search.passagesIndexed.toLocaleString()} of{' '}
-                    {health.search.passagesTotal.toLocaleString()} passages are searchable.
+                    {corpus.search.passagesIndexed.toLocaleString()} of{' '}
+                    {corpus.search.passagesTotal.toLocaleString()} passages are searchable.
                   </span>{' '}
                   The index is held in memory, and this instance cannot hold all five corpora — a one-property index over
                   the full corpus already needs 745 MB. The rest is stored and served normally; it just cannot be
@@ -234,17 +234,17 @@ export default function SettingsPage() {
                 </p>
               ) : (
                 <p className="text-[11px] leading-relaxed text-fg-muted">
-                  All {health.search.passagesTotal.toLocaleString()} passages are searchable.
+                  All {corpus.search.passagesTotal.toLocaleString()} passages are searchable.
                 </p>
               )}
               <ul className="mt-3 space-y-1">
-                {health.search.indexedTexts.map((textId) => (
+                {corpus.search.indexedTexts.map((textId) => (
                   <li key={textId} className="flex items-center justify-between text-[11px]">
                     <span className="font-medium text-accent">{getTextLabel(textId as TextId, true)}</span>
                     <span className="text-fg-faint">searchable</span>
                   </li>
                 ))}
-                {health.search.unindexedTexts.map((textId) => (
+                {corpus.search.unindexedTexts.map((textId) => (
                   <li key={textId} className="flex items-center justify-between text-[11px]">
                     <span className="text-fg-faint line-through decoration-fg-faint/40">
                       {getTextLabel(textId as TextId, true)}
@@ -253,7 +253,7 @@ export default function SettingsPage() {
                   </li>
                 ))}
               </ul>
-              {health.search.partial ? (
+              {corpus.search.partial ? (
                 <p className="mt-3 text-[11px] leading-relaxed text-fg-faint">
                   A setting, not a limitation of the data:{' '}
                   <code className="rounded bg-panel px-1">SEARCH_INDEX_TEXTS</code> chooses which texts are indexed, and{' '}
@@ -266,6 +266,7 @@ export default function SettingsPage() {
               <h3 className="mb-2 flex items-center gap-2 text-xs font-medium">
                 <Wallet className="h-3.5 w-3.5 text-fg-muted" /> Model budget
               </h3>
+              {health ? (
               <dl className="space-y-2 text-[11px]">
                 <div className="flex items-center justify-between">
                   <dt className="text-fg-muted">Spent this process</dt>
@@ -284,10 +285,13 @@ export default function SettingsPage() {
                   </div>
                 ) : null}
               </dl>
+              ) : (
+                <p className="text-[11px] text-fg-faint">No reading — the API is unreachable.</p>
+              )}
               <p className="mt-3 text-[11px] leading-relaxed text-fg-faint">
-                {health.budget.exhausted
+                {health?.budget.exhausted
                   ? 'The cap is reached. Results are still returned, ranked by local rules and labelled as such, but no model is being called.'
-                  : health.budget.limitUsd === null
+                  : health?.budget.limitUsd === null
                     ? 'No cap is set. Results labelled “Ranked by meaning” were judged by the model rather than by keyword overlap.'
                     : 'Below the cap. Results labelled “Ranked by meaning” were judged by the model rather than by keyword overlap.'}
               </p>
@@ -299,15 +303,15 @@ export default function SettingsPage() {
               </h3>
               <p className="text-[11px] leading-relaxed text-fg-muted">
                 <span className="font-medium text-fg">
-                  {health.embeddings.embedded.toLocaleString()} of {health.embeddings.of.toLocaleString()} passages
+                  {corpus.embeddings.embedded.toLocaleString()} of {corpus.embeddings.of.toLocaleString()} passages
                 </span>{' '}
                 carry a local vector. These run on CPU and cost nothing, and they are what lets two passages from
                 different traditions be compared without a model call.
               </p>
               <p className="mt-3 text-[11px] text-fg-faint">
-                {health.embeddings.provider
-                  ? `Provider: ${health.embeddings.provider}${health.embeddings.model ? ` · ${health.embeddings.model}` : ''}`
-                  : health.embeddings.embedded < health.embeddings.of
+                {corpus.embeddings.provider
+                  ? `Provider: ${corpus.embeddings.provider}${corpus.embeddings.model ? ` · ${corpus.embeddings.model}` : ''}`
+                  : corpus.embeddings.embedded < corpus.embeddings.of
                     ? // Only a problem while passages are still missing. Once they are all
                       // embedded, the provider is irrelevant to reading them.
                       'No provider is configured here, so the remaining passages have to be embedded before comparisons can use vectors.'

@@ -8,12 +8,12 @@
 
 import { create, getByID, insertMultiple, load, remove, save, search, upsert } from '@orama/orama';
 import type { Orama, Results, WhereCondition } from '@orama/orama';
-import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { TextId } from '@ilm/shared';
+import { prisma } from '../lib/db';
 
-const prisma = new PrismaClient();
+
 
 // ============================================================================
 // SCHEMA

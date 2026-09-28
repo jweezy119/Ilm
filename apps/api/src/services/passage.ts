@@ -5,11 +5,10 @@
  * needs, so anything that renders a passage reads it from here.
  */
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/db';
 import { Passage, TextId, BookMetadata, PassageKey, createPassageKey, TEXT_METADATA } from '@ilm/shared';
 import type { CrossReference } from '@prisma/client';
-
-const prisma = new PrismaClient();
 
 const passageInclude = {
   themes: { include: { theme: true } },
@@ -566,5 +565,7 @@ function categorizeTheme(theme: string): string {
   return 'other';
 }
 
+// The one pool in the process, re-exported so existing importers keep working.
+// See src/lib/db.ts.
 export { prisma };
 export type { PassageKey, createPassageKey };

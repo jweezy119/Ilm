@@ -18,12 +18,10 @@
  * everything that used to be findable remains findable.
  */
 
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { TextId } from '@ilm/shared';
+import { prisma } from '../lib/db';
 
-// One client for this module, as search/orama.ts does. The pool is small and
-// bounded, and a search is a single statement.
-const prisma = new PrismaClient();
 
 export type PassageDoc = {
   passageKey: string;

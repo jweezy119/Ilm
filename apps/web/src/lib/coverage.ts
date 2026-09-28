@@ -1,4 +1,4 @@
-import { api, type Health } from './api';
+import { api, type CorpusStats } from './api';
 
 /**
  * Index coverage, fetched once and shared.
@@ -13,10 +13,16 @@ import { api, type Health } from './api';
  * something is ingested or the process restarts, and a stale answer here is
  * better than a spinner in the filter row.
  */
-let pending: Promise<Health | null> | null = null;
+let pending: Promise<CorpusStats | null> | null = null;
 
-export function fetchCoverage(): Promise<Health | null> {
-  pending ??= api.health().catch(() => null);
+/**
+ * Read from the corpus endpoint rather than /health.
+ *
+ * /health is polled by the platform on a timer and answers liveness only; counting
+ * embedded passages on it took about two seconds and got the service restarted.
+ */
+export function fetchCoverage(): Promise<CorpusStats | null> {
+  pending ??= api.corpus().catch(() => null);
   return pending;
 }
 
