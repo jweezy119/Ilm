@@ -8,6 +8,7 @@ import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Shell, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
+import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
 import { useComparisonStore, useSettingsStore } from '@/store';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, TEXT_STYLES } from '@/lib/utils';
@@ -150,7 +151,7 @@ export default function PassagePage() {
                     >
                       {theme.theme.replace(/_/g, ' ')}
                       <span className="font-mono text-ink-500">{percent(theme.score)}</span>
-                      {theme.source === 'jev' ? <span className="text-ink-400">jev</span> : <span className="text-ink-400">derived</span>}
+                      <SourceBadge source={theme.source} className="bg-transparent p-0 text-ink-400" />
                     </Link>
                   </li>
                 ))}
@@ -316,7 +317,7 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
         </p>
         {state.status === 'ready' && state.data ? (
           <p className="mt-1 text-[11px] text-ink-500">
-            {state.data.source === 'jev' ? 'Judged by Jev' : 'Scored by local rules — no model key configured'}
+            {SOURCE_SENTENCE[state.data.source]}
             {state.data.cachedCount > 0 ? `, ${state.data.cachedCount} from cache` : ''}.
           </p>
         ) : null}
@@ -348,17 +349,7 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
                   </Link>
                   {/* Provenance per row. Without it every number here reads as model
                       output, which is false when the pair fell back or was cached. */}
-                  <span
-                    className={cn(
-                      'rounded px-1 py-0.5 text-[10px]',
-                      rec.source === 'jev'
-                        ? 'bg-ilm-100 text-ilm-800 dark:bg-ilm-800 dark:text-ilm-100'
-                        : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
-                    )}
-                    title={rec.source === 'jev' ? 'Judged by the model' : 'Scored by a local rule, no model involved'}
-                  >
-                    {rec.source}
-                  </span>
+                  <SourceBadge source={rec.source} className="px-1 py-0.5 text-[10px]" />
                   <span className="ml-auto font-mono text-xs text-ink-500">{percent(rec.scores.composite)}</span>
                 </div>
 

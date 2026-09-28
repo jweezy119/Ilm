@@ -8,6 +8,18 @@ export const TextIdSchema = z.enum(['quran', 'talmud', 'torah', 'ot', 'nt']);
 export type TextId = z.infer<typeof TextIdSchema>;
 
 export const LanguageSchema = z.enum(['arabic', 'hebrew', 'aramaic', 'greek', 'english']);
+
+/**
+ * Where a number came from. Reported everywhere a score is, so a reader is never
+ * left assuming a model produced something a rule did.
+ *
+ *   jev      a hosted judgment model
+ *   local    a model running on this machine
+ *   derived  a deterministic local rule — lexical overlap, theme intersection
+ */
+export const ScoreSourceSchema = z.enum(['jev', 'local', 'derived']);
+export type ScoreSource = z.infer<typeof ScoreSourceSchema>;
+
 export type Language = z.infer<typeof LanguageSchema>;
 
 // ============================================================================
@@ -42,7 +54,8 @@ export const ThemeScoreSchema = z.object({
   score: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   evidence: z.array(z.string()),
-  source: z.enum(['jev', 'manual', 'derived']).default('jev'),
+  // 'manual' is a curator's own assignment and predates the local engine.
+  source: z.union([ScoreSourceSchema, z.literal('manual')]).default('jev'),
 });
 export type ThemeScore = z.infer<typeof ThemeScoreSchema>;
 
@@ -162,13 +175,13 @@ export const SearchResponseSchema = z.object({
   tookMs: z.number().int().nonnegative(),
   suggestions: z.array(z.string()).default([]),
   intent: SearchIntentSchema.default('unknown'),
-  intentSource: z.enum(['jev', 'derived']).default('derived'),
+  intentSource: ScoreSourceSchema.default('derived'),
   /**
    * 'unaddressed' means these texts say nothing on the topic. That is a real
    * answer, and a more useful one than the least-bad keyword matches.
    */
   verdict: CorpusVerdictSchema.default('unknown'),
-  rerankSource: z.enum(['jev', 'derived']).default('derived'),
+  rerankSource: ScoreSourceSchema.default('derived'),
   /** Theme the query was widened with, when one was recognised. */
   expandedTheme: z.string().nullable().default(null),
 });
@@ -208,7 +221,7 @@ export const AlignmentSchema = z.object({
   // Which judge produced the type and the strength. Without this the UI would have
   // to assert that every score came from Jev, which is false whenever the local
   // fallback ran.
-  source: z.enum(['jev', 'derived']).default('derived'),
+  source: ScoreSourceSchema.default('derived'),
 });
 export type Alignment = z.infer<typeof AlignmentSchema>;
 
@@ -321,7 +334,7 @@ export const RecommendationSchema = z.object({
   // Whether a model judged this pair or a local rule did. Without it the UI would
   // have to present every number as model output, which is false when Jev is absent
   // or when the pair fell back.
-  source: z.enum(['jev', 'derived']).default('derived'),
+  source: ScoreSourceSchema.default('derived'),
   // True when these scores came from a previous judgement rather than this request.
   cached: z.boolean().default(false),
 });
@@ -342,7 +355,7 @@ export const RecommendationResponseSchema = z.object({
   sourcePassage: PassageSchema,
   weights: RecommendationWeightsSchema,
   /** Whether any recommendation in this list was model-judged. */
-  source: z.enum(['jev', 'derived']).default('derived'),
+  source: ScoreSourceSchema.default('derived'),
   /** How many of these were recombined from the affinity cache. */
   cachedCount: z.number().int().min(0).default(0),
   generatedAt: z.date(),

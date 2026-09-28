@@ -40,8 +40,9 @@ import { comparePassages, getParallelTranslations, generateComparisonUrl, comput
 import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
-import { getJevJudge } from '../services/typesafe-client';
+import { getJevJudge, describeJudgeChain } from '../services/typesafe-client';
 import { isIndexReady, invalidateOramaIndex } from '../search/orama';
+import { getEmbeddingConfig } from '../services/embeddings';
 import { HttpError } from '../lib/errors';
 
 // ============================================================================
@@ -120,14 +121,33 @@ function parse<T extends z.ZodTypeAny>(schema: T, input: unknown): z.infer<T> {
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ---------------------------------------------------------------- health
   app.get('/health', async () => {
-    const jev = getJevJudge();
+    const judge = getJevJudge();
     const passages = await prisma.passage.count();
+    // Counted in SQL rather than through Prisma's JSON filter, which does not match
+    // an empty array reliably and reported every row as embedded.
+    const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
+      SELECT count(*)::int AS embedded FROM passages
+      WHERE jsonb_typeof(embeddings) = 'array' AND jsonb_array_length(embeddings) > 0
+    `;
+    const embeddingConfig = getEmbeddingConfig();
+
     return ok({
       status: 'ok',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '0.1.0',
       search: { ready: isIndexReady(), passagesIndexed: passages },
-      jev: { configured: jev.available, reason: jev.reason },
+      // Kept for compatibility with anything already reading `jev`, but the chain
+      // below is the real answer: `configured` is true only if some engine can run.
+      jev: { configured: judge.available, reason: judge.reason },
+      // Every engine in the order it is tried, so a reader can see whether a result
+      // was judged by the hosted model, by something running locally, or not at all.
+      judges: describeJudgeChain(),
+      embeddings: {
+        provider: embeddingConfig?.provider ?? null,
+        model: embeddingConfig?.model ?? null,
+        embedded,
+        of: passages,
+      },
     });
   });
 

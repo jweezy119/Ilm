@@ -104,7 +104,8 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
     intent: intent.intent,
     intentSource: intent.source,
     verdict: reranked?.verdict ?? 'unknown',
-    rerankSource: reranked ? 'jev' : 'derived',
+    // Off the reply, so a fallback engine is reported as itself.
+    rerankSource: reranked?.source ?? 'derived',
     expandedTheme: expansion.theme,
   };
 }

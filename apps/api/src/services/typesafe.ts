@@ -12,7 +12,10 @@
  *     tagged `derived` so the UI can say where the numbers came from.
  */
 
-import { Passage, CrossRef, CrossRefType, TextId, THEME_TAXONOMY } from '@ilm/shared';
+import { Passage, CrossRef, CrossRefType, TextId, THEME_TAXONOMY, type ScoreSource } from '@ilm/shared';
+
+// Re-exported so callers can keep importing the type from the module that uses it.
+export type { ScoreSource };
 import { createBoundedMemo } from '../lib/memo';
 import { getJevJudge } from './typesafe-client';
 import type { EntryType, JevQuestion } from './typesafe-client';
@@ -34,7 +37,7 @@ export interface AffinityScores {
 }
 
 /** Where a set of numbers came from, so the UI can be honest about it. */
-export type ScoreSource = 'jev' | 'derived';
+
 
 export interface Judged<T> {
   value: T;
@@ -205,19 +208,23 @@ export function embeddingSimilarity(a: Passage, b: Passage): number {
 
 const MIN_JEV_SCORE = 0.1;
 
-async function askJev(
-  state: EntryType,
-  questions: JevQuestion[]
-): Promise<{ answers: Record<string, { value: number; probabilities: Record<string, number>; confidence: number; choice?: string }>; source: ScoreSource } | null> {
-  const jev = getJevJudge();
-  if (!jev.available) return null;
+/**
+ * Ask the judge chain one batch of questions.
+ *
+ * The source comes back on the reply rather than being asserted here, so a fallback
+ * engine that answered is reported as itself. Returning null means no engine could
+ * answer, and every caller has a deterministic path for that.
+ */
+async function askJev(state: EntryType, questions: JevQuestion[]): Promise<{ answers: Record<string, { value: number; probabilities: Record<string, number>; confidence: number; choice?: string }>; source: ScoreSource } | null> {
+  const judge = getJevJudge();
+  if (!judge.available) return null;
 
   try {
-    const answers = await jev.ask(state, questions);
-    if (Object.keys(answers).length === 0) return null;
-    return { answers, source: 'jev' };
+    const verdict = await judge.ask(state, questions);
+    if (Object.keys(verdict.answers).length === 0) return null;
+    return { answers: verdict.answers, source: verdict.source };
   } catch (error) {
-    console.error('[jev] request failed, falling back to local scoring:', (error as Error).message);
+    console.error('[judge] every engine failed, falling back to local scoring:', (error as Error).message);
     return null;
   }
 }
@@ -250,7 +257,9 @@ export async function scoreAffinity(
       scores[dim] = Math.min(1, Math.max(0, result.answers[dim]?.value ?? 0));
     }
     scores.composite = composite(scores, weights);
-    source = 'jev';
+    // Taken from the reply, not asserted: a fallback engine that answered must be
+    // reported as itself rather than as the hosted model.
+    source = result.source;
   } else {
     scores = localAffinityScores(a, b, weights);
     source = 'derived';
@@ -299,7 +308,7 @@ export async function scoreCandidates(
       return {
         candidate,
         scores,
-        source: 'jev' as const,
+        source: result.source,
         confidence: confidenceSum / AFFINITY_DIMENSIONS.length,
       };
     }
@@ -867,7 +876,7 @@ export async function computeAlignments(pairs: Array<[Passage, Passage]>): Promi
         strength: clamp01(result.answers[`p${i}.strength`]?.value ?? 0),
         matchedSegments: segments,
         notes: alignmentNote(segments),
-        source: 'jev',
+        source: result.source,
       };
     });
   }
@@ -1047,7 +1056,7 @@ export async function rerankForQuery(query: string, candidates: Passage[]): Prom
     relevance,
     verdict: corpus === undefined ? 'unknown' : verdictFromSilence(clamp01(1 - corpus)),
     silence: corpus === undefined ? 0 : clamp01(1 - corpus),
-    source: 'jev',
+    source: result.source,
   };
 }
 
@@ -1127,7 +1136,7 @@ async function expandQueryThemeUncached(query: string): Promise<QueryExpansion> 
   const answer = result?.answers.theme;
   if (!answer?.choice || answer.choice === 'none') return local;
 
-  return { theme: answer.choice, confidence: answer.confidence, source: 'jev' };
+  return { theme: answer.choice, confidence: answer.confidence, source: result?.source ?? 'derived' };
 }
 
 /** Local theme guess, from the same keyword tables used to score passage themes. */
@@ -1226,7 +1235,7 @@ async function classifySearchIntentUncached(query: string): Promise<IntentResult
     intent: answer.choice as SearchIntent,
     confidence: answer.confidence,
     probabilities: answer.probabilities,
-    source: 'jev',
+    source: result?.source ?? 'derived',
   };
 }
 

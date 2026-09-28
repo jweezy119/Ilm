@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Passage, TextId } from '@ilm/shared';
+import type { Passage, ScoreSource, TextId } from '@ilm/shared';
 import { setJevJudge, resetJevJudge, type JevJudge, type JevQuestion } from '../src/services/typesafe-client';
 import {
   blendSearchScore,
@@ -33,11 +33,15 @@ function passage(over: Partial<Passage> = {}): Passage {
 /** Records every question it is asked, and answers from a caller-supplied map. */
 function stubJudge(
   answer: (question: JevQuestion) => { value: number; probabilities?: Record<string, number>; confidence?: number; choice?: string } | undefined,
-  options: { available?: boolean } = {}
+  options: { available?: boolean; id?: ScoreSource; label?: string } = {}
 ): JevJudge & { calls: Array<{ state: unknown; questions: JevQuestion[] }> } {
   const calls: Array<{ state: unknown; questions: JevQuestion[] }> = [];
 
+  const id = (options.id ?? 'jev') as ScoreSource;
+
   return {
+    id,
+    label: options.label ?? 'stub',
     available: options.available ?? true,
     reason: 'stub',
     calls,
@@ -56,7 +60,9 @@ function stubJudge(
           };
         }
       }
-      return out;
+      // The verdict carries its own source, so a stub standing in for a local model
+      // is reported as one.
+      return { answers: out, source: id };
     },
     async verify() {
       return { model: 'stub' };

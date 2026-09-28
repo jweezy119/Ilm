@@ -8,6 +8,7 @@ import { api, ApiError, type ComparisonResult } from '@/lib/api';
 import { Shell, PageHeader, Empty } from '@/components/Shell';
 import { useComparisonStore } from '@/store';
 import { segmentByPhrases } from '@/lib/highlighter';
+import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { renderHighlightedText } from '@/lib/highlight';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, TEXT_STYLES } from '@/lib/utils';
 
@@ -278,10 +279,15 @@ function sentenceCase(value: string): string {
  */
 function ProvenanceLegend({ result }: { result: ComparisonResult }) {
   const { alignments, metadata } = result;
+  const judged = alignments.filter((a) => a.source !== 'derived').length;
   const jev = alignments.filter((a) => a.source === 'jev').length;
+  const local = alignments.filter((a) => a.source === 'local').length;
 
-  if (!metadata.jevConfigured) {
-    return <span className="text-ink-500">Local scoring only — no model key configured.</span>;
+  if (judged === 0) {
+    return <span className="text-ink-500">{SOURCE_SENTENCE.derived}.</span>;
+  }
+  if (metadata.cachedPairs > 0 && jev === 0 && local === 0) {
+    return <span className="text-ink-500">{metadata.cachedPairs} pairs from the comparison cache.</span>;
   }
   if (jev === 0) {
     return (
@@ -300,20 +306,6 @@ function ProvenanceLegend({ result }: { result: ComparisonResult }) {
     );
   }
   return <span className="text-ink-500">All {alignments.length} links from Jev.</span>;
-}
-
-function SourceBadge({ source }: { source: Alignment['source'] }) {
-  return (
-    <span
-      className={cn(
-        'rounded px-1.5 py-0.5 text-[11px]',
-        source === 'jev' ? 'bg-ilm-100 text-ilm-800 dark:bg-ilm-800 dark:text-ilm-100' : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300'
-      )}
-      title={source === 'jev' ? 'Judged by the model' : 'Scored by a local rule, no model involved'}
-    >
-      {source}
-    </span>
-  );
 }
 
 /**

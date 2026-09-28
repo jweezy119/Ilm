@@ -249,6 +249,11 @@ npm run index           score themes, then build the search index
 npm run index -- --themes 0             rebuild the search index only
 npm run index -- --crossrefs            also detect cross-references
 
+# Embeddings. Runs locally by default: no key, no cost, no data leaving the machine.
+# Roughly two hours for the whole corpus on CPU.
+EMBEDDING_PROVIDER=local npx tsx --env-file=apps/api/.env apps/api/scripts/embed.ts
+npx tsx --env-file=apps/api/.env apps/api/scripts/embed.ts --limit 500   # a sample first
+
 # Original-language text for the OT, which the KJV file does not carry.
 # Update-only: it attaches Hebrew to verses that already exist rather than
 # creating new ones, because the Masoretic and English verse divisions differ.
