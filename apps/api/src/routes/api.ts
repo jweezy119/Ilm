@@ -135,6 +135,30 @@ interface Coverage {
 let coverageMemo: { at: number; value: Coverage } | null = null;
 
 /** Index coverage, recomputed at most every 60s. See the call site for why. */
+/*
+ * The embedding count, memoised for much longer than coverage.
+ *
+ * Five minutes, because the answer changes only when something is ingested or the
+ * process restarts, and a stale count on a diagnostics panel is harmless — the
+ * panel says how many are embedded out of how many exist, and both of those move
+ * together. The first caller after a cold start still pays the scan, which is why
+ * it is opt-in rather than merely cached: a free instance sleeps, and a cold start
+ * is the common case, not the edge case.
+ */
+let embeddedMemo: { at: number; value: number } | null = null;
+
+async function embeddedPassageCount(): Promise<number> {
+  if (embeddedMemo && Date.now() - embeddedMemo.at < 300_000) return embeddedMemo.value;
+
+  // Counted in SQL rather than through Prisma's JSON filter, which does not
+  // match an empty array reliably and reported every row as embedded.
+  const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
+    SELECT count(*)::int AS embedded FROM passages WHERE jsonb_array_length(embeddings) > 0
+  `;
+  embeddedMemo = { at: Date.now(), value: embedded };
+  return embedded;
+}
+
 async function coverageCache(passages: number): Promise<Coverage> {
   if (coverageMemo && Date.now() - coverageMemo.at < 60_000) return coverageMemo.value;
 
@@ -490,16 +514,32 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
    * faster way to evaluate jsonb_array_length across every row, because when every
    * row matches, a sequential scan is the correct plan.
    */
-  app.get('/api/texts', async () => {
+  /*
+   * `?include=embeddings` is opt-in because the query it guards is ruinous.
+   *
+   *   SELECT count(*) FROM passages WHERE jsonb_array_length(embeddings) > 0
+   *
+   * took 53.6 seconds on its own, measured against production: a full scan that
+   * evaluates a JSON function over all 45,453 rows, every one of which carries an
+   * embedding vector. It sat on this route unguarded and unmemoised, so every
+   * page load paid it, and at 61 seconds the whole request crossed Render's 60
+   * second limit and came back as a 500 through the web proxy.
+   *
+   * Which meant `fetchCoverage()` had been failing silently in production for as
+   * long as this route existed: the unindexed markers on the search filters, the
+   * partial-coverage warning, and the "this deployment searches only some of the
+   * texts" copy were all dead, because the one call they shared never resolved.
+   *
+   * Only the settings page displays embedding counts. The search page needs
+   * coverage and nothing else, so the scan is now asked for explicitly and
+   * memoised for anyone who does.
+   */
+  app.get('/api/texts', async (request: FastifyRequest<{ Querystring: { include?: string } }>) => {
     const stats = await getCorpusStats();
     const passages = stats.totals.passages;
     const coverage = await coverageCache(passages);
 
-    // Counted in SQL rather than through Prisma's JSON filter, which does not
-    // match an empty array reliably and reported every row as embedded.
-    const [{ embedded } = { embedded: 0 }] = await prisma.$queryRaw<Array<{ embedded: number }>>`
-      SELECT count(*)::int AS embedded FROM passages WHERE jsonb_array_length(embeddings) > 0
-    `;
+    const wanted = (request.query?.include ?? '').split(',').includes('embeddings');
     const embeddingConfig = getEmbeddingConfig();
 
     return ok({
@@ -514,7 +554,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       embeddings: {
         provider: embeddingConfig?.provider ?? null,
         model: embeddingConfig?.model ?? null,
-        embedded,
+        embedded: wanted ? await embeddedPassageCount() : null,
         of: passages,
       },
     });

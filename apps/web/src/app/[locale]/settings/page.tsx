@@ -31,7 +31,7 @@ export default function SettingsPage() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([api.health().catch(() => null), api.corpus().catch(() => null)])
+    Promise.all([api.health().catch(() => null), api.corpus({ includeEmbeddings: true }).catch(() => null)])
       .then(([healthResult, corpusResult]) => {
         if (cancelled) return;
         setHealth(healthResult);
@@ -155,7 +155,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between">
                   <dt className="text-fg-muted">Embeddings</dt>
                   <dd className="font-mono tabular-nums">
-                    {corpus.embeddings.embedded.toLocaleString()} / {corpus.embeddings.of.toLocaleString()}
+                    {corpus.embeddings.embedded?.toLocaleString() ?? '—'} / {corpus.embeddings.of.toLocaleString()}
                   </dd>
                 </div>
               ) : null}
@@ -303,7 +303,8 @@ export default function SettingsPage() {
               </h3>
               <p className="text-[11px] leading-relaxed text-fg-muted">
                 <span className="font-medium text-fg">
-                  {corpus.embeddings.embedded.toLocaleString()} of {corpus.embeddings.of.toLocaleString()} passages
+                  {corpus.embeddings.embedded?.toLocaleString() ?? '—'} of {corpus.embeddings.of.toLocaleString()}{' '}
+                  passages
                 </span>{' '}
                 carry a local vector. These run on CPU and cost nothing, and they are what lets two passages from
                 different traditions be compared without a model call.
@@ -311,7 +312,7 @@ export default function SettingsPage() {
               <p className="mt-3 text-[11px] text-fg-faint">
                 {corpus.embeddings.provider
                   ? `Provider: ${corpus.embeddings.provider}${corpus.embeddings.model ? ` · ${corpus.embeddings.model}` : ''}`
-                  : corpus.embeddings.embedded < corpus.embeddings.of
+                  : corpus.embeddings.embedded !== null && corpus.embeddings.embedded < corpus.embeddings.of
                     ? // Only a problem while passages are still missing. Once they are all
                       // embedded, the provider is irrelevant to reading them.
                       'No provider is configured here, so the remaining passages have to be embedded before comparisons can use vectors.'

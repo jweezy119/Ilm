@@ -106,7 +106,12 @@ export interface CorpusStats {
     unindexedTexts: string[];
     partial: boolean;
   };
-  embeddings: { provider: string | null; model: string | null; embedded: number; of: number };
+  /**
+   * Null `embedded` means the count was not requested — the scan behind it takes
+   * roughly fifty seconds, so it is opt-in rather than absent-by-accident. Null
+   * means "not asked", never "zero".
+   */
+  embeddings: { provider: string | null; model: string | null; embedded: number | null; of: number };
 }
 
 /** A book opened for reading. One chapter, with the means to turn the page. */
@@ -226,7 +231,15 @@ export const api = {
 
   themes: () => get<{ themes: string[] }>('/api/themes'),
 
-  corpus: () => get<CorpusStats>('/api/texts'),
+  /**
+   * Corpus statistics.
+   *
+   * `includeEmbeddings` costs about fifty seconds, so it is opt-in. Every caller
+   * on a page load wants the coverage block; only the settings page displays the
+   * embedding counts, and it is the one that asks.
+   */
+  corpus: (options: { includeEmbeddings?: boolean } = {}) =>
+    get<CorpusStats>(`/api/texts${options.includeEmbeddings ? '?include=embeddings' : ''}`),
 
   /** One chapter of a book, in English, with navigation and translations attached. */
   readBook: (textId: TextId, bookId: string, options: { chapter?: number; translation?: string } = {}) => {
