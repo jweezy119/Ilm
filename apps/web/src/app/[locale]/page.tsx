@@ -441,12 +441,28 @@ function SearchInner() {
                   </div>
                 ))}
               </div>
-            ) : results.length > 0 && response?.verdict !== 'unaddressed' ? (
+            ) : results.length > 0 ? (
               <>
                 <div className="mt-6 flex flex-wrap items-center gap-3 border-b border-line pb-3">
+                  {/*
+                      Under an `unaddressed` verdict these are not results, and the
+                      header calling them results is the same conflation the panel
+                      exists to prevent: a reader sees "5 results" above a list they
+                      are told does not answer the question, and the count lends them
+                      the authority the panel just declined to claim. They are the
+                      closest matches, so that is what it says. */}
                   <span className="text-sm text-fg-muted">
-                    <span className="font-medium text-fg">{response?.total.toLocaleString()}</span> result
-                    {response?.total === 1 ? '' : 's'}
+                    {response?.verdict === 'unaddressed' ? (
+                      <>
+                        <span className="font-medium text-fg">{response?.total.toLocaleString()}</span>{' '}
+                        {response?.total === 1 ? t('closestMatch') : t('closestMatches')}
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium text-fg">{response?.total.toLocaleString()}</span> result
+                        {response?.total === 1 ? '' : 's'}
+                      </>
+                    )}
                   </span>
                   <EngineChip source={response?.rerankSource} intent={response?.intent} />
                   {response?.matchMode === 'relaxed' ? <RelaxedChip /> : null}
@@ -464,20 +480,32 @@ function SearchInner() {
                 </div>
 
                 {/*
-                    The partial verdict travels with the results instead of above
-                    them. It used to be a banner that scrolled off, so by the time a
-                    reader reached the twentieth result — the one they were about to
-                    quote — the warning that every result is a lead rather than a
-                    match had left the screen. */}
-                {response?.verdict === 'partial' ? (
+                    Both verdicts travel with the results rather than above or below
+                    them. `partial` used to be a banner that scrolled off, so by the
+                    twentieth result — the one a reader was about to quote — the
+                    warning that every result is a lead had left the screen.
+
+                    `unaddressed` is the case that matters most and it was arriving
+                    with results, because a corpus that does not address a question
+                    still contains its closest words. Those results were being
+                    suppressed, which hid exactly the pairing the feature is for:
+                    nothing here, and here is the neighbourhood instead. */}
+                {response?.verdict === 'unaddressed' || response?.verdict === 'partial' ? (
                   <VerdictPanel
                     className="mt-4"
-                    verdict="partial"
+                    verdict={response.verdict}
                     source={response.rerankSource}
                     searchedPassages={searched ?? undefined}
                     texts={activeTexts}
                     expandedTheme={response.expandedTheme}
                     suggestions={response.suggestions}
+                    narrowed={activeTexts.length < TEXT_IDS.length}
+                    hasResults={results.length > 0}
+                    onWiden={widenAllTexts}
+                    onPick={(term) => {
+                      setInput(term);
+                      void runSearch(term, activeTexts);
+                    }}
                   />
                 ) : null}
 
@@ -502,14 +530,11 @@ function SearchInner() {
               </>
             ) : response?.verdict === 'unaddressed' ? (
               /*
-               * Promoted out of `Empty` and given a receipt.
-               *
-               * Two things were wrong with the old version. It rendered inside the
-               * empty-result branch, so its promise that "the closest literal
-               * matches are below" pointed at nothing — in this branch there are no
-               * results. And an `Empty` box presents a real answer as a failure to
-               * find one, which is backwards for the one capability no competitor
-               * will build because it costs them a session.
+               * Unaddressed with nothing to show: the panel alone, and its copy
+               * says so rather than promising passages below. Promoted out of
+               * `Empty` and given a receipt, because an `Empty` box presents a real
+               * answer as a failure to find one — backwards for the one capability
+               * no competitor will build, since it costs them a session.
                */
               <VerdictPanel
                 className="mt-6"
@@ -519,6 +544,7 @@ function SearchInner() {
                 texts={activeTexts}
                 expandedTheme={response.expandedTheme}
                 suggestions={response.suggestions}
+                hasResults={false}
                 narrowed={activeTexts.length < TEXT_IDS.length}
                 onWiden={widenAllTexts}
                 onPick={(term) => {

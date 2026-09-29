@@ -68,7 +68,10 @@
     "tryInstead": "جرّب بدلًا من ذلك",
     "widenFilters": "ابحث في النصوص الخمسة كلها",
     "browseTopics": "تصفّح حسب الموضوع",
-    "expandedTheme": "وُسِّع البحث بمفردات «{theme}»."
+    "expandedTheme": "وُسِّع البحث بمفردات «{theme}».",
+    "closestMatch": "أقرب مطابقة",
+    "closestMatches": "أقرب المطابقات",
+    "unaddressedBodyNone": "لا شيء في النصوص التي بُحث فيها يتناول ما سألت. هذه إجابة لا بحث فاشل — بُحث في المدونة، وهذا ليس فيها."
   },
   "common": {
     "loading": "جارٍ التحميل…",

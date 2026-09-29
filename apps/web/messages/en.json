@@ -68,7 +68,10 @@
     "tryInstead": "Try instead",
     "widenFilters": "Search all five texts",
     "browseTopics": "Browse by topic",
-    "expandedTheme": "Widened with the vocabulary of “{theme}”."
+    "expandedTheme": "Widened with the vocabulary of “{theme}”.",
+    "closestMatch": "closest match",
+    "closestMatches": "closest matches",
+    "unaddressedBodyNone": "Nothing in the searched texts addresses what you asked. That is an answer rather than a failed search — the corpus was searched, and this is not in it."
   },
   "common": {
     "loading": "Loading…",

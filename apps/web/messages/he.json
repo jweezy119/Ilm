@@ -68,7 +68,10 @@
     "tryInstead": "נסו במקום",
     "widenFilters": "חפשו בכל חמשת הטקסטים",
     "browseTopics": "עיינו לפי נושא",
-    "expandedTheme": "החיפוש הורחב במילים של “{theme}”."
+    "expandedTheme": "החיפוש הורחב במילים של “{theme}”.",
+    "closestMatch": "ההתאמה הקרובה ביותר",
+    "closestMatches": "ההתאמות הקרובות ביותר",
+    "unaddressedBodyNone": "שום דבר בטקסטים שחופשו אינו עוסק במה ששאלתם. זו תשובה ולא חיפוש שנכשל — המאגר חופש, וזה אינו בתוכו."
   },
   "common": {
     "loading": "טוען…",

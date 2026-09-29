@@ -33,6 +33,7 @@ export function VerdictPanel({
   expandedTheme,
   suggestions,
   narrowed,
+  hasResults = true,
   onWiden,
   onPick,
   className,
@@ -51,6 +52,16 @@ export function VerdictPanel({
   suggestions?: string[];
   /** True when the reader has filtered the search down to fewer than all texts. */
   narrowed?: boolean;
+  /**
+   * Whether leads are rendered beneath this panel.
+   *
+   * It changes the copy, not the layout. A corpus that does not address a question
+   * still contains its closest words, so most unaddressed verdicts arrive with
+   * results under them — and the panel has to be able to say so. When there are
+   * none, promising passages below would be a second small lie in a component whose
+   * entire purpose is not lying.
+   */
+  hasResults?: boolean;
   onWiden?: () => void;
   onPick?: (term: string) => void;
   className?: string;
@@ -83,7 +94,7 @@ export function VerdictPanel({
             {unaddressed ? t('unaddressedTitle') : t('partialTitle')}
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-fg-muted">
-            {unaddressed ? t('unaddressedBody') : t('partialBody')}
+            {unaddressed ? (hasResults ? t('unaddressedBody') : t('unaddressedBodyNone')) : t('partialBody')}
           </p>
         </div>
       </div>
