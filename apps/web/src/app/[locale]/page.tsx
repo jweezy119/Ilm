@@ -457,6 +457,10 @@ function SearchInner() {
                       score={result.score}
                       semanticScore={result.semanticScore}
                       textScore={result.textScore}
+                      // Which field earned the hit, so a result found in the
+                      // Hebrew or Arabic can say so rather than leaving the reader
+                      // to wonder why an English paragraph answered a Hebrew word.
+                      matchedIn={result.matchedFields}
                       query={query}
                       inComparison={has(result.passage.passageKey)}
                       onToggleCompare={toggle}
