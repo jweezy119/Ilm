@@ -430,19 +430,29 @@ export function parseCitation(input: string): CitationMatch[] {
 
   for (const candidate of wanted) {
     /*
-     * A sura is both the book and the chapter, so `book:chapter:verse` cannot be
-     * filled the same way as everywhere else.
+     * A sura is not a chapter, and the corpus says so explicitly.
      *
-     * The sura is taken from the book position and the given chapter has to agree
-     * with it. That agreement is what disambiguates a reference like "Al-Fatihah
-     * 45:1", which is sura 45 ayah 1 and not sura 1 ayah 45 — and it is also why
-     * the two suras that share a transliteration are not actually ambiguous. A
-     * candidate whose chapter disagrees with its own sura is dropped rather than
-     * keyed into a passage that does not exist.
+     * A Quran passage is keyed `quran:<sura>:1:<ayah>` — the `chapter_num` column
+     * is 1 for every one of the 6,236 Quran passages, because a sura has no
+     * chapters. Keying it as `quran:<sura>:<sura>:<ayah>` produced a reference that
+     * parsed confidently and resolved to nothing, which is the quietest possible
+     * failure and the reason this is asserted against the database rather than
+     * reasoned about.
+     *
+     * When a sura is named and the chapter is a valid sura number, the chapter
+     * wins: that is what distinguishes "Al-Fatihah 1:1" (sura 1) from "Al-Fatihah
+     * 45:1" (sura 45), two suras with the same transliteration. When the chapter
+     * is not a sura number it is ignored, because "Al-Baqarah 2:255" repeats the
+     * sura and nobody writes "Al-Baqarah 255:1" meaning anything.
      */
     const isQuran = candidate.textId === 'quran';
-    const bookChapter = isQuran ? Number(candidate.book) : chapter;
-    if (isQuran && bookChapter !== chapter) continue;
+    const sura = Number(candidate.book);
+    let bookChapter = chapter;
+
+    if (isQuran) {
+      if (chapter >= 1 && chapter <= 114 && chapter !== sura) continue;
+      bookChapter = 1;
+    }
 
     const passageKey = `${candidate.textId}:${candidate.book}:${bookChapter}:${verse}`;
     if (seen.has(passageKey)) continue;

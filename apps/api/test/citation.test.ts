@@ -45,14 +45,16 @@ describe('parseCitation', () => {
     expect(keys('Jn 3.16')).toEqual(keys('Jn 3:16'));
   });
 
-  it('keys a Quran passage as sura:sura:ayah', () => {
-    // A sura has no chapters, so the sura is stored in both the book and the
-    // chapter position. Getting this wrong is not an error — it is a passage
-    // key that exists and is not the verse anyone asked for.
-    expect(keys('Q 2:255')).toEqual(['quran:2:2:255']);
-    expect(keys('Quran 2:255')).toEqual(['quran:2:2:255']);
-    expect(keys('Al-Baqarah 2:255')).toEqual(['quran:2:2:255']);
-    expect(keys('Sura 112:1')).toEqual(['quran:112:112:1']);
+  it('keys a Quran passage as sura:1:ayah', () => {
+    // chapter_num is 1 for all 6,236 Quran passages, because a sura has no
+    // chapters. Keying it as sura:sura:ayah parses confidently and resolves to
+    // nothing — the quietest failure there is, and the reason this is asserted
+    // rather than reasoned about.
+    expect(keys('Q 2:255')).toEqual(['quran:2:1:255']);
+    expect(keys('Quran 2:255')).toEqual(['quran:2:1:255']);
+    expect(keys('Al-Baqarah 2:255')).toEqual(['quran:2:1:255']);
+    expect(keys('Sura 112:1')).toEqual(['quran:112:1:1']);
+    expect(keys('Q 1:1')).toEqual(['quran:1:1:1']);
   });
 
   it('does not resolve a bare chapter:verse without a corpus', () => {
@@ -76,15 +78,16 @@ describe('parseCitation', () => {
   });
 
   it('disambiguates suras that share a transliteration', () => {
-    // Suras 1 and 45 are both Al-Fatihah. The chapter decides which.
+    // Suras 1 and 45 are both Al-Fatihah. The chapter decides which, and the
+    // decision happens even though the chapter is not stored.
     expect(keys('Al-Fatihah 1:1')).toEqual(['quran:1:1:1']);
-    expect(keys('Al-Fatihah 45:1')).toEqual(['quran:45:45:1']);
+    expect(keys('Al-Fatihah 45:1')).toEqual(['quran:45:1:1']);
   });
 
-  it('does not invent a passage when the sura and the chapter disagree', () => {
-    // "Al-Baqarah 255:1" names a sura that is not the chapter, and quran:2:255:1
-    // does not exist. Dropping the candidate is right; keying it is not.
-    expect(keys('Al-Baqarah 255:1')).toEqual([]);
+  it('ignores a chapter that is not a sura number', () => {
+    // "Al-Baqarah 255:1" repeats nothing meaningful, so the named sura stands and
+    // the trailing numbers are the ayah.
+    expect(keys('Al-Baqarah 255:1')).toEqual(['quran:2:1:1']);
   });
 
   it('returns nothing for prose', () => {
