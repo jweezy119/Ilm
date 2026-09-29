@@ -4,12 +4,13 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import { Search, X, Loader2, AlertTriangle, Sparkles, ArrowRight, Layers } from 'lucide-react';
+import { Search, X, Loader2, AlertTriangle, ArrowRight, Layers } from 'lucide-react';
 import { THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { CitationJump } from '@/components/CitationJump';
 import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
+import { VerdictPanel } from '@/components/VerdictPanel';
 import { useComparisonStore, useSearchStore } from '@/store';
 import { fetchCoverage } from '@/lib/coverage';
 import { cn, getTextLabel, TEXT_IDS } from '@/lib/utils';
@@ -141,19 +142,41 @@ function SearchInner() {
   // Which texts this deployment can actually search. Null until it arrives, and
   // the filters stay neutral until then rather than guessing.
   const [unindexed, setUnindexed] = useState<string[] | null>(null);
+  // How many passages this deployment can actually search. The verdict claims
+  // these texts do not address something, and a claim that broad needs a scope to
+  // be checkable against: "45,453 passages" is answerable, "the texts" is not.
+  const [searched, setSearched] = useState<number | null>(null);
 
   const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, remember } = useSearchStore();
 
   useEffect(() => {
     let cancelled = false;
     void fetchCoverage().then((corpus) => {
-      if (!cancelled && corpus) setUnindexed(corpus.search.unindexedTexts);
+      if (!cancelled && corpus) {
+        setUnindexed(corpus.search.unindexedTexts);
+        setSearched(corpus.search.passagesIndexed);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, []);
   const { passageKeys, toggle, has } = useComparisonStore();
+
+  /*
+   * Re-run the current search across all five texts.
+   *
+   * Offered on the "these texts do not address this" verdict, because that verdict
+   * is scoped to whatever the reader had filtered to: a search narrowed to the
+   * Quran finding nothing is a much weaker claim than the same search across all
+   * five, and without this the panel would report a no that the reader could
+   * disprove in one click and feel misled when they did.
+   */
+  const widenAllTexts = useCallback(() => {
+    for (const textId of TEXT_IDS) {
+      if (!activeTexts.includes(textId)) toggleText(textId);
+    }
+  }, [activeTexts, toggleText]);
 
   const runSearch = useCallback(
     async (term: string, texts: TextId[], useSemantic = semantic) => {
@@ -440,16 +463,22 @@ function SearchInner() {
                   ) : null}
                 </div>
 
+                {/*
+                    The partial verdict travels with the results instead of above
+                    them. It used to be a banner that scrolled off, so by the time a
+                    reader reached the twentieth result — the one they were about to
+                    quote — the warning that every result is a lead rather than a
+                    match had left the screen. */}
                 {response?.verdict === 'partial' ? (
-                  <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                    These texts touch on this rather than addressing it directly. Treat the results as leads.
-                  </p>
-                ) : null}
-
-                {response?.expandedTheme ? (
-                  <p className="mt-4 text-xs text-fg-faint">
-                    Widened with the vocabulary of “{response.expandedTheme}”.
-                  </p>
+                  <VerdictPanel
+                    className="mt-4"
+                    verdict="partial"
+                    source={response.rerankSource}
+                    searchedPassages={searched ?? undefined}
+                    texts={activeTexts}
+                    expandedTheme={response.expandedTheme}
+                    suggestions={response.suggestions}
+                  />
                 ) : null}
 
                 <div className="mt-2">
@@ -472,13 +501,31 @@ function SearchInner() {
                 </div>
               </>
             ) : response?.verdict === 'unaddressed' ? (
-              <div className="mt-8">
-                <Empty icon={Sparkles} title="These texts do not address this">
-                  Jev judged the shortlist and found nothing that speaks to it. That is a real answer rather than a
-                  failed search — the closest literal matches are below. A different wording, or the Explore page,
-                  may reach what you are after.
-                </Empty>
-              </div>
+              /*
+               * Promoted out of `Empty` and given a receipt.
+               *
+               * Two things were wrong with the old version. It rendered inside the
+               * empty-result branch, so its promise that "the closest literal
+               * matches are below" pointed at nothing — in this branch there are no
+               * results. And an `Empty` box presents a real answer as a failure to
+               * find one, which is backwards for the one capability no competitor
+               * will build because it costs them a session.
+               */
+              <VerdictPanel
+                className="mt-6"
+                verdict="unaddressed"
+                source={response.rerankSource}
+                searchedPassages={searched ?? undefined}
+                texts={activeTexts}
+                expandedTheme={response.expandedTheme}
+                suggestions={response.suggestions}
+                narrowed={activeTexts.length < TEXT_IDS.length}
+                onWiden={widenAllTexts}
+                onPick={(term) => {
+                  setInput(term);
+                  void runSearch(term, activeTexts);
+                }}
+              />
             ) : (
               <div className="mt-8">
                 <Empty icon={Search} title="Nothing matched">
