@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowRight, Compass } from 'lucide-react';
 import { Page, PageHeader } from '@/components/Shell';
+import { Link } from '@/i18n/navigation';
 import { api } from '@/lib/api';
 import { getTextLabel } from '@/lib/utils';
 import type { Topic } from '@ilm/shared';
@@ -50,8 +51,10 @@ export default function TopicsPage() {
       {!topics && !error ? <p className="text-sm text-fg-muted">{t('loading')}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Link, not a bare anchor: a plain href drops the locale segment, so a
+            reader who picked a topic in Arabic would land on the English page. */}
         {(topics ?? []).map((topic) => (
-          <a
+          <Link
             key={topic.slug}
             href={`/topics/${topic.slug}`}
             className="group flex flex-col rounded-xl border border-line bg-panel/40 p-4 transition-colors hover:border-accent/50 hover:bg-panel"
@@ -88,7 +91,7 @@ export default function TopicsPage() {
               <Compass className="h-3 w-3" />
               {t('facets', { count: topic.facets.length })}
             </div>
-          </a>
+          </Link>
         ))}
       </div>
     </Page>

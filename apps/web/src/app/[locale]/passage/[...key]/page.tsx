@@ -129,10 +129,10 @@ export default function PassagePage() {
             {/* The other half of this page. The passages below are the ones that
                 link to this verse; this is where the same verse leads outward
                 through the themes it carries, grouped by context. */}
-            <a href={`/journey?id=${encodeURIComponent(passage.id)}`} className="btn btn-secondary">
+            <Link href={`/journey?id=${encodeURIComponent(passage.id)}`} className="btn btn-secondary">
               <Compass className="h-4 w-4" />
               Journey
-            </a>
+            </Link>
             <CompareButton passage={passage} />
           </div>
         }
