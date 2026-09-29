@@ -169,6 +169,10 @@ function ReadInner() {
                       <span className="text-xs text-fg-faint">
                         {result.passage.primaryTranslationName ?? 'English'}
                       </span>
+                      {/* Safe to show here, unlike the corpus search: useInBookSearch
+                          sends `semantic: false`, so the list is ordered by this
+                          score and the number is the reason for its position.
+                          Reading inside one book is a lookup, not a judgement. */}
                       {result.score !== undefined ? (
                         <span className="ms-auto font-mono text-[11px] text-fg-faint">
                           {Math.round(result.score * 100)}%

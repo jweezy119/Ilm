@@ -564,9 +564,14 @@ export function normalizeWeights(weights?: Partial<RecommendationWeights>): Reco
 const DIMENSION_LABEL: Record<AffinityDimension, string> = {
   thematic: 'thematic resonance',
   linguistic: 'shared terminology and roots',
-  historical: 'historical connection',
+  // Zero-weighted by default, so the label has to say why it is usually empty
+  // rather than letting an empty bar read as "no historical link found".
+  historical: 'historical connection (not measured here)',
   narrative: 'narrative parallel',
-  theological: 'theological alignment',
+  // Overlaps `thematic` by construction and is weighted down accordingly; the
+  // label says which theme labels are doctrinal so a reader can check the overlap
+  // rather than discover it.
+  theological: 'theological alignment (a subset of thematic resonance)',
 };
 
 /** A sentence built only from the numbers, so a recommendation never overstates. */
@@ -585,7 +590,18 @@ function isDoctrinal(theme: string): boolean {
   return /salvation|redemption|covenant|law|messiah|judgment|forgiveness|mercy|atonement|resurrection|sin/.test(theme);
 }
 
+/**
+ * Evidence for the historical dimension.
+ *
+ * Previously a fabricated sentence — "nt ↔ talmud" — attached to a fabricated
+ * number, so the breakdown showed a real-looking citation for a relationship
+ * nothing had measured. A reader checking that evidence would find it described
+ * the corpora and not the passages.
+ *
+ * Now it reports the corpus pair as context, which is the one true thing known,
+ * and nothing that implies a link between the two verses.
+ */
 function historicalEvidence(source: Passage, target: Passage): string[] {
-  if (source.textId === target.textId) return [`Both from ${source.textId}`];
-  return [`${source.textId} ↔ ${target.textId}`];
+  if (source.textId === target.textId) return [];
+  return [`Corpus pair only: ${source.textId} and ${target.textId}. No claim about these two passages.`];
 }

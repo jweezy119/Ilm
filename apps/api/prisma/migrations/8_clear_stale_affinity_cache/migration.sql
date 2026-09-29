@@ -1,0 +1,22 @@
+-- Discard cached dimension scores that a deleted function produced.
+--
+-- The `historical` dimension's fallback was a hand-written table of corpus-pair
+-- proximities: it returned 0.9 for Torah-to-OT, 0.5 for Torah-to-Talmud and 0.6
+-- for any same-corpus pair, regardless of which two passages were being compared.
+-- Every cached row therefore carries a `historical` value that is a constant
+-- dressed as a measurement, and the breakdown rendered it next to real evidence.
+--
+-- The dimension now reports zero when nothing measured it, and its default weight
+-- is zero, so a stale row can no longer move the composite. It would still show
+-- "historical connection 35%" in the passage page's breakdown, under a label that
+-- now says the dimension is not measured here — so the number and its description
+-- would contradict each other.
+--
+-- All 54 rows are removed rather than patched, because the other four dimensions
+-- are cheap to recompute and a uniformly fresh cache is easier to reason about
+-- than one with a mixture of vintages. Rows scored by Jev are removed too: their
+-- `historical` answer came from a real question and stays valid, but the dimension
+-- carries no weight now, so keeping them buys nothing.
+--
+-- The composite is not stored anywhere, so nothing else needs rebuilding.
+DELETE FROM passage_affinities;

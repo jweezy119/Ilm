@@ -782,12 +782,33 @@ export type Theme = (typeof THEME_TAXONOMY)[number];
 // Recommendation Weights
 // ============================================================================
 
+/**
+ * How much each dimension is allowed to move the composite.
+ *
+ * Three of these four active dimensions are independent measurements of a pair of
+ * passages. The fourth is not, and the weights say so.
+ *
+ * `thematic` and `theological` read the same thing — the theme label overlap — at
+ * two different scales. Giving them 0.30 and 0.20 counted one keyword classifier
+ * as half the score, which is why the old composite put a passage's fate on how
+ * many of the 84 taxonomy keywords a verse happened to contain. `theological` is
+ * kept at 0.10 rather than deleted so the reader can see the overlap in the
+ * breakdown instead of being asked to trust it.
+ *
+ * `historical` is weighted zero because with no model available it was a
+ * hardcoded table of corpus-pair proximities: every NT-to-Talmud pair scored
+ * exactly 0.35 and every same-corpus pair exactly 0.6, regardless of the passages.
+ * That is an editorial opinion wearing a decimal point, and 0.15 of the composite
+ * was spent on it. It still appears in the breakdown, so the dimension is visible
+ * rather than quietly deleted, and it carries nothing until something real can
+ * measure it.
+ */
 export const DEFAULT_WEIGHTS: RecommendationWeights = {
   thematic: 0.3,
-  linguistic: 0.2,
-  historical: 0.15,
-  narrative: 0.15,
-  theological: 0.2,
+  linguistic: 0.3,
+  historical: 0,
+  narrative: 0.3,
+  theological: 0.1,
 };
 
 // ============================================================================

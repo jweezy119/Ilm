@@ -61,14 +61,27 @@ export function PassageCard({
         <Link href={href} className="ref truncate transition-colors hover:text-accent hover:underline">
           {passage.book} {passage.chapter}:{passage.verse}
         </Link>
-        {score !== undefined ? (
+        {/* No percentage when the model decided the order.
+
+            When Jev re-ranks, the list is ordered by its verdict and the score is a
+            blend of that verdict with full-text relevance, computed independently.
+            The two disagree: a live search for "light" produced a list reading
+            74, 74, 73, 73, 74, 73, 74, 73 — the fourth row claimed less than the
+            fifth, and the seventh more than the fourth. A ranked list whose stated
+            scores contradict its own order is a list that is telling the reader
+            two incompatible things at once, and on a product whose only claim is
+            that its numbers mean what they say it is the worst possible place to
+            be caught.
+
+            So the number is shown only when it is the thing that ordered the list,
+            which is the full-text case. Rescaling the model's verdict into a
+            percentage to fill the gap would invent a number to look tidy, and that
+            is the failure this whole product is against. The header already says
+            whether the ranking came from meaning or from literal matching. */}
+        {score !== undefined && semanticScore === undefined ? (
           <span
             className="ms-auto shrink-0 font-mono text-[11px] tabular-nums text-fg-faint"
-            title={
-              semanticScore !== undefined && textScore !== undefined
-                ? `Semantic relevance ${percent(semanticScore)} · full-text ${percent(textScore)}`
-                : undefined
-            }
+            title={`Full-text relevance ${percent(score)}`}
           >
             {percent(score)}
           </span>
@@ -157,6 +170,11 @@ export function SearchResultCard({
       inComparison={inComparison}
       onToggleCompare={onToggleCompare}
       matchedIn={result.matchedFields}
+      // Forwarded so the card can tell whether the number it is about to show is
+      // the one that ordered the list. Dropping these made every row look like a
+      // literal full-text match, which is the case where the number is safe.
+      semanticScore={result.semanticScore}
+      textScore={result.textScore}
     />
   );
 }

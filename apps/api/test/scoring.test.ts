@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Passage, TextId } from '@ilm/shared';
 import { normalizeWeights } from '../src/services/recommendation';
+import { DEFAULT_WEIGHTS } from '@ilm/shared';
 import { localIntent, localThemeScores, localQueryTheme, containsKeyword, themeSearchTerms, blendSearchScore, sharedPhrases, significantTerms, properNouns, historicalBaseline, localAffinityScores } from '../src/services/typesafe';
 
 function passage(over: Partial<Passage> = {}): Passage {
@@ -25,8 +26,27 @@ function passage(over: Partial<Passage> = {}): Passage {
 describe('normalizeWeights', () => {
   it('returns the defaults when nothing is supplied', () => {
     expect(normalizeWeights(undefined)).toEqual({
-      thematic: 0.3, linguistic: 0.2, historical: 0.15, narrative: 0.15, theological: 0.2,
+      thematic: 0.3, linguistic: 0.3, historical: 0, narrative: 0.3, theological: 0.1,
     });
+  });
+
+  it('weights the historical dimension at zero, so nothing rides on it', () => {
+    // The local fallback for this dimension used to be a hand-written table of
+    // corpus-pair proximities: a constant for every pair of passages from the same
+    // two corpora, and 0.6 for a passage against another verse of its own book. It
+    // must not reach the composite. See historicalBaseline below.
+    expect(DEFAULT_WEIGHTS.historical).toBe(0);
+    expect(normalizeWeights(undefined).historical).toBe(0);
+  });
+
+  it('does not let the theme classifier dominate the composite', () => {
+    // thematic and theological both read theme-label overlap, at two scales. Their
+    // combined weight used to be 0.5, which put half the score on one keyword
+    // classifier. It is now 0.4, and theological is the smaller of the two because
+    // it is the narrower reading of the same thing.
+    const w = normalizeWeights(undefined);
+    expect(w.thematic + w.theological).toBeLessThanOrEqual(0.41);
+    expect(w.theological).toBeLessThan(w.thematic);
   });
 
   it('keeps weights that already sum to one', () => {
@@ -50,7 +70,7 @@ describe('normalizeWeights', () => {
 
   it('falls back to defaults when every weight is zero', () => {
     expect(normalizeWeights({ thematic: 0, linguistic: 0, historical: 0, narrative: 0, theological: 0 })).toEqual({
-      thematic: 0.3, linguistic: 0.2, historical: 0.15, narrative: 0.15, theological: 0.2,
+      thematic: 0.3, linguistic: 0.3, historical: 0, narrative: 0.3, theological: 0.1,
     });
   });
 });
@@ -85,8 +105,22 @@ describe('text signals', () => {
     expect(names.has('melchizedek')).toBe(true);
   });
 
-  it('ranks the Torah above the Talmud for historical proximity', () => {
-    expect(historicalBaseline('torah', 'ot')).toBeGreaterThan(historicalBaseline('torah', 'talmud'));
+  it('reports no historical proximity rather than a fabricated one', () => {
+    // Previously a hand-written table asserted that the Torah sat closer to the Old
+    // Testament (0.9) than to the Talmud (0.5), which is an editorial claim about
+    // the traditions wearing a decimal point, returned identically for every pair
+    // of passages from those corpora. The fallback now reports nothing, so an
+    // unmeasured dimension reads as zero rather than as a confident constant.
+    expect(historicalBaseline('torah', 'ot')).toBe(0);
+    expect(historicalBaseline('torah', 'talmud')).toBe(0);
+    expect(historicalBaseline('nt', 'quran')).toBe(0);
+  });
+
+  it('does not score a passage as historically close to its own corpus', () => {
+    // This returned 0.6 for any same-corpus pair, so a passage scored higher
+    // against an unrelated verse of its own book than against a demonstrably
+    // linked verse elsewhere.
+    expect(historicalBaseline('nt', 'nt')).toBe(0);
   });
 });
 

@@ -1,7 +1,7 @@
 {
   "meta": {
-    "title": "Ilm — Sacred Text Comparison",
-    "description": "Search, compare, and trace themes across the Quran, Torah, Talmud, Old Testament and New Testament. Recommendations are transparent weighted scores, not generated claims."
+    "title": "Ilm — Cross-Tradition Scripture Search",
+    "description": "Search the Quran, Torah, Talmud, Old and New Testaments together, in Hebrew, Greek, Aramaic and Arabic. Ilm shows source text, citations and evidence — and says when these texts do not address a question."
   },
   "nav": {
     "search": "Search",
@@ -42,11 +42,11 @@
   },
   "search": {
     "title": "Ilm",
-    "placeholder": "Ask across the Quran, Torah, Talmud, and both Testaments",
+    "placeholder": "Search Hebrew, Greek, Aramaic, Arabic — or ask in English",
     "submit": "Search",
     "clear": "Clear",
-    "heroTitle": "What do these texts say?",
-    "heroSubtitle": "Search the Quran, Torah, Talmud, Old and New Testaments together. Results carry their source and their score, so you can check them.",
+    "heroTitle": "Five texts. Four original languages. No commentary.",
+    "heroSubtitle": "The Quran, Torah, Talmud and both Testaments in one search — in Hebrew, Greek, Aramaic and Arabic, and in translation. Every result shows its source text and a reference. When these texts do not address a question, Ilm says so rather than returning the nearest match.",
     "examples": "Try",
     "results": "results",
     "result": "result",
@@ -54,7 +54,9 @@
     "noResultsBody": "These texts do not appear to address it. Try fewer words, or a different phrasing.",
     "partial": "These texts address this only in part.",
     "cleared": "Search cleared",
-    "matchedOriginal": "Matched in the original text"
+    "matchedOriginal": "Matched in the original text",
+    "heroSearchLabel": "Search sacred texts",
+    "heroTryOne": "Try one"
   },
   "common": {
     "loading": "Loading…",

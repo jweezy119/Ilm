@@ -132,6 +132,7 @@ function EngineChip({ source, intent }: { source?: string; intent?: string }) {
 function SearchInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const t = useTranslations('search');
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -224,8 +225,8 @@ function SearchInner() {
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="Ask the texts — mercy, covenant, the sabbath…"
-        aria-label="Search sacred texts"
+        placeholder={t('placeholder')}
+        aria-label={t('heroSearchLabel')}
         className="composer-input"
       />
       {input ? (
@@ -296,17 +297,19 @@ function SearchInner() {
             what makes the tool usable without reading any instructions. */}
         {!hasSearched ? (
           <div className="flex flex-1 flex-col justify-center py-10">
-            <h1 className="text-[28px] font-medium tracking-tight sm:text-3xl">What do the texts say?</h1>
-            <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-fg-muted">
-              Search the Quran, Torah, Talmud, Old and New Testaments together. Results carry their source
-              text and a reference — no interpretation is written for you.
-            </p>
+            {/* Leads with the two things a competitor cannot copy: one search
+                across five traditions in their own languages, and a refusal to
+                write the interpretation. It used to open "What do the texts say?",
+                which is a friendlier line but says nothing about either, and it
+                used to be hardcoded English on a page served in three locales. */}
+            <h1 className="text-[28px] font-medium tracking-tight sm:text-3xl">{t('heroTitle')}</h1>
+            <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-fg-muted">{t('heroSubtitle')}</p>
 
             <div className="mt-8">{composer}</div>
             <div className="mt-3">{textFilters}</div>
 
             <div className="mt-10">
-              <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-fg-faint">Try one</h2>
+              <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-fg-faint">{t('heroTryOne')}</h2>
               <div className="grid gap-2 sm:grid-cols-2">
                 {SUGGESTED.map((s) => (
                   <button

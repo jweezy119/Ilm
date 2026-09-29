@@ -378,17 +378,22 @@ function letters(text: string): Set<string> {
   return new Set(text.replace(/[^\p{L}]/gu, '').split(''));
 }
 
-/** Baseline historical proximity between corpora, before any model judgment. */
-export function historicalBaseline(a: TextId, b: TextId): number {
-  if (a === b) return 0.6;
-  const table: Record<TextId, Partial<Record<TextId, number>>> = {
-    quran: { torah: 0.5, ot: 0.5, talmud: 0.35, nt: 0.3 },
-    torah: { ot: 0.9, quran: 0.5, talmud: 0.5, nt: 0.3 },
-    ot: { torah: 0.9, nt: 0.4, quran: 0.5, talmud: 0.5 },
-    nt: { ot: 0.4, quran: 0.3, torah: 0.3, talmud: 0.35 },
-    talmud: { torah: 0.5, ot: 0.5, quran: 0.35, nt: 0.35 },
-  };
-  return table[a]?.[b] ?? 0.1;
+/**
+ * Historical proximity when no model is available to judge it.
+ *
+ * Zero, deliberately. This used to be a hand-written table of how close the
+ * traditions are to each other — quran/torah 0.5, nt/quran 0.3, same-corpus 0.6 —
+ * which produced the same number for every pair of passages from the same two
+ * corpora, forever. Two unrelated verses and two verses that are demonstrably
+ * linked scored identically, and a passage scored 0.6 against a different verse
+ * of its own book. It read as a measurement and was a verdict.
+ *
+ * So the fallback reports nothing. If a model judges the historical dimension its
+ * answer is used; otherwise the dimension reports zero, which is what "not
+ * measured" should look like next to a number that was measured.
+ */
+export function historicalBaseline(_a: TextId, _b: TextId): number {
+  return 0;
 }
 
 // ============================================================================
