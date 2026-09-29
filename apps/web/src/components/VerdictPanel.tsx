@@ -105,22 +105,25 @@ export function VerdictPanel({
           not. The last one matters most — "these texts do not treat your question"
           is a claim about the corpus, and a reader is right to ask whether it is
           quietly a claim about the question instead. */}
-      <dl className="mt-3 space-y-1 border-t border-line/70 pt-3 text-[12px] leading-relaxed text-fg-faint dark:border-white/10">
-        {searchedPassages ? (
-          <div className="flex gap-1.5">
-            <dt className="sr-only">{t('scope')}</dt>
-            <dd>{t('scope', { count: searchedPassages.toLocaleString(), texts: total })}</dd>
-          </div>
-        ) : null}
-        <div className="flex gap-1.5">
-          <dt className="sr-only">{source === 'jev' ? t('verdictFromModel') : t('verdictDerived')}</dt>
-          <dd>{source === 'jev' ? t('verdictFromModel') : t('verdictDerived')}</dd>
-        </div>
-        <div className="flex gap-1.5">
-          <dt className="sr-only">{t('notJudged')}</dt>
-          <dd>{t('notJudged')}</dd>
-        </div>
-      </dl>
+      {/*
+          The receipt. Three facts, and the verdict is only worth as much as they
+          are: how much was searched, how it was decided, and what the verdict is
+          not. The last one matters most — "these texts do not treat your question"
+          is a claim about the corpus, and a reader is right to ask whether it is
+          quietly a claim about the question instead.
+
+          Plain paragraphs, not a definition list. The dt/dd pairing carried no
+          label, so each line was announced twice — once by the sr-only term and
+          once by its description — and a screen-reader user heard the receipt
+          three times over. */}
+      <div className="mt-3 space-y-1 border-t border-line/70 pt-3 text-[12px] leading-relaxed text-fg-faint dark:border-white/10">
+        {/* The count arrives from a second request and may not have landed yet.
+            Rather than omit the whole line and lose the scope, the line degrades to
+            the texts, which this component always knows. */}
+        {searchedPassages ? t('scope', { count: searchedPassages.toLocaleString(), texts: total }) : t('scopeTexts', { texts: total })}
+        <p>{source === 'jev' ? t('verdictFromModel') : t('verdictDerived')}</p>
+        <p>{t('notJudged')}</p>
+      </div>
 
       {expandedTheme ? (
         <p className="mt-2 text-[12px] text-fg-faint">
