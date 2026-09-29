@@ -127,7 +127,6 @@ function JourneyView() {
 
   const load = useCallback(async () => {
     if (!passageId) {
-      setError(t('noPassage'));
       setLoading(false);
       return;
     }
@@ -200,6 +199,23 @@ function JourneyView() {
       </div>
 
       {loading ? <JourneySkeleton /> : null}
+
+      {/*
+          Arriving without a passage used to render as "Could not build the journey —
+          No passage selected", which is a failure message for a missing parameter
+          and offers nothing to do about it. It is not a failure: a journey is a
+          passage's contexts, so without a passage there is simply nothing to show,
+          and the way to get one is to pick a passage.
+
+          This branch used to be reachable by the nav, which is why it mattered. It
+          is not in the nav now — the journey is a view of a passage, reached from
+          a passage — but the URL is shareable and a stale link can still land here.
+      */}
+      {!loading && !passageId ? (
+        <Empty icon={Compass} title={t('noPassageTitle')}>
+          {t('noPassageBody')}
+        </Empty>
+      ) : null}
 
       {!loading && error ? (
         <Empty icon={Compass} title={t('failed')}>

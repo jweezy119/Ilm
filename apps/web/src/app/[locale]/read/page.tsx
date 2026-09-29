@@ -65,11 +65,43 @@ function ReadInner() {
     [params, router]
   );
 
+  /*
+   * A book is always in hand, so the page is never empty.
+   *
+   * This used to be the first book or nothing at all: arriving at /read rendered
+   * the book list and no scripture, with no message saying what to do, so the route
+   * read as broken rather than as a picker. The Quran is 114 books, so what you got
+   * was a wall of surah names ending abruptly at An-Nas.
+   *
+   * Falls back to the corpus's first book rather than writing it into the URL, so
+   * the address still says what the reader actually chose, and an explicit choice
+   * always wins.
+   */
+  const effectiveBookId = bookId ?? (books.length > 0 ? books[0].id : undefined);
+
   // Changing text invalidates the book, so a book id from another corpus would be
   // requested against this one and 404. Clearing it is the honest response.
   useEffect(() => {
     if (bookId && books.length > 0 && !books.some((b) => b.id === bookId)) setParams({ book: null });
   }, [books, bookId, setParams]);
+
+  // The picker sits above the text, so on a book change the new chapter is below
+  // the fold. router.replace passes scroll: false, which is right for a text swap
+  // and wrong for a book swap: you click Al-Baqarah, the list of surah names stays
+  // exactly where it was, and nothing appears to have happened.
+  const scrollToText = useCallback(() => {
+    requestAnimationFrame(() => {
+      document.getElementById('reading-pane')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  }, []);
+
+  const pickBook = useCallback(
+    (id: string) => {
+      setParams({ book: id, chapter: 1 });
+      scrollToText();
+    },
+    [setParams, scrollToText]
+  );
 
   const goToChapter = useCallback(
     (delta: number) => {
@@ -79,18 +111,40 @@ function ReadInner() {
     [chapter, setParams]
   );
 
+  /*
+   * Switching corpus drops the book, and the chapter with it.
+   *
+   * This handler was inline at the one call site that had a book, so on arrival —
+   * before any book was chosen — the corpus pills were rendered with no handler
+   * wired to them and did nothing at all. The controls looked live because they were
+   * buttons with the right styling, which is worse than their absence.
+   */
+  const onText = useCallback(
+    (next: string) => {
+      router.replace(`/read?text=${next}`, { scroll: false });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [router]
+  );
+
   const onSearch = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!bookId || !query.trim()) return;
+    if (!effectiveBookId || !query.trim()) return;
     setSearching(true);
-    run(textId, bookId, query.trim());
+    run(textId, effectiveBookId, query.trim());
     setSearching(false);
   };
 
-  if (!bookId) {
+  if (!effectiveBookId) {
     return (
       <Page>
-        <BookPicker textId={textId} books={books} loading={booksLoading} onPick={(id) => setParams({ book: id })} />
+        <BookPicker
+          textId={textId}
+          books={books}
+          loading={booksLoading}
+          onPick={pickBook}
+          onText={onText}
+        />
       </Page>
     );
   }
@@ -99,15 +153,16 @@ function ReadInner() {
     <Page>
       <BookPicker
         textId={textId}
-        bookId={bookId}
+        bookId={effectiveBookId}
         books={books}
         loading={booksLoading}
-        onPick={(id) => setParams({ book: id, chapter: 1 })}
-        onText={(id) => router.replace(`/read?text=${id}`)}
+        onPick={pickBook}
+        onText={onText}
       />
+      <div id="reading-pane">
       <ReadingPane
         textId={textId}
-        bookId={bookId}
+        bookId={effectiveBookId}
         chapter={chapter}
         translation={translation}
         showOriginal={showOriginal}
@@ -117,6 +172,7 @@ function ReadInner() {
         onPrev={() => goToChapter(-1)}
         onNext={() => goToChapter(1)}
       />
+      </div>
 
       {/* Search within this book, and only this book. */}
       <section className="mt-10 border-t border-line pt-6">
@@ -232,6 +288,21 @@ function BookPicker({
         ))}
       </div>
 
+      {/*
+          One row, scrolled sideways.
+
+          This wrapped, so the Quran rendered 114 surah names as a wall of full-width
+          lines that pushed the scripture itself off the bottom of the page. A book
+          switcher is a strip, not a list, and this is the one control in the app
+          where the number of options was the problem: the other five corpora are 5
+          to 39 books and wrapped harmlessly, which is probably why it went unnoticed
+          until the Quran made it impossible to miss.
+
+          overflow-x-auto rather than a carousel, so a trackpad and a keyboard's
+          arrow keys both work and nothing hides behind a control. The selected book
+          is scrolled into view, so opening a deep chapter does not leave the strip
+          showing the first few books.
+      */}
       {loading ? (
         <div className="flex flex-wrap gap-1.5">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
@@ -239,20 +310,23 @@ function BookPicker({
           ))}
         </div>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {books.map((book) => (
-            <button
-              key={book.id}
-              type="button"
-              onClick={() => onPick(book.id)}
-              aria-pressed={book.id === bookId}
-              title={`${book.verseCount.toLocaleString()} verses in ${book.chapterCount} chapters`}
-              className={cn('toggle-pill', book.id === bookId ? 'toggle-pill-on' : 'toggle-pill-off')}
-            >
-              {book.name}
-              {book.nameOriginal ? <span className="ml-1.5 text-fg-faint" dir="auto">{book.nameOriginal}</span> : null}
-            </button>
-          ))}
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <div className="flex w-max gap-1.5">
+            {books.map((book) => (
+              <button
+                key={book.id}
+                type="button"
+                onClick={() => onPick(book.id)}
+                aria-pressed={book.id === bookId}
+                ref={book.id === bookId ? (el) => el?.scrollIntoView({ block: 'nearest', inline: 'center' }) : undefined}
+                title={`${book.verseCount.toLocaleString()} verses in ${book.chapterCount} chapters`}
+                className={cn('toggle-pill shrink-0', book.id === bookId ? 'toggle-pill-on' : 'toggle-pill-off')}
+              >
+                {book.name}
+                {book.nameOriginal ? <span className="ml-1.5 text-fg-faint" dir="auto">{book.nameOriginal}</span> : null}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </section>

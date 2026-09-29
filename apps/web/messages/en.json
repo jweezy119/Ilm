@@ -104,7 +104,9 @@
     "noThemes": "No themes on this passage",
     "noThemesBody": "This passage carries no scored themes, so there is nothing to group by. Themes are assigned during indexing.",
     "noPassage": "No passage selected",
-    "failed": "Could not build the journey"
+    "failed": "Could not build the journey",
+    "noPassageTitle": "A journey needs a passage",
+    "noPassageBody": "It groups the other texts that share a theme with the one you started from. Open any passage and its journey is on that page."
   },
   "topics": {
     "title": "Topics",
