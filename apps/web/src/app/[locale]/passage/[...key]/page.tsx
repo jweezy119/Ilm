@@ -7,14 +7,14 @@ import { RelatedPanel } from '@/components/RelatedPanel';
 import { SaveButton } from '@/components/SaveButton';
 import { CopyCitation } from '@/components/CopyCitation';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Compass, Loader2, Minus, Plus, Scale, Sparkles } from 'lucide-react';
-import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
+import { AlertTriangle, ArrowLeft, ArrowRight, Compass, Loader2, Scale, Sparkles } from 'lucide-react';
+import type { CrossRef, Passage } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
-import { useComparisonStore, useSettingsStore } from '@/store';
+import { useSettingsStore } from '@/store';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, TEXT_STYLES } from '@/lib/utils';
 
 /**
@@ -52,13 +52,22 @@ const REFERENCE_LABELS: Record<string, string> = {
   historical: 'historical',
 };
 
-const DIMENSIONS: Array<{ key: keyof RecommendationWeights; label: string }> = [
-  { key: 'thematic', label: 'Thematic' },
-  { key: 'linguistic', label: 'Linguistic' },
-  { key: 'historical', label: 'Historical' },
-  { key: 'narrative', label: 'Narrative' },
-  { key: 'theological', label: 'Theological' },
-];
+/*
+ * What each dimension is, matching the labels the API sends in its breakdown.
+ *
+ * The API words these honestly — "historical connection (not measured here)" and
+ * "theological alignment (a subset of thematic resonance)" — because a dimension
+ * carrying no weight and a dimension measured by the same classifier as its
+ * neighbour both need saying out loud. Rendering the bare key here threw that away
+ * in the one place the reader went looking for it.
+ */
+const DIMENSION_HELP: Record<string, string> = {
+  thematic: 'Thematic resonance',
+  linguistic: 'Shared terminology and roots',
+  historical: 'Historical connection — not measured here',
+  narrative: 'Narrative parallel',
+  theological: 'Theological alignment — a subset of thematic resonance',
+};
 
 export default function PassagePage() {
   const params = useParams<{ key: string[] }>();
@@ -139,7 +148,6 @@ export default function PassagePage() {
               Journey
             </Link>
             <SaveButton passageKey={passage.passageKey} variant="full" />
-            <CompareButton passage={passage} />
           </div>
         }
       />
@@ -325,33 +333,8 @@ function CrossReferences({ passageId, initial }: { passageId: string; initial: A
   );
 }
 
-function CompareButton({ passage }: { passage: Passage }) {
-  const { toggle, has, passageKeys } = useComparisonStore();
-  const inTray = has(passage.passageKey);
-
-  return (
-    <button
-      type="button"
-      onClick={() => toggle(passage)}
-      aria-pressed={inTray}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
-        inTray
-          ? 'border-emerald-700 bg-emerald-800 text-white'
-          : 'border-ink-300 hover:border-emerald-700 hover:text-emerald-800 dark:border-ink-700 dark:hover:border-emerald-500 dark:hover:text-emerald-400'
-      )}
-    >
-      {inTray ? <Check className="h-4 w-4" /> : <Scale className="h-4 w-4" />}
-      {inTray ? `In comparison (${passageKeys.length})` : 'Add to comparison'}
-    </button>
-  );
-}
-
 function RecommendationPanel({ passage }: { passage: Passage }) {
   const weights = useSettingsStore((s) => s.weights);
-  const addKey = useComparisonStore((s) => s.addKey);
-  const removeKey = useComparisonStore((s) => s.remove);
-  const has = useComparisonStore((s) => s.has);
   const [state, setState] = useState<{ status: 'loading' | 'ready' | 'error'; message?: string; data?: Awaited<ReturnType<typeof api.recommendations>> }>({ status: 'loading' });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [excludeSameText, setExcludeSameText] = useState(false);
@@ -417,7 +400,6 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
         state.data && state.data.recommendations.length > 0 ? (
           <ul className="space-y-2">
             {state.data.recommendations.map((rec) => {
-              const inTray = has(rec.passageKey);
               return (
               <li key={rec.passageId} className="rounded-lg border border-ink-200 p-3 dark:border-ink-800">
                 <div className="mb-1 flex items-center gap-2">
@@ -428,7 +410,6 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
                   {/* Provenance per row. Without it every number here reads as model
                       output, which is false when the pair fell back or was cached. */}
                   <SourceBadge source={rec.source} className="px-1 py-0.5 text-[10px]" />
-                  <span className="ms-auto font-mono text-xs text-ink-500">{percent(rec.scores.composite)}</span>
                 </div>
 
                 <p className="line-clamp-2 text-sm text-ink-700 dark:text-ink-300">{truncate(rec.preview, 180)}</p>
@@ -443,21 +424,18 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
                   </ul>
                 ) : null}
 
-                <ul className="mt-2 space-y-1">
-                  {DIMENSIONS.map((dim) => (
-                    <li key={dim.key} className="flex items-center gap-2 text-[11px]">
-                      <span className="w-20 shrink-0 text-ink-500">{dim.label}</span>
-                      <span className="h-1.5 flex-1 overflow-hidden rounded bg-ink-200 dark:bg-ink-800">
-                        <span
-                          className="block h-full rounded bg-emerald-700 dark:bg-emerald-500"
-                          style={{ width: percent(rec.scores[dim.key]) }}
-                        />
-                      </span>
-                      <span className="w-9 shrink-0 text-right font-mono text-ink-500">{percent(rec.scores[dim.key])}</span>
-                    </li>
-                  ))}
-                </ul>
+                {/*
+                    The five bars and the composite used to be here, above the text.
 
+                    They were the same numbers the disclosure below produces, in a
+                    form that took eleven lines of vertical space on every row. A
+                    reader came to this page for a relation and had to read past a
+                    small dashboard to get to the passage, and the one number that
+                    mattered — which of these is closest — is already the order the
+                    list is in. So they moved into the disclosure rather than being
+                    deleted: the arithmetic is still there, still one click away,
+                    and now it costs nothing to skip.
+                */}
                 <p className="mt-2 text-[11px] text-ink-500">{rec.reasoning}</p>
 
                 {/* The two things a reader actually wants from a relation: go there,
@@ -469,14 +447,27 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
                   >
                     <ArrowRight className="h-3 w-3" /> Open this passage
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => (inTray ? removeKey(rec.passageKey) : addKey(rec.passageKey))}
+                  {/*
+                      Additive, and a link rather than a button.
+
+                      The label promised adjacency and the mechanism was a tray: click
+                      it and nothing appeared beside anything, a counter went up on
+                      another page, and a second click was needed to see the result.
+                      For a reader mid-way through one passage that is the most
+                      frictionful interaction on the page.
+
+                      `/compare?keys=` already exists and takes precedence over the
+                      tray, so this is a plain link to the two passages side by side.
+                      It is also shareable now, which the tray was not — the same
+                      pair in a message is the same pair in a URL.
+                  */}
+                  <Link
+                    href={`/compare?keys=${encodeURIComponent(`${passage.passageKey},${rec.passageKey}`)}`}
                     className="inline-flex items-center gap-1 rounded border border-ink-300 px-2 py-0.5 text-[11px] hover:border-ink-500 dark:border-ink-700"
                   >
-                    {inTray ? <Minus className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                    {inTray ? 'Remove from comparison' : 'Compare beside this'}
-                  </button>
+                    <Scale className="h-3 w-3" />
+                    Compare beside this
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setExpanded(expanded === rec.passageId ? null : rec.passageId)}
@@ -492,8 +483,10 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
             })}
           </ul>
         ) : (
-          <Empty title="No passages scored above the threshold">
-            Loosen the weights in Settings, or uncheck “hide this corpus”, to widen the candidate pool.
+          <Empty title="No relations found">
+            Nothing in the searched texts came close to this one. The related passages
+            above show what the corpus does hold, which is often a better next step
+            than a different threshold.
           </Empty>
         )
       ) : null}
@@ -530,11 +523,19 @@ function Explanation({ sourceId, targetId }: { sourceId: string; targetId: strin
   return (
     <div className="mt-2 rounded border border-ink-200 p-2 text-[11px] dark:border-ink-800">
       <p className="mb-1.5 text-ink-600 dark:text-ink-400">{data.summary}</p>
+      <p className="mb-1.5 font-mono text-ink-600 dark:text-ink-400">
+        composite {percent(data.scores.composite)}
+      </p>
       <table className="w-full text-left">
         <tbody>
           {data.breakdown.map((row) => (
             <tr key={row.dimension}>
-              <td className="py-0.5 ps-2 text-ink-500">{row.dimension}</td>
+              {/* The API's label, which says when a dimension is not measured and
+                  which one overlaps which. The bare key did not, so the honest part
+                  of the disclosure was the part least likely to be read. */}
+              <td className="py-0.5 ps-2 text-ink-500">
+                {DIMENSION_HELP[row.dimension.toLowerCase()] ?? row.dimension}
+              </td>
               <td className="py-0.5 ps-2 font-mono">{percent(row.score)}</td>
               <td className="py-0.5 ps-2 font-mono text-ink-500">×{row.weight.toFixed(2)}</td>
               <td className="py-0.5 font-mono">{percent(row.contribution)}</td>
