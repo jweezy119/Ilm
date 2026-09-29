@@ -107,29 +107,6 @@ function RelaxedChip() {
   );
 }
 
-function EngineChip({ source, intent }: { source?: string; intent?: string }) {
-  const readable = intent?.replace(/_/g, ' ');
-  const live = source === 'jev';
-  const label = live ? 'Ranked by meaning' : source === 'derived' ? 'Literal ranking' : 'Ranking';
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
-        live ? 'bg-accent-soft text-accent' : 'bg-panel text-fg-muted'
-      )}
-      title={
-        live
-          ? 'Jev re-ranked these results by meaning. One extra request per search.'
-          : 'Literal term ranking. No model call was made for this search.'
-      }
-    >
-      <span className={cn('h-1.5 w-1.5 rounded-full', live ? 'bg-accent' : 'bg-fg-faint')} />
-      {label}
-      {readable ? <span className="text-fg-faint">· {readable}</span> : null}
-    </span>
-  );
-}
-
 function SearchInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -147,7 +124,11 @@ function SearchInner() {
   // be checkable against: "45,453 passages" is answerable, "the texts" is not.
   const [searched, setSearched] = useState<number | null>(null);
 
-  const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, remember } = useSearchStore();
+  const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, allTexts, remember } = useSearchStore();
+  const [narrowOpen, setNarrowOpen] = useState(false);
+  // A search covering fewer than every text is a narrower claim, so it is named
+  // rather than left for the reader to infer from a result count.
+  const narrowedFromDefault = activeTexts.length < TEXT_IDS.length;
 
   useEffect(() => {
     let cancelled = false;
@@ -329,7 +310,38 @@ function SearchInner() {
             <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-fg-muted">{t('heroSubtitle')}</p>
 
             <div className="mt-8">{composer}</div>
-            <div className="mt-3">{textFilters}</div>
+
+            {/*
+                Silence by default, explicit when narrowed.
+
+                The text pills used to sit under the input on arrival, which made
+                choosing a corpus a step you took before you had seen anything — and
+                on a product that searches all five, the default is all five. Most
+                readers never touched them, so most readers were shown a control they
+                did not need on the way to the thing they came for.
+
+                Now nothing appears unless the search is genuinely narrowed, and
+                then it says so and offers the way back. A narrower search that was
+                silently left on from a previous visit is the one case where a
+                visible control is the point, so that is the only case that gets one.
+            */}
+            {narrowedFromDefault ? (
+              <p className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-fg-faint">
+                <span>
+                  Searching {activeTexts.length} of {TEXT_IDS.length} texts.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    allTexts();
+                    if (query) void runSearch(query, TEXT_IDS);
+                  }}
+                  className="text-accent underline underline-offset-2"
+                >
+                  Search all five
+                </button>
+              </p>
+            ) : null}
 
             <div className="mt-10">
               <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-fg-faint">{t('heroTryOne')}</h2>
@@ -464,20 +476,68 @@ function SearchInner() {
                       </>
                     )}
                   </span>
-                  <EngineChip source={response?.rerankSource} intent={response?.intent} />
+                  {/*
+                      Provenance stays; the control does not.
+
+                      "Ranked by meaning" is a disclosure about how this list was
+                      produced, and it is one of the few things this product is for, so
+                      it stays. It stops being a pill with a background colour and
+                      becomes a phrase in the same line as the count, because it is
+                      information about the results rather than a control on them.
+                  */}
+                  <span className="text-xs text-fg-faint">
+                    {response?.rerankSource === 'jev' ? t('rankedByMeaning') : t('literalRanking')}
+                  </span>
                   {response?.matchMode === 'relaxed' ? <RelaxedChip /> : null}
                   <span className="text-xs text-fg-faint tabular-nums">{response?.tookMs}ms</span>
+                  <button
+                    type="button"
+                    onClick={() => setNarrowOpen((v) => !v)}
+                    aria-expanded={narrowOpen}
+                    className={cn(
+                      'ms-auto text-xs text-fg-faint underline-offset-2 transition-colors hover:text-accent hover:underline',
+                      narrowedFromDefault && 'text-accent'
+                    )}
+                  >
+                    {narrowedFromDefault ? t('narrowed', { count: activeTexts.length }) : t('narrow')}
+                  </button>
                   {passageKeys.length > 0 ? (
                     <button
                       type="button"
                       onClick={() => router.push('/compare')}
-                      className="ms-auto inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
                     >
                       <Layers className="h-3.5 w-3.5" />
                       Compare {passageKeys.length}
                     </button>
                   ) : null}
                 </div>
+
+                {/*
+                    The controls, after the results and behind one word.
+
+                    Both of these are worth having and neither is worth interrupting
+                    for. Which texts to search is a choice most readers make with the
+                    default and never revisit; whether to rank by meaning is a choice
+                    for the person who wants exact phrases. So they live here, once
+                    there is something on screen to act on, and they say what is
+                    currently in effect rather than presenting themselves as a form to
+                    fill in.
+                */}
+                {narrowOpen ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-raised px-3 py-2.5">
+                    {textFilters}
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-fg-faint">
+                      <input
+                        type="checkbox"
+                        checked={semantic}
+                        onChange={(e) => setSemantic(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
+                      />
+                      {t('rankByMeaning')}
+                    </label>
+                  </div>
+                ) : null}
 
                 {/*
                     Both verdicts travel with the results rather than above or below
@@ -572,18 +632,6 @@ function SearchInner() {
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-5 pt-10 sm:px-8">
           <div className="pointer-events-auto mx-auto w-full max-w-3xl">
             {composer}
-            <div className="mt-2 flex items-center justify-between gap-3">
-              {textFilters}
-              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-fg-faint">
-                <input
-                  type="checkbox"
-                  checked={semantic}
-                  onChange={(e) => setSemantic(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
-                />
-                Rank by meaning
-              </label>
-            </div>
           </div>
         </div>
       ) : null}

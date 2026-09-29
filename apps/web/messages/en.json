@@ -74,7 +74,12 @@
     "unaddressedBodyNone": "Nothing in the searched texts addresses what you asked. That is an answer rather than a failed search — the corpus was searched, and this is not in it.",
     "scopeTexts": "Searched {texts}.",
     "why": "why?",
-    "hideWhy": "hide"
+    "hideWhy": "hide",
+    "rankedByMeaning": "ranked by meaning",
+    "literalRanking": "literal ranking",
+    "narrow": "narrow",
+    "narrowed": "narrowed · {count} texts",
+    "rankByMeaning": "Rank by meaning"
   },
   "common": {
     "loading": "Loading…",

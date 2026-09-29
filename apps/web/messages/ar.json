@@ -74,7 +74,12 @@
     "unaddressedBodyNone": "لا شيء في النصوص التي بُحث فيها يتناول ما سألت. هذه إجابة لا بحث فاشل — بُحث في المدونة، وهذا ليس فيها.",
     "scopeTexts": "بُحث في {texts}.",
     "why": "لماذا؟",
-    "hideWhy": "إخفاء"
+    "hideWhy": "إخفاء",
+    "rankedByMeaning": "مرتَّب بالمعنى",
+    "literalRanking": "ترتيب حرفي",
+    "narrow": "تضييق",
+    "narrowed": "مُضيَّق · {count} نصوص",
+    "rankByMeaning": "الترتيب بالمعنى"
   },
   "common": {
     "loading": "جارٍ التحميل…",

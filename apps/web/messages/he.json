@@ -74,7 +74,12 @@
     "unaddressedBodyNone": "שום דבר בטקסטים שחופשו אינו עוסק במה ששאלתם. זו תשובה ולא חיפוש שנכשל — המאגר חופש, וזה אינו בתוכו.",
     "scopeTexts": "נחפשו {texts}.",
     "why": "למה?",
-    "hideWhy": "הסתר"
+    "hideWhy": "הסתר",
+    "rankedByMeaning": "מדורג לפי משמעות",
+    "literalRanking": "מיון מילולי",
+    "narrow": "הצמצה",
+    "narrowed": "מוצמצם · {count} טקסטים",
+    "rankByMeaning": "דרג לפי משמעות"
   },
   "common": {
     "loading": "טוען…",

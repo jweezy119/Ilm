@@ -97,6 +97,14 @@ interface SearchState {
   setQuery: (query: string) => void;
   setResponse: (response: SearchResponse | null) => void;
   toggleText: (textId: TextId) => void;
+  /**
+   * Return to every text in one action.
+   *
+   * Narrowing is a mode the reader enters and has to be able to leave, and the way
+   * out used to be clicking each pill back. This is what "search all five texts"
+   * calls, so it is one call.
+   */
+  allTexts: () => void;
   clear: () => void;
   remember: (query: string) => void;
   clearRecent: () => void;
@@ -113,6 +121,7 @@ export const useSearchStore = create<SearchState>()(
       setQuery: (query) => set({ query }),
       setResponse: (response) => set({ response }),
 
+      allTexts: () => set({ activeTexts: ALL_TEXTS }),
       toggleText: (textId) =>
         set((state) => {
           const next = state.activeTexts.includes(textId)
