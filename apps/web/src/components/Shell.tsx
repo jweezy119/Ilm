@@ -129,6 +129,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Strip the locale prefix before comparing. usePathname from next-intl already
   // removes it, which is the point of importing it instead of next/navigation.
   const pathname = usePathname();
+  // Reading routes give their vertical space back to the text. See the header.
+  const scrollAwayHeader = pathname.startsWith('/passage');
   const stored = useUiStore((s) => s.theme);
   const count = useComparisonStore((s) => s.passageKeys.length);
   const recent = useSearchStore((s) => s.recent);
@@ -317,7 +319,31 @@ export function Shell({ children }: { children: React.ReactNode }) {
             The drawer trigger stays at the start, and the collapse control stayed in
             the rail footer where it already was.
         */}
-        <div className="sticky top-0 z-30 flex h-14 items-center justify-end gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur sm:px-8">
+        {/*
+            Sticky everywhere except where the page is for reading.
+
+            The brand is not worth 56 pixels of every scroll on every route. On
+            search — a list you scan and scroll back through — a header pinned to
+            the top is a way home and a place to see where you are, so it stays. On
+            a passage, the reader came for a verse in the original and a translation
+            and whatever it connects to, and the permanent 56 pixels come straight
+            out of that: the header competes for the first screen with the thing the
+            screen is for.
+
+            So on /passage it scrolls away, and the space goes back to the text. The
+            header is not duplicated and not hidden — it is simply not pinned, so it
+            behaves like a page title instead of a toolbar.
+
+            One route for now. /read is the same argument — a chapter of scripture,
+            read rather than scanned — and can take the same treatment whenever
+            someone looks at it and finds it tight.
+        */}
+        <div
+          className={[
+            'flex h-14 items-center justify-end gap-2 border-b border-line px-3 sm:px-8',
+            scrollAwayHeader ? '' : 'sticky top-0 z-30 bg-bg/85 backdrop-blur',
+          ].join(' ')}
+        >
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
