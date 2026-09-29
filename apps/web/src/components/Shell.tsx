@@ -125,6 +125,7 @@ function LanguageSwitcher({ collapsed }: { collapsed: boolean }) {
 export function Shell({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
   const t = useTranslations('nav');
+  const tb = useTranslations('brand');
   // Strip the locale prefix before comparing. usePathname from next-intl already
   // removes it, which is the point of importing it instead of next/navigation.
   const pathname = usePathname();
@@ -159,22 +160,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
           mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0',
         ].join(' ')}
       >
-        <div className={['flex h-14 shrink-0 items-center border-b border-line', collapsed ? 'justify-center px-2' : 'gap-2 px-4'].join(' ')}>
-          <Link href="/" onClick={() => setMobileOpen(false)} className="flex min-w-0 items-center gap-2.5" aria-label={t('home')}>
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent text-accent-fg">
-              <BookOpen className="h-4 w-4" />
-            </span>
-            {!collapsed ? (
-              <span className="truncate text-[17px] font-medium tracking-tight">
-                Ilm
-                <span className="ml-1.5 text-xs text-fg-faint" dir="rtl">
-                  علم
-                </span>
-              </span>
-            ) : null}
-          </Link>
-        </div>
-
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
           <Link
             href="/"
@@ -312,21 +297,43 @@ export function Shell({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <div className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-200 ${collapsed ? 'lg:ps-[68px]' : 'lg:ps-[264px]'}`}>
-        {/* The mobile-only trigger for the drawer. */}
-        <div className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur lg:hidden">
+        {/*
+            The header, and the brand at the end of it.
+
+            The brand sat at the top of the rail, which put it top-left on every
+            screen and made the rail's first row a header that held nothing else. It
+            now lives in the content column's header, at the end — so top right in
+            English and Arabic, and mirrored in Hebrew, which is where a brand
+            belongs when the layout is right-to-left and the reader reads from the
+            right. `justify-end` does that for free; a physical `right` would have
+            put it on the wrong side for every Hebrew reader.
+
+            The second word is the locale's own, so the mark reads Ilm علم in Arabic
+            and Ilm דַּעַת in Hebrew rather than showing the same Arabic to everyone.
+            דַּעַת is the Hebrew counterpart of علم — knowledge, not wisdom, which is
+            a different claim — and it is a common noun in the corpus rather than a
+            borrowing.
+
+            The drawer trigger stays at the start, and the collapse control stayed in
+            the rail footer where it already was.
+        */}
+        <div className="sticky top-0 z-30 flex h-14 items-center justify-end gap-2 border-b border-line bg-bg/85 px-3 backdrop-blur sm:px-8">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="icon-btn"
+            className="icon-btn me-auto lg:hidden"
             aria-label={t('openNavigation')}
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2" aria-label={t('home')}>
+            <span className="truncate text-[17px] font-medium tracking-tight">
+              Ilm
+              <span className="ms-1.5 text-xs text-fg-faint">{tb('word')}</span>
+            </span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-accent-fg">
               <BookOpen className="h-3.5 w-3.5" />
             </span>
-            <span className="font-medium">Ilm</span>
           </Link>
         </div>
 
