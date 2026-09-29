@@ -271,6 +271,30 @@ function BookPicker({
   onPick: (bookId: string) => void;
   onText?: (textId: string) => void;
 }) {
+  /*
+   * A filter, only where the list is long enough to need one.
+   *
+   * The strip scrolls, which fixes the wall, but scrolling 114 surahs sideways on a
+   * phone is its own wall: the finger goes across the screen many times and there is
+   * nothing to aim at. The Quran is the only corpus where this matters — the others
+   * are 5 to 39 books — so the field appears only there rather than adding a control
+   * to a five-book picker, which is the friction this whole change set has been
+   * about removing.
+   *
+   * Matches on the transliterated name and the Arabic, so typing either finds it.
+   */
+  const [filter, setFilter] = useState('');
+  const needsFilter = books.length > 40;
+  const needle = filter.trim().toLowerCase();
+  const visible = !needle
+    ? books
+    : books.filter(
+        (b) =>
+          b.name.toLowerCase().includes(needle) ||
+          (b.nameOriginal ?? '').toLowerCase().includes(needle) ||
+          b.id.toLowerCase().includes(needle)
+      );
+
   return (
     <section className="mb-8">
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -310,9 +334,30 @@ function BookPicker({
           ))}
         </div>
       ) : (
+        <>
+        {needsFilter ? (
+          <div className="mb-2 flex items-center gap-2">
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Find a surah"
+              aria-label="Find a book"
+              className="w-full max-w-[220px] rounded-lg border border-line bg-bg px-2.5 py-1 text-sm outline-none focus:border-accent"
+            />
+            {needle ? (
+              <button type="button" onClick={() => setFilter('')} className="text-[12px] text-fg-faint hover:text-accent">
+                Clear
+              </button>
+            ) : null}
+            {needle && visible.length === 0 ? (
+              <span className="text-[12px] text-fg-faint">No book matches</span>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
           <div className="flex w-max gap-1.5">
-            {books.map((book) => (
+            {visible.map((book) => (
               <button
                 key={book.id}
                 type="button"
@@ -328,6 +373,7 @@ function BookPicker({
             ))}
           </div>
         </div>
+        </>
       )}
     </section>
   );
