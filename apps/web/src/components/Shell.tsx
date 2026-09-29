@@ -15,7 +15,6 @@ import {
   Activity,
   Plus,
   Languages,
-  Compass,
   Bookmark,
 } from 'lucide-react';
 import { routing, LOCALE_NAMES } from '@/i18n/routing';
@@ -29,15 +28,34 @@ import { useUiStore, useComparisonStore, useSearchStore } from '@/store';
  * The label is looked up per locale, so the rail is translated without every page
  * having to pass a translated string into the shell.
  */
+/*
+ * Three, not eight.
+ *
+ * The rail listed Search, Read, Journey, Topics, Library, Explore, Compare and
+ * Settings. Two of them shared an icon — Journey and Topics both got a Compass —
+ * which is the tell that they were never three distinct things to anyone.
+ *
+ * None of the five removed were peers of Search. They are all facets of the same
+ * question, and the search page already carries the first two: a row of topic chips
+ * and twenty-eight theme chips, on the page you land on. So /topics and /explore
+ * were duplicate destinations for anyone arriving fresh, reached by a second path
+ * to a place they were already standing.
+ *
+ * Compare needed no nav entry either. It is reached by the link on every relation
+ * row, which goes straight to a shareable pair, and the search page carries a
+ * Compare button beside the tray count. It was a destination you had to already be
+ * holding something for.
+ *
+ * Journey is meaningful relative to a passage, and the passage page has one.
+ *
+ * The routes all still work — they are unlinked, not deleted, so a bookmark keeps
+ * working. Settings moves to the footer beside the language switcher and the API
+ * status, which is where a destination belongs when it is not something you browse.
+ */
 const NAV = [
   { href: '/', key: 'search', icon: Search },
   { href: '/read', key: 'read', icon: BookOpen },
-  { href: '/journey', key: 'journey', icon: Compass },
-  { href: '/topics', key: 'topics', icon: Compass },
   { href: '/library', key: 'library', icon: Bookmark },
-  { href: '/explore', key: 'explore', icon: Sparkles },
-  { href: '/compare', key: 'compare', icon: ArrowLeftRight },
-  { href: '/settings', key: 'settings', icon: Settings },
 ] as const;
 
 /**
@@ -184,11 +202,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
                 >
                   <Icon className="h-[18px] w-[18px] shrink-0" />
                   {!collapsed ? <span className="truncate">{label}</span> : null}
-                  {!collapsed && item.href === '/compare' && count > 0 ? (
-                    <span className="ms-auto rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-fg tabular-nums">
-                      {count}
-                    </span>
-                  ) : null}
                 </Link>
               );
             })}
@@ -236,6 +249,33 @@ export function Shell({ children }: { children: React.ReactNode }) {
               {t('disclaimer')}
             </p>
           ) : null}
+          {/* The tray, now that it is not a nav row. Reaching a comparison you have
+              already assembled is a one-off act, so it lives where the controls
+              live rather than in the list of places you can go. */}
+          {!collapsed && count > 0 ? (
+            <Link
+              href="/compare"
+              onClick={() => setMobileOpen(false)}
+              className="mb-2 flex items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent"
+            >
+              <ArrowLeftRight className="h-4 w-4 shrink-0" />
+              {t('compare')}
+              <span className="ms-auto rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-fg tabular-nums">
+                {count}
+              </span>
+            </Link>
+          ) : null}
+
+          <Link
+            href="/settings"
+            onClick={() => setMobileOpen(false)}
+            className={['btn btn-secondary mb-2 w-full justify-start', collapsed ? 'px-0' : ''].join(' ')}
+            title={t('settings')}
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+            {!collapsed ? t('settings') : null}
+          </Link>
+
           <div className={['flex items-center gap-1', collapsed ? 'flex-col' : 'justify-between'].join(' ')}>
             <a href="/api/health" target="_blank" rel="noreferrer" className="icon-btn" title={t('apiStatus')}>
               <Activity className="h-4 w-4" />

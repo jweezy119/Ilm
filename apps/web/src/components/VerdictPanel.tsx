@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { AlertTriangle, Layers, Search } from 'lucide-react';
@@ -68,6 +69,7 @@ export function VerdictPanel({
 }) {
   const t = useTranslations('search');
   const unaddressed = verdict === 'unaddressed';
+  const [showReceipt, setShowReceipt] = useState(false);
   const total = texts.length === 1 ? getTextLabel(texts[0]) : `${texts.length} texts`;
 
   return (
@@ -84,6 +86,21 @@ export function VerdictPanel({
       )}
       aria-labelledby="verdict-heading"
     >
+      {/*
+          One line, and the line is the claim.
+
+          This was a panel: heading, a paragraph of body copy, a three-line receipt,
+          an expansion theme note, a row of suggestion chips and two links. It was
+          longer than most of the verses it was describing, and it stood above the
+          results it was qualifying, so the qualification and the thing being
+          qualified competed for the same space.
+
+          The claim is one sentence and stays one sentence. Everything under it —
+          how much was searched, whether a model judged it, and the disclaimer that
+          this is a claim about the corpus rather than about the question — is still
+          there, one click away, and the affordance says so. Nothing was dropped; it
+          stopped being mandatory.
+      */}
       <div className="flex items-start gap-2.5">
         <AlertTriangle
           className={cn('mt-0.5 h-4 w-4 shrink-0', unaddressed ? 'text-amber-600 dark:text-amber-400' : 'text-fg-faint')}
@@ -97,14 +114,19 @@ export function VerdictPanel({
             {unaddressed ? (hasResults ? t('unaddressedBody') : t('unaddressedBodyNone')) : t('partialBody')}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowReceipt((v) => !v)}
+          aria-expanded={showReceipt}
+          aria-controls="verdict-receipt"
+          className="shrink-0 self-center text-[12px] text-fg-faint underline-offset-2 transition-colors hover:text-accent hover:underline"
+        >
+          {showReceipt ? t('hideWhy') : t('why')}
+        </button>
       </div>
 
-      {/*
-          The receipt. Three facts, and the verdict is only worth as much as they
-          are: how much was searched, how it was decided, and what the verdict is
-          not. The last one matters most — "these texts do not treat your question"
-          is a claim about the corpus, and a reader is right to ask whether it is
-          quietly a claim about the question instead. */}
+      <div id="verdict-receipt" hidden={!showReceipt}>
+
       {/*
           The receipt. Three facts, and the verdict is only worth as much as they
           are: how much was searched, how it was decided, and what the verdict is
@@ -116,7 +138,7 @@ export function VerdictPanel({
           label, so each line was announced twice — once by the sr-only term and
           once by its description — and a screen-reader user heard the receipt
           three times over. */}
-      <div className="mt-3 space-y-1 border-t border-line/70 pt-3 text-[12px] leading-relaxed text-fg-faint dark:border-white/10">
+      <div className="mt-2 space-y-1 text-[12px] leading-relaxed text-fg-faint dark:border-white/10">
         {/* The count arrives from a second request and may not have landed yet.
             Rather than omit the whole line and lose the scope, the line degrades to
             the texts, which this component always knows. */}
@@ -130,6 +152,7 @@ export function VerdictPanel({
           {t('expandedTheme', { theme: expandedTheme })}
         </p>
       ) : null}
+      </div>
 
       {/*
           The next step. A verdict that only says no sends the reader away, and we

@@ -72,7 +72,9 @@
     "closestMatch": "أقرب مطابقة",
     "closestMatches": "أقرب المطابقات",
     "unaddressedBodyNone": "لا شيء في النصوص التي بُحث فيها يتناول ما سألت. هذه إجابة لا بحث فاشل — بُحث في المدونة، وهذا ليس فيها.",
-    "scopeTexts": "بُحث في {texts}."
+    "scopeTexts": "بُحث في {texts}.",
+    "why": "لماذا؟",
+    "hideWhy": "إخفاء"
   },
   "common": {
     "loading": "جارٍ التحميل…",

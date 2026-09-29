@@ -72,7 +72,9 @@
     "closestMatch": "ההתאמה הקרובה ביותר",
     "closestMatches": "ההתאמות הקרובות ביותר",
     "unaddressedBodyNone": "שום דבר בטקסטים שחופשו אינו עוסק במה ששאלתם. זו תשובה ולא חיפוש שנכשל — המאגר חופש, וזה אינו בתוכו.",
-    "scopeTexts": "נחפשו {texts}."
+    "scopeTexts": "נחפשו {texts}.",
+    "why": "למה?",
+    "hideWhy": "הסתר"
   },
   "common": {
     "loading": "טוען…",

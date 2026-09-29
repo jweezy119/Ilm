@@ -72,7 +72,9 @@
     "closestMatch": "closest match",
     "closestMatches": "closest matches",
     "unaddressedBodyNone": "Nothing in the searched texts addresses what you asked. That is an answer rather than a failed search — the corpus was searched, and this is not in it.",
-    "scopeTexts": "Searched {texts}."
+    "scopeTexts": "Searched {texts}.",
+    "why": "why?",
+    "hideWhy": "hide"
   },
   "common": {
     "loading": "Loading…",
