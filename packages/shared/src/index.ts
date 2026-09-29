@@ -258,6 +258,48 @@ export const LibraryEntrySchema = z.object({
 export type LibraryEntry = z.infer<typeof LibraryEntrySchema>;
 
 // ============================================================================
+// Related Passages
+// ============================================================================
+
+/**
+ * One passage that relates to another, with the kind of relation stated.
+ *
+ * The three kinds are not comparable and the type says so. `verbatim` is
+ * arithmetic over the stored texts — a run of identical words, checkable by
+ * looking. `relation` is a model's judgement. `theme` is a keyword classifier's
+ * tag, and every theme in the app is currently that. Ranking them in one column
+ * without the label would let the first lend its authority to the third.
+ */
+export const RelatedPassageSchema = z.object({
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  book: z.string(),
+  chapter: z.number().int(),
+  verse: z.number().int(),
+  preview: z.string(),
+  originalText: z.string(),
+  language: z.string(),
+  kind: z.enum(['verbatim', 'relation', 'theme']),
+  relation: z.string(),
+  strength: z.number(),
+  source: z.string(),
+  sharedText: z.string().optional(),
+  sharedTheme: z.string().optional(),
+});
+export type RelatedPassage = z.infer<typeof RelatedPassageSchema>;
+
+export const RelatedPassagesSchema = z.object({
+  passageKey: z.string(),
+  empty: z.boolean(),
+  byKind: z.object({
+    verbatim: z.array(RelatedPassageSchema),
+    relation: z.array(RelatedPassageSchema),
+    theme: z.array(RelatedPassageSchema),
+  }),
+});
+export type RelatedPassages = z.infer<typeof RelatedPassagesSchema>;
+
+// ============================================================================
 // Citations
 // ============================================================================
 

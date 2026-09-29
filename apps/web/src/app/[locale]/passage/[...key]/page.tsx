@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { CitationsPanel } from '@/components/CitationsPanel';
+import { RelatedPanel } from '@/components/RelatedPanel';
 import { SaveButton } from '@/components/SaveButton';
 import { CopyCitation } from '@/components/CopyCitation';
 import { useParams } from 'next/navigation';
@@ -222,9 +222,10 @@ export default function PassagePage() {
           <CrossReferences passageId={passage.id} initial={passage.crossReferences as Array<CrossRef & { targetPassageKey?: string }>} />
         </div>
 
-        {/* Citations: the cross-corpus verbatim matches, separated from the
-            mixed cross-reference list because they are a different kind of claim. */}
-        <CitationsPanel passageId={passage.id} passageKey={passage.passageKey} />
+        {/* Related passages, replacing the citations-only panel. Same verbatim
+            matches, plus the model relations and shared themes that were
+            previously in two other places, each labelled with its kind. */}
+        <RelatedPanel passageId={passage.id} />
 
         <RecommendationPanel passage={passage} />
       </div>

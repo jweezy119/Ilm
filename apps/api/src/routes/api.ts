@@ -43,6 +43,7 @@ import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { getPassageJourney, DEFAULT_PER_GROUP } from '../services/journey';
 import { getTopics } from '../services/topics';
 import { getCitationsForPassage } from '../services/citations';
+import { getRelatedPassages } from '../services/related';
 import { resolveIdentity, cookieOptions, getLibrary, getSavedKeys, savePassage, removePassage, LIBRARY_COOKIE } from '../services/library';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
@@ -356,6 +357,26 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const limit = Number.isFinite(parsed) ? Math.min(60, Math.max(1, Math.trunc(parsed))) : undefined;
 
     return ok(await getCitationsForPassage(passage.id, { limit }));
+  });
+
+  /**
+   * Everything on the site that relates to this passage, ranked and labelled.
+   *   GET /api/passages/:id/related
+   *
+   * Merges the three relation families that were previously in three places, each
+   * of which answered a third of the question: verbatim citation, model-detected
+   * relation, shared theme. Each row says which kind it is, because an eleven-word
+   * verbatim run and a shared theme are not the same claim.
+   */
+  app.get('/api/passages/:id/related', async (request: FastifyRequest<{ Params: { id: string }; Querystring: { limit?: string } }>, reply: FastifyReply) => {
+    const id = decodeURIComponent(request.params.id);
+    const passage = await getPassageById(id);
+    if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with id ${id}`);
+
+    const parsed = Number(request.query.limit);
+    const limit = Number.isFinite(parsed) ? Math.min(20, Math.max(1, Math.trunc(parsed))) : undefined;
+
+    return ok(await getRelatedPassages(passage.id, { limit }));
   });
 
   /**

@@ -17,6 +17,7 @@ import type {
   PassageCitations,
   ResolvedCitation,
   LibraryEntry,
+  RelatedPassages,
 } from '@ilm/shared';
 
 /** The comparison options the API accepts, as the client sends them. */
@@ -319,6 +320,16 @@ export const api = {
 
   unsavePassage: (passageKey: string) =>
     del<{ removed: boolean }>(`/api/library/${encodeURIComponent(passageKey)}`),
+
+  /**
+   * Everything on the site that relates to a passage, in one ranked list.
+   *
+   * Supersedes `crossReferences` and `citations` on the passage page: those answer
+   * a third of the question each, and this labels every row with which kind of
+   * relation it is.
+   */
+  related: (passageId: string) =>
+    get<RelatedPassages>(`/api/passages/${encodeURIComponent(passageId)}/related`),
 
   /**
    * Cross-corpus citations for a passage: other texts that share these words.

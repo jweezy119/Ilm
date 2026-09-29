@@ -224,13 +224,6 @@
     "several": "{count} passages match that reference",
     "dismiss": "Not a reference — search it instead"
   },
-  "citations": {
-    "title": "The same words, elsewhere ({count})",
-    "explain": "Verbatim matches of six or more words, found by comparing the texts word for word. No direction is claimed: the corpus has no shared order across traditions, so which passage came first is not something the data can say. Check the words against the passage before relying on it.",
-    "inCorpus": "{corpus} · {count}",
-    "run": "{words}-word run",
-    "runs": "{count} separate runs"
-  },
   "library": {
     "title": "Library",
     "description": "Passages you kept. Each one is the current text from the corpus, not a copy taken when you saved it.",
@@ -251,5 +244,40 @@
     "format_cited": "Cited",
     "noInterpretation": "No interpretation is included, because none was written. The permalink resolves back to the passage and the scores, so any claim made with it can be checked.",
     "takeWithYou": "Take it with you"
+  },
+  "related": {
+    "title": "Related passages",
+    "explain": "Three different kinds of relation, kept apart. A verbatim match is identical words in two texts, which you can check by reading the other verse. A relation is a model’s judgement. A shared theme is a keyword classifier’s tag — every theme in this app is that, and it is the weakest of the three. No direction is claimed anywhere: the corpus has no shared order across traditions, so which passage came first is not something this data can say.",
+    "kinds": {
+      "verbatim": {
+        "heading": "Same words ({count})",
+        "sourceTitle": "Found by comparing the texts word for word. Nothing here was a model’s opinion.",
+        "relation": {
+          "quotation": "quotation",
+          "duplicate": "duplicate",
+          "parallel": "parallel"
+        }
+      },
+      "relation": {
+        "heading": "Judged related ({count})",
+        "sourceTitle": "A model judged these related. Treat it as a suggestion, not a finding.",
+        "relation": {
+          "quote": "quotes",
+          "allusion": "alludes",
+          "thematic": "thematic",
+          "linguistic": "shared vocabulary",
+          "narrative": "shared narrative",
+          "theological": "theological",
+          "historical": "historical"
+        }
+      },
+      "theme": {
+        "heading": "Shares a theme ({count})",
+        "sourceTitle": "A keyword classifier tagged both passages. It matches words, not meanings.",
+        "relation": {
+          "shared_theme": "shared theme"
+        }
+      }
+    }
   }
 }
