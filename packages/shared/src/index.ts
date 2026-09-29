@@ -239,6 +239,65 @@ export type Topic = z.infer<typeof TopicSchema>;
 export type TopicFacet = z.infer<typeof TopicFacetSchema>;
 
 // ============================================================================
+// Citations
+// ============================================================================
+
+/**
+ * One passage that shares verbatim words with the one being read.
+ *
+ * `sharedText` is the run itself and `otherText` is the other passage in full, so
+ * a reader can check the claim against the text without leaving the page. Neither
+ * field says which passage came first, because the stored data does not.
+ */
+export const CitationMemberSchema = z.object({
+  passageId: z.string(),
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  book: z.string(),
+  chapter: z.number().int(),
+  verse: z.number().int(),
+  ownText: z.string(),
+  otherText: z.string(),
+  sharedText: z.string(),
+  sharedRuns: z.array(z.string()),
+  longestRun: z.number().int(),
+  words: z.number().int(),
+  strength: z.number(),
+  detectedBy: z.string(),
+  notes: z.string(),
+  selfIsTextA: z.boolean(),
+});
+
+export const CitationGroupSchema = z.object({
+  textId: TextIdSchema,
+  count: z.number().int(),
+  members: z.array(CitationMemberSchema),
+});
+
+export const PassageCitationsSchema = z.object({
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  total: z.number().int(),
+  groups: z.array(CitationGroupSchema),
+});
+export type PassageCitations = z.infer<typeof PassageCitationsSchema>;
+export type CitationGroup = z.infer<typeof CitationGroupSchema>;
+export type CitationMember = z.infer<typeof CitationMemberSchema>;
+
+/** A typed reference that resolved to a real passage. */
+export const ResolvedCitationSchema = z.object({
+  passageId: z.string(),
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  book: z.string(),
+  chapter: z.number().int(),
+  verse: z.number().int(),
+  translation: z.string(),
+  originalText: z.string(),
+});
+export type ResolvedCitation = z.infer<typeof ResolvedCitationSchema>;
+
+// ============================================================================
 // Passage Journey
 // ============================================================================
 
@@ -703,3 +762,6 @@ export const LexiconLookupSchema = z.object({
   notFound: z.boolean(),
 });
 export type LexiconLookup = z.infer<typeof LexiconLookupSchema>;
+
+// Citation parsing lives in its own module; re-exported so both apps have one path.
+export { parseCitation, isUnambiguousCitation, type CitationMatch } from './citation.js';

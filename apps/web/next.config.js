@@ -55,6 +55,12 @@ const nextConfig = {
       // The curated topic list behind the quick links. A new API route has to be
       // added here as well, or the browser gets a 404 from Next while the API is
       // serving it perfectly well one origin over.
+      //
+      // This one is listed on its own because it is a bare path. Sub-paths of a
+      // listed prefix do not need their own entry — /api/passages/:path* already
+      // carries both /api/passages/:id/citations and /api/passages/resolve, and
+      // rewrites are matched in order, so a specific rule placed after it would be
+      // dead configuration.
       { source: '/api/topics', destination: `${API_ORIGIN}/api/topics` },
       { source: '/api/recommendations/:path*', destination: `${API_ORIGIN}/api/recommendations/:path*` },
       { source: '/api/compare/:path*', destination: `${API_ORIGIN}/api/compare/:path*` },

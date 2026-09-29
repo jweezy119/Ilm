@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from '@/i18n/navigation';
+import { CitationsPanel } from '@/components/CitationsPanel';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Compass, Loader2, Minus, Plus, Scale, Sparkles } from 'lucide-react';
 import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
@@ -207,6 +208,10 @@ export default function PassagePage() {
 
           <CrossReferences passageId={passage.id} initial={passage.crossReferences as Array<CrossRef & { targetPassageKey?: string }>} />
         </div>
+
+        {/* Citations: the cross-corpus verbatim matches, separated from the
+            mixed cross-reference list because they are a different kind of claim. */}
+        <CitationsPanel passageId={passage.id} passageKey={passage.passageKey} />
 
         <RecommendationPanel passage={passage} />
       </div>

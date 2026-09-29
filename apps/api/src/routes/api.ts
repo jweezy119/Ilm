@@ -13,6 +13,7 @@ import {
   RecommendationWeightsInputSchema,
   PassageKeySchema as SharedPassageKeySchema,
   ComparisonRequestSchema,
+  parseCitation,
 } from '@ilm/shared';
 import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
 import {
@@ -41,6 +42,7 @@ import { comparePassages, getParallelTranslations, generateComparisonUrl, comput
 import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { getPassageJourney, DEFAULT_PER_GROUP } from '../services/journey';
 import { getTopics } from '../services/topics';
+import { getCitationsForPassage } from '../services/citations';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
@@ -334,6 +336,69 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const texts = request.query.texts?.split(',').filter((t): t is TextId => TextIdSchema.safeParse(t).success);
 
     return ok(await getPassageJourney(passage, { limit, texts }));
+  });
+
+  /**
+   * Cross-corpus citations for one passage.
+   *   GET /api/passages/:id/citations[?limit=n]
+   *
+   * Distinct from /cross-references, which is a mixed ranked list. This is only
+   * the verbatim cross-corpus matches, with the shared words attached, grouped by
+   * which corpus they come from.
+   */
+  app.get('/api/passages/:id/citations', async (request: FastifyRequest<{ Params: { id: string }; Querystring: { limit?: string } }>, reply: FastifyReply) => {
+    const id = decodeURIComponent(request.params.id);
+    const passage = await getPassageById(id);
+    if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with id ${id}`);
+
+    const parsed = Number(request.query.limit);
+    const limit = Number.isFinite(parsed) ? Math.min(60, Math.max(1, Math.trunc(parsed))) : undefined;
+
+    return ok(await getCitationsForPassage(passage.id, { limit }));
+  });
+
+  /**
+   * Resolve a typed citation to real passages.
+   *   GET /api/passages/resolve?ref=John+3:16
+   *
+   * Parsing happens in @ilm/shared, but existence is checked here: "Gen 1:1"
+   * parses to two keys, and a key that is not in the database is a dead link.
+   * The response lists only the references that resolve, so the caller can offer
+   * a choice without a second round trip to find out which choices are real.
+   */
+  app.get('/api/passages/resolve', async (request: FastifyRequest<{ Querystring: { ref?: string } }>, reply: FastifyReply) => {
+    const ref = (request.query.ref ?? '').trim();
+    if (ref.length === 0) return fail(reply, 400, 'INVALID_INPUT', 'Pass a reference as ?ref=John+3:16');
+
+    const matches = parseCitation(ref);
+    if (matches.length === 0) {
+      // Not an error: "mercy" is not a citation, and the caller falls back to
+      // searching it. Reported as a successful empty result so the two are
+      // distinguishable.
+      return ok({ reference: ref, matches: [] });
+    }
+
+    const passages = await getPassagesByKeys(matches.map((m) => m.passageKey));
+    const found = new Map(passages.map((p) => [p.passageKey, p]));
+
+    return ok({
+      reference: ref,
+      matches: matches
+        .filter((m) => found.has(m.passageKey))
+        .map((m) => {
+          const passage = found.get(m.passageKey)!;
+          return {
+            passageId: passage.id,
+            passageKey: m.passageKey,
+            textId: passage.textId,
+            book: m.bookLabel,
+            chapter: m.chapter,
+            verse: m.verse,
+            translation: passage.translation,
+            originalText: passage.originalText ?? '',
+          };
+        }),
+    });
   });
 
   app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys?: unknown } }>, reply: FastifyReply) => {

@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { Search, X, Loader2, AlertTriangle, Sparkles, ArrowRight, Layers } from 'lucide-react';
 import { THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
+import { CitationJump } from '@/components/CitationJump';
 import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
 import { useComparisonStore, useSearchStore } from '@/store';
@@ -205,7 +206,19 @@ function SearchInner() {
 
   // The composer's own text field, duplicated into state that resets on submit so
   // that a sent question leaves the field empty the way a chat composer does.
+  /*
+   * A reference is offered as a jump, not run as a search.
+   *
+   * "John 3:16" typed into a full-text box returns ranked matches for the words
+   * John, 3 and 16, which is not what anyone typing a reference wants. The offer
+   * sits above the input so the reader sees the verse before clicking, and it is
+   * dismissible so a phrase that merely looks like a reference is not in the way.
+   */
   const composer = (
+    <>
+    {!hasSearched && input.trim().length > 2 ? (
+      <CitationJump value={input} onDismiss={() => setInput(input)} />
+    ) : null}
     <form onSubmit={submit} className="composer">
       <Search className="h-[18px] w-[18px] shrink-0 text-fg-faint" />
       <input
@@ -234,6 +247,7 @@ function SearchInner() {
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
       </button>
     </form>
+    </>
   );
 
   const textFilters = (

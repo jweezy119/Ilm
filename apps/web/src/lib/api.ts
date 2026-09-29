@@ -14,6 +14,8 @@ import type {
   TextId,
   ThemeJourneyStep,
   Topic,
+  PassageCitations,
+  ResolvedCitation,
 } from '@ilm/shared';
 
 /** The comparison options the API accepts, as the client sends them. */
@@ -298,6 +300,27 @@ export const api = {
    * pretending an Arabic or Greek word has no entry because nothing was asked.
    */
   lexicon: (word: string) => get<LexiconLookup>(`/api/lexicon?word=${encodeURIComponent(word)}`),
+
+  /**
+   * Cross-corpus citations for a passage: other texts that share these words.
+   *
+   * Distinct from `crossReferences`, which mixes quotations, allusions, shared
+   * themes and a corpus agreeing with itself into one ranked list of eight.
+   */
+  citations: (passageId: string) =>
+    get<PassageCitations>(`/api/passages/${encodeURIComponent(passageId)}/citations`),
+
+  /**
+   * Resolve a typed reference to real passages.
+   *
+   * Existence is checked server-side, so a reference that parses but names a
+   * passage the corpus does not have comes back as an empty list rather than a
+   * dead link.
+   */
+  resolveCitation: (reference: string) =>
+    get<{ reference: string; matches: ResolvedCitation[] }>(
+      `/api/passages/resolve?ref=${encodeURIComponent(reference)}`
+    ),
 
   /**
    * The curated quick-link topics, with coverage measured per request.

@@ -216,5 +216,17 @@
       }
     },
     "browse": "Browse by topic"
+  },
+  "citation": {
+    "single": "That is a reference",
+    "several": "{count} passages match that reference",
+    "dismiss": "Not a reference — search it instead"
+  },
+  "citations": {
+    "title": "The same words, elsewhere ({count})",
+    "explain": "Verbatim matches of six or more words, found by comparing the texts word for word. No direction is claimed: the corpus has no shared order across traditions, so which passage came first is not something the data can say. Check the words against the passage before relying on it.",
+    "inCorpus": "{corpus} · {count}",
+    "run": "{words}-word run",
+    "runs": "{count} separate runs"
   }
 }
