@@ -25,17 +25,49 @@ export default function SettingsPage() {
 
   const [health, setHealth] = useState<Health | null>(null);
   const [corpus, setCorpus] = useState<CorpusStats | null>(null);
+  // Null means the count could not be obtained in time, which is the usual case
+  // rather than an error — see the request above.
+  const [embeddedCount, setEmbeddedCount] = useState<number | null>(null);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([api.health().catch(() => null), api.corpus({ includeEmbeddings: true }).catch(() => null)])
+    /*
+     * Two separate requests rather than one Promise.all over a single corpus call.
+     *
+     * The corpus call that counts embedded passages is a full scan of 45,453 rows
+     * holding vectors, and it takes 40 to 70 seconds. Nothing makes it faster: an
+     * index on the predicate was built and measured, and the count still took 38
+     * seconds, so the index went back out. The table is simply too large to scan
+     * on request.
+     *
+     * So it is asked for separately and allowed to fail on its own. Folding it
+     * into the one call that also carries coverage meant that when the scan
+     * crossed the proxy's 30 second ceiling the whole page lost its corpus block —
+     * text list, coverage warnings and all — because of a number in a diagnostics
+     * panel.
+     */
+    Promise.all([api.health().catch(() => null), api.corpus().catch(() => null)])
       .then(([healthResult, corpusResult]) => {
         if (cancelled) return;
         setHealth(healthResult);
         setCorpus(corpusResult);
+      })
+      .catch(() => undefined);
+
+    /*
+     * Separate again, because this one usually will fail: it needs a scan no
+     * index will serve. There is no cheap correct source for the number, and
+     * maintaining a counter at ingest time is a real piece of work for a
+     * diagnostics readout. Until that exists the panel says it is unavailable
+     * rather than showing a zero, which would be a much worse lie.
+     */
+    void api
+      .corpus({ includeEmbeddings: true })
+      .then((result) => {
+        if (!cancelled && result.embeddings.embedded !== null) setEmbeddedCount(result.embeddings.embedded);
       })
       .catch(() => undefined);
 
@@ -303,16 +335,23 @@ export default function SettingsPage() {
               </h3>
               <p className="text-[11px] leading-relaxed text-fg-muted">
                 <span className="font-medium text-fg">
-                  {corpus.embeddings.embedded?.toLocaleString() ?? '—'} of {corpus.embeddings.of.toLocaleString()}{' '}
+                  {embeddedCount !== null ? embeddedCount.toLocaleString() : '—'} of {corpus.embeddings.of.toLocaleString()}{' '}
                   passages
                 </span>{' '}
                 carry a local vector. These run on CPU and cost nothing, and they are what lets two passages from
                 different traditions be compared without a model call.
+                {embeddedCount === null ? (
+                  <>
+                    {' '}
+                    The count is not shown because counting it means scanning every passage in the corpus, which
+                    takes longer than a browser will wait. Nothing about the vectors is in doubt — only the total.
+                  </>
+                ) : null}
               </p>
               <p className="mt-3 text-[11px] text-fg-faint">
                 {corpus.embeddings.provider
                   ? `Provider: ${corpus.embeddings.provider}${corpus.embeddings.model ? ` · ${corpus.embeddings.model}` : ''}`
-                  : corpus.embeddings.embedded !== null && corpus.embeddings.embedded < corpus.embeddings.of
+                  : embeddedCount !== null && embeddedCount < corpus.embeddings.of
                     ? // Only a problem while passages are still missing. Once they are all
                       // embedded, the provider is irrelevant to reading them.
                       'No provider is configured here, so the remaining passages have to be embedded before comparisons can use vectors.'
