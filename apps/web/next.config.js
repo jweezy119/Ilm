@@ -52,6 +52,10 @@ const nextConfig = {
       { source: '/api/texts/:path*', destination: `${API_ORIGIN}/api/texts/:path*` },
       { source: '/api/passages/:path*', destination: `${API_ORIGIN}/api/passages/:path*` },
       { source: '/api/themes/:path*', destination: `${API_ORIGIN}/api/themes/:path*` },
+      // The curated topic list behind the quick links. A new API route has to be
+      // added here as well, or the browser gets a 404 from Next while the API is
+      // serving it perfectly well one origin over.
+      { source: '/api/topics', destination: `${API_ORIGIN}/api/topics` },
       { source: '/api/recommendations/:path*', destination: `${API_ORIGIN}/api/recommendations/:path*` },
       { source: '/api/compare/:path*', destination: `${API_ORIGIN}/api/compare/:path*` },
       { source: '/api/lexicon', destination: `${API_ORIGIN}/api/lexicon` },

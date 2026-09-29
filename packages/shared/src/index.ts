@@ -204,6 +204,41 @@ export const SearchResponseSchema = z.object({
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
 // ============================================================================
+// Topics
+// ============================================================================
+
+/**
+ * A narrower question inside a topic, run as a real search.
+ *
+ * `themes` is empty for every curated facet. It exists because scoping is
+ * sometimes right, but a keyword classifier and a phrase query intersect to
+ * almost nothing — see the note in the API's topics service.
+ */
+export const TopicFacetSchema = z.object({
+  id: z.string(),
+  query: z.string(),
+  themes: z.array(z.string()).default([]),
+});
+
+/**
+ * A curated entry point.
+ *
+ * `passages`, `books` and `corpora` are measured from the corpus, not declared.
+ * A topic below the coverage floor is not served at all, so a quick link is never
+ * a dead end.
+ */
+export const TopicSchema = z.object({
+  slug: z.string(),
+  theme: z.string(),
+  facets: z.array(TopicFacetSchema),
+  passages: z.number().int().nonnegative(),
+  books: z.number().int().nonnegative(),
+  corpora: z.array(TextIdSchema),
+});
+export type Topic = z.infer<typeof TopicSchema>;
+export type TopicFacet = z.infer<typeof TopicFacetSchema>;
+
+// ============================================================================
 // Passage Journey
 // ============================================================================
 
@@ -452,6 +487,15 @@ export const ThemeJourneyStepSchema = z.object({
   preview: z.string(),
   chronologicalOrder: z.number(),
   score: z.number().min(0).max(1),
+  /**
+   * Where this passage's score on this theme came from: 'jev' or 'derived' for
+   * the local classifier, 'manual' where a person set it.
+   *
+   * On the step rather than only on the response, because one journey mixes
+   * scores from different sources and a single label for the whole page would
+   * misdescribe most of the rows on it.
+   */
+  source: z.string().default('derived'),
 });
 export type ThemeJourneyStep = z.infer<typeof ThemeJourneyStepSchema>;
 

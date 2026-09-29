@@ -13,6 +13,7 @@ import type {
   SearchResponse,
   TextId,
   ThemeJourneyStep,
+  Topic,
 } from '@ilm/shared';
 
 /** The comparison options the API accepts, as the client sends them. */
@@ -297,6 +298,12 @@ export const api = {
    * pretending an Arabic or Greek word has no entry because nothing was asked.
    */
   lexicon: (word: string) => get<LexiconLookup>(`/api/lexicon?word=${encodeURIComponent(word)}`),
+
+  /**
+   * The curated quick-link topics, with coverage measured per request.
+   * A topic below the floor is omitted rather than served as a dead end.
+   */
+  topics: () => get<{ topics: Topic[] }>('/api/topics'),
 
   journey: (theme: string, limit = 20) =>
     get<{ theme: string; journey: Array<ThemeJourneyStep & { passageKey: string }> }>(

@@ -32,6 +32,7 @@ const NAV = [
   { href: '/', key: 'search', icon: Search },
   { href: '/read', key: 'read', icon: BookOpen },
   { href: '/journey', key: 'journey', icon: Compass },
+  { href: '/topics', key: 'topics', icon: Compass },
   { href: '/explore', key: 'explore', icon: Sparkles },
   { href: '/compare', key: 'compare', icon: ArrowLeftRight },
   { href: '/settings', key: 'settings', icon: Settings },

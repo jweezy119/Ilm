@@ -23,7 +23,8 @@
     "darkTheme": "Dark theme",
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar",
-    "journey": "Journey"
+    "journey": "Journey",
+    "topics": "Topics"
   },
   "language": {
     "label": "Language",
@@ -77,5 +78,143 @@
     "noThemesBody": "This passage carries no scored themes, so there is nothing to group by. Themes are assigned during indexing.",
     "noPassage": "No passage selected",
     "failed": "Could not build the journey"
+  },
+  "topics": {
+    "title": "Topics",
+    "description": "Twelve subjects, each measured against the corpus. Open one to see which texts actually say something about it.",
+    "allTopics": "All topics",
+    "loading": "Loading…",
+    "unknown": "No such topic",
+    "unknownBody": "This topic is not in the curated set.",
+    "noPassages": "Nothing found for this topic",
+    "noPassagesBody": "The passages carrying this theme have not been indexed.",
+    "askWithin": "Ask within {topic}",
+    "passages": "{count} passages",
+    "books": "{count} books",
+    "texts": "{count} texts",
+    "facets": "{count} questions",
+    "items": {
+      "marriage": {
+        "label": "Marriage & the spouse",
+        "blurb": "The bond itself, and what each text expects of the two people in it.",
+        "facets": {
+          "spouse": "The role of a spouse",
+          "fidelity": "Fidelity",
+          "covenant": "The marriage covenant",
+          "divorce": "Divorce"
+        }
+      },
+      "children": {
+        "label": "Children",
+        "blurb": "Raising children, correcting them, and what is owed to a child with no parent.",
+        "facets": {
+          "parents": "Obedience to parents",
+          "discipline": "Correction and rebuke",
+          "inheritance": "Inheritance",
+          "orphans": "Orphans"
+        }
+      },
+      "family": {
+        "label": "Family & kinship",
+        "blurb": "Parents, siblings, household and servants — the structures every text here starts from.",
+        "facets": {
+          "kin": "Brothers and brethren",
+          "household": "The household",
+          "mothers": "Mothers",
+          "servants": "Servants"
+        }
+      },
+      "neighbour": {
+        "label": "Neighbour, stranger, enemy",
+        "blurb": "Duties toward the person nearby, the one you do not know, and the one you dislike.",
+        "facets": {
+          "neighbour": "Love of neighbour",
+          "stranger": "The stranger",
+          "enemy": "The enemy",
+          "the_meek": "The meek"
+        }
+      },
+      "the_vulnerable": {
+        "label": "The vulnerable",
+        "blurb": "The poor, the widowed, the fatherless, and those whose debt was not their fault.",
+        "facets": {
+          "poor": "The poor",
+          "widows": "Widows",
+          "fatherless": "The fatherless",
+          "debt": "Debtors"
+        }
+      },
+      "giving": {
+        "label": "Giving & abundance",
+        "blurb": "What is given, to whom, and what is said about keeping wealth while doing it.",
+        "facets": {
+          "giving": "Giving",
+          "abundance": "Abundance",
+          "needy": "The needy",
+          "lending": "Lending and interest"
+        }
+      },
+      "truth": {
+        "label": "Truth & speech",
+        "blurb": "False witness, oaths, and the tongue — what these texts think a word is worth.",
+        "facets": {
+          "false_witness": "False witness",
+          "oaths": "Oaths",
+          "speech": "The tongue",
+          "lying": "The liar"
+        }
+      },
+      "anger": {
+        "label": "Anger & forgiveness",
+        "blurb": "What to do with wrath, how long to wait, and what it costs to let it go.",
+        "facets": {
+          "patience": "Patience",
+          "wrath": "Wrath",
+          "forgiveness": "Forgiveness",
+          "enduring": "Endurance"
+        }
+      },
+      "prayer": {
+        "label": "Prayer & worship",
+        "blurb": "How to address the divine, and the disciplines that surround the request.",
+        "facets": {
+          "prayer": "Prayer",
+          "fasting": "Fasting",
+          "sabbath": "The Sabbath",
+          "worship": "Worship"
+        }
+      },
+      "creation": {
+        "label": "Creation & nature",
+        "blurb": "What was made, and how these texts treat animals, water and harvest.",
+        "facets": {
+          "created": "Creation",
+          "animals": "Animals",
+          "water": "The waters",
+          "harvest": "Harvest"
+        }
+      },
+      "law": {
+        "label": "Law & covenant",
+        "blurb": "Commandment, covenant and obedience — where the rule comes from and why it binds.",
+        "facets": {
+          "commandments": "The commandments",
+          "covenant": "Covenant",
+          "obedience": "Obedience",
+          "the_land": "The land"
+        }
+      },
+      "death": {
+        "label": "Death & what follows",
+        "blurb": "Dying, being judged, and what the texts say happens after.",
+        "facets": {
+          "dying": "Death",
+          "judgment": "Judgment",
+          "resurrection": "Resurrection",
+          "the_dead": "The dead"
+        }
+      }
+    },
+    "browse": "Browse by topic"
   }
 }

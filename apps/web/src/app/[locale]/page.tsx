@@ -1,10 +1,11 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
+import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { Search, X, Loader2, AlertTriangle, Sparkles, ArrowRight, Layers } from 'lucide-react';
-import { THEME_TAXONOMY, type TextId } from '@ilm/shared';
+import { THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
@@ -20,6 +21,61 @@ const SUGGESTED = [
   { term: 'justice', hint: 'weighing, judgement, limits' },
   { term: 'the sabbath', hint: 'rest, obligation, exile' },
 ];
+
+/**
+ * A row of quick links to the curated topics.
+ *
+ * A short list, not all twelve: this is the landing state, and a wall of links is
+ * the thing a landing page exists to avoid. Six covers the range and the Topics
+ * page is one click away. Counts come from the same endpoint that page uses, so a
+ * chip can never promise a topic the page would decline to serve.
+ */
+function TopicChips() {
+  const t = useTranslations('topics');
+  const [topics, setTopics] = useState<Topic[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .topics()
+      .then((d) => {
+        if (!cancelled) setTopics(d.topics.slice(0, 6));
+      })
+      .catch(() => {
+        // A failed suggestion list is not worth an error state on the landing
+        // page. The search box above it still works, and Topics is one click away.
+        if (!cancelled) setTopics([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!topics || topics.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-fg-faint">{t('browse')}</h2>
+        <Link href="/topics" className="text-xs text-fg-muted hover:text-fg">
+          {t('allTopics')}
+        </Link>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {topics.map((topic) => (
+          <Link
+            key={topic.slug}
+            href={`/topics/${topic.slug}`}
+            className="rounded-full border border-line px-3 py-1.5 text-[13px] text-fg transition-colors hover:border-accent/50 hover:bg-panel"
+          >
+            {t(`items.${topic.slug}.label`)}
+            <span className="ms-1.5 text-xs text-fg-faint tabular-nums">{topic.passages.toLocaleString()}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /**
  * How a result set was judged, stated the way a model picker states the model.
@@ -257,6 +313,11 @@ function SearchInner() {
                 ))}
               </div>
             </div>
+
+            {/* Topic chips. The suggested searches above are questions to type;
+                these are subjects to open, and each one carries its measured
+                size so the reader knows a link is worth clicking. */}
+            <TopicChips />
 
             {recent.length > 0 ? (
               <div className="mt-8">

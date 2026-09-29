@@ -40,6 +40,7 @@ import {
 import { comparePassages, getParallelTranslations, generateComparisonUrl, computeSharedThemes } from '../services/comparison';
 import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { getPassageJourney, DEFAULT_PER_GROUP } from '../services/journey';
+import { getTopics } from '../services/topics';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
@@ -283,6 +284,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return ok({ ...passage, crossReferences: await crossReferencesFor(request, passage.id, request.query.refresh === '1') });
     }
   );
+
+  /**
+   * The curated topics behind the quick links.
+   *   GET /api/topics
+   *
+   * Counts are measured per request rather than stored, because a corpus that
+   * gains or loses passages should not leave a stale number on a link the reader
+   * is about to trust. Topics under the coverage floor are omitted entirely.
+   */
+  app.get('/api/topics', async () => ok({ topics: await getTopics() }));
 
   /**
    * Cross-references, computed on first request and stored after that.
