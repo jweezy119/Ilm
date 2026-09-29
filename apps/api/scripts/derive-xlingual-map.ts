@@ -81,6 +81,8 @@ const CORPUS_LANGUAGE: Record<TextId, Language> = {
   torah: 'hebrew',
   ot: 'hebrew',
   nt: 'greek',
+  bukhari: 'arabic',
+  muslim: 'arabic',
 };
 
 interface Row {

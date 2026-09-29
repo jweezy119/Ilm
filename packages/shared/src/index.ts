@@ -4,7 +4,20 @@ import { z } from 'zod';
 // Core Text Identifiers
 // ============================================================================
 
-export const TextIdSchema = z.enum(['quran', 'talmud', 'torah', 'ot', 'nt']);
+/**
+ * The corpora.
+ *
+ * Bukhari and Muslim are hadith, not scripture, and are named for their collections
+ * rather than for a tradition. Both are ṣaḥīḥ by the consensus of Sunni scholarship,
+ * which is why they are the only two: the four Sunan carry a per-hadith grade and
+ * including them means shipping da'īf material with its grade attached, and al-Muwattaʾ
+ * is more legal opinion than report.
+ *
+ * They are reported as two corpora rather than one "Hadith" corpus, because a
+ * hadith is cited by its collection — al-Bukhari 2:4 is not the same claim as Muslim
+ * 2:4 — and one bucket could not carry that distinction.
+ */
+export const TextIdSchema = z.enum(['quran', 'talmud', 'torah', 'ot', 'nt', 'bukhari', 'muslim']);
 export type TextId = z.infer<typeof TextIdSchema>;
 
 export const LanguageSchema = z.enum(['arabic', 'hebrew', 'aramaic', 'greek', 'english']);
@@ -739,6 +752,22 @@ export const TEXT_METADATA: Record<TextId, {
     bookCount: 39, // Protestant canon
     totalVerses: 23145,
     direction: 'ltr',
+  },
+  bukhari: {
+    name: 'Sahih al-Bukhari',
+    originalLanguage: 'arabic',
+    englishTranslations: ['Sahih al-Bukhari (English)'],
+    bookCount: 97, // Kitab
+    totalVerses: 7589, // hadith
+    direction: 'rtl',
+  },
+  muslim: {
+    name: 'Sahih Muslim',
+    originalLanguage: 'arabic',
+    englishTranslations: ['Sahih Muslim (English)'],
+    bookCount: 46, // Kitab
+    totalVerses: 7563, // hadith
+    direction: 'rtl',
   },
   nt: {
     name: 'New Testament',

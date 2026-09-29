@@ -7,7 +7,10 @@ export const TEXT_IDS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
 export function getTextLabel(textId: TextId, short = false): string {
   const name = TEXT_METADATA[textId]?.name ?? textId;
   if (!short) return name;
-  return { quran: 'Qur’an', torah: 'Torah', talmud: 'Talmud', ot: 'OT', nt: 'NT' }[textId] ?? name;
+  // Bukhari and Muslim abbreviate to their own initials rather than to "Hadith":
+  // a hadith is cited by collection, and two chips that both read "H" would erase
+  // the distinction the citation depends on.
+  return { quran: 'Qur’an', torah: 'Torah', talmud: 'Talmud', ot: 'OT', nt: 'NT', bukhari: 'Bukhari', muslim: 'Muslim' }[textId] ?? name;
 }
 
 /** Tailwind text colour per corpus, so passages stay visually distinguishable. */
@@ -17,6 +20,12 @@ export const TEXT_STYLES: Record<TextId, { chip: string; accent: string; border:
   talmud: { chip: 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100', accent: 'text-amber-700 dark:text-amber-400', border: 'border-l-amber-600' },
   ot: { chip: 'bg-rose-100 text-rose-900 dark:bg-rose-900/50 dark:text-rose-100', accent: 'text-rose-700 dark:text-rose-400', border: 'border-l-rose-600' },
   nt: { chip: 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-100', accent: 'text-violet-700 dark:text-violet-400', border: 'border-l-violet-600' },
+  // Slate for both hadith corpora. They are the same kind of text from the same
+  // tradition, so sharing a colour says so; the initials are what tell them apart,
+  // which is also how they are cited. Teal and stone would have read as two more
+  // unrelated traditions.
+  bukhari: { chip: 'bg-slate-100 text-slate-900 dark:bg-slate-900/50 dark:text-slate-100', accent: 'text-slate-700 dark:text-slate-400', border: 'border-l-slate-600' },
+  muslim: { chip: 'bg-slate-100 text-slate-900 dark:bg-slate-900/50 dark:text-slate-100', accent: 'text-slate-700 dark:text-slate-400', border: 'border-l-slate-600' },
 };
 
 export function getTextChipClass(textId: TextId): string {

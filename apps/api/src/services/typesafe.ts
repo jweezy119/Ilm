@@ -1355,6 +1355,8 @@ export function describeCorpus(): Array<{ textId: TextId; name: string; language
     talmud: { name: 'Talmud', language: 'Aramaic', direction: 'rtl' },
     ot: { name: 'Old Testament', language: 'Hebrew', direction: 'rtl' },
     nt: { name: 'New Testament', language: 'Greek', direction: 'ltr' },
+    bukhari: { name: 'Sahih al-Bukhari', language: 'Arabic', direction: 'rtl' },
+    muslim: { name: 'Sahih Muslim', language: 'Arabic', direction: 'rtl' },
   };
 
   return (Object.keys(meta) as TextId[]).map((textId) => ({ textId, ...meta[textId] }));

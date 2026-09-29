@@ -42,7 +42,13 @@ DECLARE
 BEGIN
   -- The primary translation is the one marked as such on the passage, falling
   -- back to the first available so a passage is never unsearchable.
-  SELECT t.text INTO v_body
+  -- `pt.text`, not `t.text`. The alias in this query is pt; `t` is defined by
+  -- nothing, so Postgres raised 42P01 "missing FROM-clause entry for table t" the
+  -- first time the trigger fired, which is on every insert into passages. It meant
+  -- the database silently stopped accepting new passages for as long as this
+  -- function existed, and the failure surfaced as Prisma P2021 with the table
+  -- reported as "(not available)" — which reads like a missing table and is not.
+  SELECT pt.text INTO v_body
   FROM passage_translations pt
   JOIN translations tr ON tr.id = pt.translation_id
   WHERE pt.passage_id = p_passage_id
