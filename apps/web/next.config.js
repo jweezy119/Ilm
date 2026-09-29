@@ -62,6 +62,12 @@ const nextConfig = {
       // rewrites are matched in order, so a specific rule placed after it would be
       // dead configuration.
       { source: '/api/topics', destination: `${API_ORIGIN}/api/topics` },
+      // The library. Listed explicitly because it is a bare path with a DELETE
+      // child: without this the browser gets a Next HTML error page from
+      // /api/library and the save button does nothing at all, which is exactly
+      // what happened the first time this was wired.
+      { source: '/api/library', destination: `${API_ORIGIN}/api/library` },
+      { source: '/api/library/:path*', destination: `${API_ORIGIN}/api/library/:path*` },
       { source: '/api/recommendations/:path*', destination: `${API_ORIGIN}/api/recommendations/:path*` },
       { source: '/api/compare/:path*', destination: `${API_ORIGIN}/api/compare/:path*` },
       { source: '/api/lexicon', destination: `${API_ORIGIN}/api/lexicon` },

@@ -18,6 +18,12 @@
  * than rejecting means the library works whether it is reached through the web
  * proxy or called directly, and it removes the failure mode where a cookie is
  * quietly not being set and every reader silently has an empty library.
+ *
+ * The API owns this rather than the web middleware, and that was checked rather
+ * than assumed: a Set-Cookie on a rewritten response does reach the browser
+ * through the Next proxy. It appears not to if the rewrite is missing, because
+ * the request 404s on a Next error page and there is no cookie to see — which is
+ * how this looked broken the first time.
  */
 
 import { prisma, getPassagesByKeys } from './passage';
