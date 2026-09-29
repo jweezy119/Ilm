@@ -55,6 +55,19 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
     .map((hit) => ({ hit, passage: byKey.get(hit.document.passageKey) }))
     .filter((c): c is { hit: typeof c.hit; passage: Passage } => Boolean(c.passage))
     .map((c) => ({ ...c, textScore: scoreCandidate(normalizeBm25(c.hit.score), c.hit.document.density, termCoverage(c.passage, terms)) }))
+    /*
+     * Sort by the score we are about to report, not by the index's BM25 order.
+     *
+     * `scoreCandidate` is not BM25: it multiplies in query-term coverage and
+     * result density, so the reported number and the index's own order drift apart.
+     * Without this sort the literal path returns a list that disagrees with its own
+     * scores — a live search for "sabbath" put a passage scoring 0.0625 above one
+     * scoring 0.0672, thirty-eighth row, so the reader saw 6% above 7%.
+     *
+     * Stable, so passages with equal scores keep the index's ordering and the
+     * result is deterministic across identical requests.
+     */
+    .sort((a, b) => b.textScore - a.textScore)
     // A passage that contains none of the query's words is not a weak match, it
     // is a different passage. Dropping it is what makes a long query usable.
     .filter((c) => terms.length === 0 || c.textScore > 0);
