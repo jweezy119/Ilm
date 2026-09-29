@@ -2,6 +2,7 @@
 
 import { Link } from '@/i18n/navigation';
 import { SaveButton } from '@/components/SaveButton';
+import { useTranslations } from 'next-intl';
 import { Plus, Check, Scale } from 'lucide-react';
 import type { Passage, SearchResult } from '@ilm/shared';
 import { getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, cn } from '@/lib/utils';
@@ -9,6 +10,7 @@ import { highlightTerm } from '@/lib/highlight';
 
 export function PassageCard({
   passage,
+  matchedIn,
   score,
   query,
   inComparison,
@@ -23,12 +25,20 @@ export function PassageCard({
   inComparison: boolean;
   onToggleCompare?: (passage: Passage) => void;
   showThemes?: boolean;
+  /**
+   * Which field the term matched in, as the API reports it: 'original',
+   * 'translation', 'themes', or several. Used to say so, because a reader who
+   * searched Hebrew and is looking at an English translation with no explanation
+   * has been given something other than what they asked for.
+   */
+  matchedIn?: string[];
   /** Jev's relevance, when semantic ranking ran. */
   semanticScore?: number;
   /** Full-text relevance before re-ranking. */
   textScore?: number;
 }) {
   const href = `/passage/${passage.passageKey.split('/').map(encodeURIComponent).join('/')}`;
+  const t = useTranslations('search');
   const direction = getTextDirection(passage.textId);
 
   return (
@@ -77,6 +87,17 @@ export function PassageCard({
       <p className="line-clamp-4 text-[15px] leading-relaxed text-fg">
         {query ? highlightTerm(truncate(passage.translation, 320), query) : truncate(passage.translation, 320)}
       </p>
+
+      {/*
+        Which field earned the hit. A reader who searched الرحمن and is looking at
+        an English translation with no explanation has been given something other
+        than what they asked for — and a reader who searched a Hebrew or Arabic word
+        and is looking at exactly that text should know the match is real and not
+        a keyword overlap in an English paraphrase.
+      */}
+      {matchedIn?.includes('original') && !matchedIn.includes('translation') ? (
+        <p className="mb-1 text-[11px] text-accent">{t('matchedOriginal')}</p>
+      ) : null}
 
       {showThemes && passage.themes.length > 0 ? (
         <ul className="mt-2.5 flex flex-wrap gap-1">
@@ -135,6 +156,7 @@ export function SearchResultCard({
       query={query}
       inComparison={inComparison}
       onToggleCompare={onToggleCompare}
+      matchedIn={result.matchedFields}
     />
   );
 }

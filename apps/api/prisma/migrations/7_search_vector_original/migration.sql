@@ -1,0 +1,22 @@
+-- A second full-text vector, over the original-language text.
+--
+-- The corpus is 23% non-English by verse count and was entirely unsearchable in
+-- its own script: `search_vector` is built with the 'english' configuration over
+-- the English translation, so a reader searching الرحمن, מזמור or ηγαπησεν
+-- matched nothing and was told the corpus did not discuss the subject.
+--
+-- 'simple', not a language configuration. There is no `hebrew` configuration at
+-- all, and stemming is actively harmful here — an Arabic stemmer strips the
+-- prefixes and suffixes that carry the meaning of a word. `simple` splits on
+-- non-word characters and lowercases, which is exactly what is wanted.
+--
+-- The column is added empty. It is populated by `npm run index-original-text`,
+-- not here, because the text has to be normalised — the corpus is vocalised, and
+-- ٱلرَّحْمَٰنِ does not match الرحمن — and the normalisation is TypeScript, shared
+-- with the query side so the two cannot drift. A SQL copy of those ranges would
+-- be a second implementation of the one rule that decides whether Arabic search
+-- works.
+--
+-- The GIN index is created by the same script, after the data is in, so this
+-- migration does not build an index over an empty column.
+ALTER TABLE passages ADD COLUMN IF NOT EXISTS search_vector_original tsvector;

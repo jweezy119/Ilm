@@ -53,7 +53,8 @@
     "noResults": "Nothing matched that",
     "noResultsBody": "These texts do not appear to address it. Try fewer words, or a different phrasing.",
     "partial": "These texts address this only in part.",
-    "cleared": "Search cleared"
+    "cleared": "Search cleared",
+    "matchedOriginal": "Matched in the original text"
   },
   "common": {
     "loading": "Loading…",

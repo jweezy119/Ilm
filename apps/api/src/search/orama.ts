@@ -62,10 +62,18 @@ export type PassageDoc = {
   chapter: number;
   verse: number;
   translation: string;
+  /**
+   * Not indexed by Orama — the rollback engine reads the English translation only,
+   * so it can never match the original text. Present so the two engines return the
+   * same shape; the Orama path leaves it empty and the UI shows no "matched in the
+   * original" claim, which is accurate.
+   */
+  originalText: string;
   language: string;
   verseOrder: number;
   themes: string[];
   density: number;
+  matchedIn: string;
 };
 
 type IndexDB = Orama<typeof passageSchema>;
@@ -225,6 +233,11 @@ export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
       chapter: p.chapterNum,
       verse: p.verseNum,
       translation: p.primaryTranslation,
+      // Orama reads the English translation only. The field exists so both
+      // engines return the same shape, and it is honestly empty here: the
+      // rollback engine cannot match original text and must not imply that it can.
+      originalText: '',
+      matchedIn: '',
       language: p.language,
       verseOrder: p.verseOrder,
       themes: p.themes.map((t) => t.theme.name),

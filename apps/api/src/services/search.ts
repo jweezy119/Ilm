@@ -10,6 +10,7 @@ import { SearchQuery, SearchResponse, SearchResult, Passage, TextId, SearchInten
 import { searchIndex, getIndexedPassage, getIndexedThemes, initializeOramaIndex, type PassageDoc } from '../search/engine';
 import { getPassagesByKeys, prisma } from './passage';
 import { classifySearchIntent, localIntent, expandQueryTheme, rerankForQuery, blendSearchScore, themeSearchTerms, significantTerms, type QueryExpansion, type ScoreSource } from './typesafe';
+import { matchesAnyReading } from '../lib/script-normalize';
 
 export { initializeOramaIndex };
 
@@ -135,13 +136,33 @@ function queryTerms(query: string): string[] {
   return [...significantTerms(query)].map((term) => term.toLowerCase()).filter((term) => term.length > 2);
 }
 
+/**
+ * How much of the query a passage actually contains.
+ *
+ * The original text counts, not just the translation, and that is the whole
+ * reason the field is looked at both ways: a reader who searches الرحمن and gets
+ * a Quranic verse whose English translation never says "the Most Merciful" has
+ * found the best possible match, and measuring coverage against the English alone
+ * scored it zero and threw it away. That is the difference between original-text
+ * search working and appearing to work while returning nothing.
+ *
+ * Terms are compared in the form the search itself used, so a query normalised to
+ * match a vocalised corpus is compared the same way rather than against a spelling
+ * it can never contain.
+ */
 function termCoverage(passage: Passage, terms: string[]): number {
   if (terms.length === 0) return 1;
 
-  const haystack = passage.translation.toLowerCase();
   let hits = 0;
   for (const term of terms) {
-    if (haystack.includes(term)) hits += 1;
+    // Both fields and every reading, because the index is built that way and a
+    // coverage score computed any other way discards hits the index just found.
+    if (
+      matchesAnyReading(passage.translation, term) ||
+      matchesAnyReading(passage.originalText ?? '', term)
+    ) {
+      hits += 1;
+    }
   }
   return hits / terms.length;
 }
@@ -224,9 +245,22 @@ async function runExpanded(term: string, query: SearchQuery, theme: string) {
   };
 }
 
+/**
+ * Which fields of the passage the term was found in.
+ *
+ * 'original' is a first-class value now, not folded into 'translation'. A reader
+ * who searched a Hebrew or Arabic word is looking at a result whose matching text
+ * is on screen in a script they searched in, and the field list is the only place
+ * that says so.
+ */
 function matchedFields(passage: Passage, term: string): string[] {
   const fields: string[] = [];
   if (matches(passage.translation, term)) fields.push('translation');
+
+  if ((passage.originalText ?? '').length > 0 && matchesAnyReading(passage.originalText ?? '', term)) {
+    fields.push('original');
+  }
+
   if (passage.themes.some((theme: { theme: string }) => theme.theme.includes(term.toLowerCase()))) fields.push('themes');
   return fields;
 }

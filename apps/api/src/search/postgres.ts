@@ -19,6 +19,7 @@
  */
 
 import { Prisma } from '@prisma/client';
+import { normalizeForSearch } from '../lib/script-normalize';
 import { TextId } from '@ilm/shared';
 import { prisma } from '../lib/db';
 
@@ -30,10 +31,24 @@ export type PassageDoc = {
   chapter: number;
   verse: number;
   translation: string;
+  /**
+   * The original-language text, carried so a hit on it can be shown and labelled.
+   * Present for every passage that has one — 45,306 of 45,453 — and empty for the
+   * rest, which is the English-only remainder.
+   */
+  originalText: string;
   language: string;
   verseOrder: number;
   themes: string[];
   density: number;
+  /**
+   * Which fields earned the hit, as `original`, `translation` or both.
+   *
+   * A reader who searches a Hebrew or Arabic word and is shown an English
+   * translation with no explanation has been given something other than what they
+   * asked for. This is what lets the result say which it was.
+   */
+  matchedIn: string;
 };
 
 export interface IndexFilters {
@@ -156,6 +171,26 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
   const tsq = query ? Prisma.sql`websearch_to_tsquery('english', ${query})` : null;
 
   /*
+   * The same query again, for the original-language text.
+   *
+   * The corpus is 23% non-English by verse count and `search_vector` is built with
+   * the 'english' configuration over the translation, so until this existed a
+   * reader searching الرحمن, מזמור or ηγαπησεν matched nothing and was shown the
+   * empty state — which reads as "the corpus does not discuss this" rather than
+   * "the app cannot search that language".
+   *
+   * 'simple', not a language configuration: there is no `hebrew` configuration in
+   * this database, and stemming is actively harmful for Arabic, where the prefixes
+   * and suffixes carry the meaning. And the term is normalised first, because the
+   * corpus is vocalised and الرحمن does not match ٱلرَّحْمَٰنِ as stored. The
+   * normaliser is the same function the backfill used, which is the only reason
+   * the two sides cannot drift.
+   */
+  const origQ = query
+    ? Prisma.sql`websearch_to_tsquery('simple', ${normalizeForSearch(query)})`
+    : Prisma.sql`websearch_to_tsquery('simple', '')`;
+
+  /*
    * Two passes, strictest first, the second run only if the first found nothing.
    * A reader gets forgiving matching without paying for it on the searches that
    * already work — the trigram pass is a separate indexed lookup, not a
@@ -192,8 +227,14 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
     return prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
       SELECT
         p.id, p.passage_key, p.text_id, p.book_slug, p.chapter_num, p.verse_num,
-        p.primary_translation, p.language, p.verse_order, p.metadata,
+        p.primary_translation, p.original_text, p.language, p.verse_order, p.metadata,
         ${rank} AS relevance,
+        -- Whether this row matched in the original text, the English translation,
+        -- or both. Reported rather than inferred from the rank, because a reader
+        -- who searched a Hebrew or Arabic word and got a hit on an English
+        -- translation has been given something other than what they asked for.
+        (p.search_vector_original @@ ${origQ}) AS matched_original,
+        (p.search_vector @@ ${tsq}) AS matched_translation,
         count(*) OVER () AS total
       FROM passages p
       ${where}
@@ -214,7 +255,17 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
   const passes: Array<{ label: string; match: { rank: Prisma.Sql; condition: Prisma.Sql } | null }> = [];
 
   if (tsq) {
-    passes.push({ label: 'exact', match: { rank: Prisma.sql`ts_rank_cd(p.search_vector, ${tsq})`, condition: Prisma.sql`p.search_vector @@ ${tsq}` } });
+    passes.push({
+      label: 'exact',
+      match: {
+        // Both ranks, summed. A passage that matches the term in its original and
+        // in its translation is a better answer than one that matches in either,
+        // and adding them is the only honest way to say so — picking the larger
+        // would discard the evidence for half the corpus.
+        rank: Prisma.sql`ts_rank_cd(p.search_vector, ${tsq}) + ts_rank_cd(p.search_vector_original, ${origQ})`,
+        condition: Prisma.sql`(p.search_vector @@ ${tsq} OR p.search_vector_original @@ ${origQ})`,
+      },
+    });
   }
 
   // A one- or two-letter term matches nearly everything by trigram, so require
@@ -276,10 +327,15 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
       chapter: Number(row.chapter_num),
       verse: Number(row.verse_num),
       translation: String(row.primary_translation),
+      originalText: String(row.original_text ?? ''),
       language: String(row.language),
       verseOrder: Number(row.verse_order),
       themes: themesById.get(String(row.id)) ?? [],
       density: readDensity(row.metadata),
+      // Which field earned the hit, so the UI can say so rather than leaving a
+      // reader who searched Hebrew looking at an English translation with no
+      // explanation of why it matched.
+      matchedIn: (row.matched_original ? 'original' : '') + (row.matched_translation ? 'translation' : ''),
     },
     score: query ? (topRank > 0 ? (Number(row.relevance) || 0) / topRank : 0) : 0,
   }));
@@ -306,7 +362,7 @@ function readDensity(metadata: unknown): number {
 export async function getIndexedPassage(passageKey: string): Promise<PassageDoc | null> {
   const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>(Prisma.sql`
     SELECT p.passage_key, p.text_id, p.book_slug, p.chapter_num, p.verse_num,
-           p.primary_translation, p.language, p.verse_order, p.metadata,
+           p.primary_translation, p.original_text, p.language, p.verse_order, p.metadata,
            COALESCE(th.names, ARRAY[]::text[]) AS theme_names
     FROM passages p
     LEFT JOIN LATERAL (
@@ -327,6 +383,10 @@ export async function getIndexedPassage(passageKey: string): Promise<PassageDoc 
     chapter: Number(row.chapter_num),
     verse: Number(row.verse_num),
     translation: String(row.primary_translation),
+    // A single passage is fetched by key, not by a query, so it matched nothing
+    // and must not claim otherwise.
+    originalText: String(row.original_text ?? ''),
+    matchedIn: '',
     language: String(row.language),
     verseOrder: Number(row.verse_order),
     themes: (row.theme_names as string[]) ?? [],

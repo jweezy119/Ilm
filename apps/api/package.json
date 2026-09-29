@@ -24,7 +24,8 @@
     "db:deploy": "prisma migrate deploy",
     "ingest-nt-original": "tsx scripts/ingest-nt-original.ts",
     "ingest-ot-original": "tsx scripts/ingest-ot-original.ts",
-    "validate-topics": "tsx scripts/validate-topics.ts"
+    "validate-topics": "tsx scripts/validate-topics.ts",
+    "index-original-text": "tsx scripts/index-original-text.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
