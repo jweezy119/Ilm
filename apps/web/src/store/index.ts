@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   MAX_COMPARISON_PASSAGES,
+  DEFAULT_WEIGHTS as SHARED_DEFAULT_WEIGHTS,
   type Passage,
   type RecommendationWeights,
   type SearchResponse,
@@ -15,13 +16,17 @@ const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
 // already, and the symptom was a 400 the UI could not explain.
 export const MAX_COMPARISON = MAX_COMPARISON_PASSAGES;
 
-const DEFAULT_WEIGHTS: RecommendationWeights = {
-  thematic: 0.3,
-  linguistic: 0.2,
-  historical: 0.15,
-  narrative: 0.15,
-  theological: 0.2,
-};
+/*
+ * The weights are the shared package's, for the same reason the comparison cap is
+ * and the same reason it is written here: this file once declared a second copy of
+ * them, the copy drifted, and the drift was silent. The settings sliders render the
+ * store's values and Save posts them back to the API, so a drifted copy was not
+ * cosmetic — a reader who opened settings and pressed save would have written
+ * `historical: 0.15` over the API, putting back a dimension that had been
+ * deliberately weighted to zero, and the sliders would have shown numbers the
+ * engine was not using.
+ */
+const DEFAULT_WEIGHTS = SHARED_DEFAULT_WEIGHTS;
 
 /** The comparison tray, persisted so a shared link survives a reload. */
 interface ComparisonState {
