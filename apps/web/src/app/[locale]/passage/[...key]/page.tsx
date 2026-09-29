@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { CitationsPanel } from '@/components/CitationsPanel';
+import { SaveButton } from '@/components/SaveButton';
+import { CopyCitation } from '@/components/CopyCitation';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, Compass, Loader2, Minus, Plus, Scale, Sparkles } from 'lucide-react';
 import type { CrossRef, Passage, RecommendationWeights } from '@ilm/shared';
@@ -62,6 +65,7 @@ export default function PassagePage() {
   const passageKey = (params?.key ?? []).map(decodeURIComponent).join(':');
 
   const [passage, setPassage] = useState<Passage | null>(null);
+  const copyLabel = useTranslations('library')('takeWithYou');
   const translation = useTranslationChoice(passage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +138,7 @@ export default function PassagePage() {
               <Compass className="h-4 w-4" />
               Journey
             </Link>
+            <SaveButton passageKey={passage.passageKey} variant="full" />
             <CompareButton passage={passage} />
           </div>
         }
@@ -185,6 +190,14 @@ export default function PassagePage() {
               />
             </section>
           </article>
+
+          {/* Take it with you. On a passage page this is the most likely next
+              action after reading, and it is the one the app has no way to
+              remember on the reader's behalf. */}
+          <section className="mt-6">
+            <h2 className="mb-2 text-sm font-medium">{copyLabel}</h2>
+            <CopyCitation passage={passage} />
+          </section>
 
           {passage.themes.length > 0 ? (
             <section className="mt-4">
@@ -414,7 +427,7 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
                   {/* Provenance per row. Without it every number here reads as model
                       output, which is false when the pair fell back or was cached. */}
                   <SourceBadge source={rec.source} className="px-1 py-0.5 text-[10px]" />
-                  <span className="ml-auto font-mono text-xs text-ink-500">{percent(rec.scores.composite)}</span>
+                  <span className="ms-auto font-mono text-xs text-ink-500">{percent(rec.scores.composite)}</span>
                 </div>
 
                 <p className="line-clamp-2 text-sm text-ink-700 dark:text-ink-300">{truncate(rec.preview, 180)}</p>
@@ -520,9 +533,9 @@ function Explanation({ sourceId, targetId }: { sourceId: string; targetId: strin
         <tbody>
           {data.breakdown.map((row) => (
             <tr key={row.dimension}>
-              <td className="py-0.5 pr-2 text-ink-500">{row.dimension}</td>
-              <td className="py-0.5 pr-2 font-mono">{percent(row.score)}</td>
-              <td className="py-0.5 pr-2 font-mono text-ink-500">×{row.weight.toFixed(2)}</td>
+              <td className="py-0.5 ps-2 text-ink-500">{row.dimension}</td>
+              <td className="py-0.5 ps-2 font-mono">{percent(row.score)}</td>
+              <td className="py-0.5 ps-2 font-mono text-ink-500">×{row.weight.toFixed(2)}</td>
               <td className="py-0.5 font-mono">{percent(row.contribution)}</td>
             </tr>
           ))}

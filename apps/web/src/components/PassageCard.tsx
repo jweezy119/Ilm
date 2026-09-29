@@ -1,6 +1,7 @@
 'use client';
 
 import { Link } from '@/i18n/navigation';
+import { SaveButton } from '@/components/SaveButton';
 import { Plus, Check, Scale } from 'lucide-react';
 import type { Passage, SearchResult } from '@ilm/shared';
 import { getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, cn } from '@/lib/utils';
@@ -43,16 +44,16 @@ export function PassageCard({
      * there is no hover, so it is revealed by focus there instead.
      */
     <article className="result-row group relative">
-      {/* pr-9 reserves the corner the compare control occupies. Without it the
+      {/* ps-9 reserves the corner the compare control occupies. Without it the
           score rendered underneath the button and was never seen. */}
-      <header className="mb-1.5 flex items-baseline gap-2 pr-9">
+      <header className="mb-1.5 flex items-baseline gap-2 ps-9">
         <span className={getTextChipClass(passage.textId)}>{getTextLabel(passage.textId, true)}</span>
         <Link href={href} className="ref truncate transition-colors hover:text-accent hover:underline">
           {passage.book} {passage.chapter}:{passage.verse}
         </Link>
         {score !== undefined ? (
           <span
-            className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-fg-faint"
+            className="ms-auto shrink-0 font-mono text-[11px] tabular-nums text-fg-faint"
             title={
               semanticScore !== undefined && textScore !== undefined
                 ? `Semantic relevance ${percent(semanticScore)} · full-text ${percent(textScore)}`
@@ -87,22 +88,31 @@ export function PassageCard({
         </ul>
       ) : null}
 
-      {onToggleCompare ? (
-        <button
-          type="button"
-          onClick={() => onToggleCompare(passage)}
-          className={cn(
-            'absolute right-0 top-3 grid h-7 w-7 place-items-center rounded-full border transition-colors',
-            inComparison
-              ? 'border-accent bg-accent text-accent-fg'
-              : 'border-line bg-raised text-fg-faint hover:border-accent hover:text-accent'
-          )}
-          aria-label={inComparison ? 'Remove from comparison' : 'Add to comparison'}
-          aria-pressed={inComparison}
-        >
-          {inComparison ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-        </button>
-      ) : null}
+      {/*
+        `end-0` rather than `right-0`, so the controls sit on the reading edge in
+        both directions instead of on the right of an Arabic page. A save and a
+        compare are both one click that changes state, and the save is the one a
+        reader reaches for when they are done looking.
+      */}
+      <div className="absolute end-0 top-2.5 flex items-center gap-1">
+        <SaveButton passageKey={passage.passageKey} />
+        {onToggleCompare ? (
+          <button
+            type="button"
+            onClick={() => onToggleCompare(passage)}
+            className={cn(
+              'grid h-7 w-7 place-items-center rounded-full border transition-colors',
+              inComparison
+                ? 'border-accent bg-accent text-accent-fg'
+                : 'border-line bg-raised text-fg-faint hover:border-accent hover:text-accent'
+            )}
+            aria-label={inComparison ? 'Remove from comparison' : 'Add to comparison'}
+            aria-pressed={inComparison}
+          >
+            {inComparison ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }

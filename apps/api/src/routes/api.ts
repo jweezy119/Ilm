@@ -43,6 +43,7 @@ import { getCrossReferencesForPassage } from '../services/crossrefs';
 import { getPassageJourney, DEFAULT_PER_GROUP } from '../services/journey';
 import { getTopics } from '../services/topics';
 import { getCitationsForPassage } from '../services/citations';
+import { resolveIdentity, cookieOptions, getLibrary, getSavedKeys, savePassage, removePassage, LIBRARY_COOKIE } from '../services/library';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
@@ -399,6 +400,55 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           };
         }),
     });
+  });
+
+  /*
+   * The reader's library.
+   *
+   * Every route below resolves an anonymous id from a cookie, minting one if it is
+   * absent and setting it on the reply. There is no account and no signup: a tool
+   * people open to check a reference cannot put an email wall in front of "save
+   * this verse". The cost is that clearing cookies loses the library, which is
+   * why a saved passage is treated as a staging area for a citation rather than
+   * as the artefact.
+   */
+  const identityOf = (request: FastifyRequest, reply: FastifyReply) => {
+    const identity = resolveIdentity(request.cookies?.[LIBRARY_COOKIE]);
+    if (identity.isNew) reply.setCookie(LIBRARY_COOKIE, identity.userId, cookieOptions());
+    return identity.userId;
+  };
+
+  app.get('/api/library', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    return ok({ entries: await getLibrary(userId) });
+  });
+
+  /** Just the keys, for the save buttons. Cheaper than the hydrated list. */
+  app.get('/api/library/keys', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    return ok({ keys: await getSavedKeys(userId) });
+  });
+
+  app.post('/api/library', async (request: FastifyRequest<{ Body: { passageKey?: string; collectionId?: string | null } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    const passageKey = (request.body?.passageKey ?? '').trim();
+    if (!passageKey) return fail(reply, 400, 'INVALID_INPUT', 'passageKey is required');
+
+    try {
+      return ok(await savePassage(userId, passageKey, request.body?.collectionId));
+    } catch (error) {
+      // A key that parses but is not in the corpus is a client bug — a stale
+      // bookmark, or a fabricated key — and a 404 is the honest answer.
+      return fail(reply, 404, 'NOT_FOUND', error instanceof Error ? error.message : 'Passage not found');
+    }
+  });
+
+  app.delete('/api/library/:passageKey', async (request: FastifyRequest<{ Params: { passageKey: string } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    const removed = await removePassage(userId, decodeURIComponent(request.params.passageKey));
+    // Deleting something that is not there is the state the caller wanted, so
+    // this is a success rather than a 404.
+    return ok({ removed });
   });
 
   app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys?: unknown } }>, reply: FastifyReply) => {

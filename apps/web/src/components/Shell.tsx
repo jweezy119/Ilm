@@ -16,6 +16,7 @@ import {
   Plus,
   Languages,
   Compass,
+  Bookmark,
 } from 'lucide-react';
 import { routing, LOCALE_NAMES } from '@/i18n/routing';
 import { useEffect, useState } from 'react';
@@ -33,6 +34,7 @@ const NAV = [
   { href: '/read', key: 'read', icon: BookOpen },
   { href: '/journey', key: 'journey', icon: Compass },
   { href: '/topics', key: 'topics', icon: Compass },
+  { href: '/library', key: 'library', icon: Bookmark },
   { href: '/explore', key: 'explore', icon: Sparkles },
   { href: '/compare', key: 'compare', icon: ArrowLeftRight },
   { href: '/settings', key: 'settings', icon: Settings },

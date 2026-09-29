@@ -10,6 +10,7 @@ loadLocalEnv();
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
+import fastifyCookie from '@fastify/cookie';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { ZodError } from 'zod';
 import { registerRoutes } from './routes/api';
@@ -28,6 +29,12 @@ async function main(): Promise<void> {
     },
     ajv: { customOptions: { strict: false, coerceTypes: true } },
   });
+
+  // Parses the request cookie and exposes `reply.setCookie`, which the library
+  // needs to mint an anonymous id. Registered before the routes so that a
+  // reader's first request can be given a cookie by the same response that
+  // serves it.
+  await app.register(fastifyCookie, {});
 
   await app.register(fastifyHelmet, { contentSecurityPolicy: false });
 

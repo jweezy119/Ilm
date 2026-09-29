@@ -203,11 +203,18 @@
   }
 }
 
-/* RTL text support */
+/*
+ * RTL.
+ *
+ * Direction is handled by logical properties throughout — `ms-`/`me-`, `ps-`/`pe-`,
+ * `start-`/`end-` — which mirror on their own from the `dir` attribute on <html>.
+ * The four overrides that used to live here flipped physical properties
+ * (`ml-auto` to `mr-auto` and so on) and are gone: with logical properties they
+ * were dead rules, and keeping them would invite somebody to add a physical
+ * property and a matching override instead of the one that mirrors by itself.
+ */
 [dir="rtl"] .rtl\:text-right { text-align: right; }
 [dir="rtl"] .rtl\:text-left { text-align: left; }
-[dir="rtl"] .rtl\:mr-auto { margin-left: auto; margin-right: 0; }
-[dir="rtl"] .rtl\:ml-auto { margin-right: auto; margin-left: 0; }
 
 /* Comparison view synchronized scrolling */
 .comparison-container {
@@ -306,7 +313,7 @@ mark {
  * say" faster than a heading does.
  */
 .bubble {
-  @apply ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-fg;
+  @apply ms-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-fg;
 }
 
 /*

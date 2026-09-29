@@ -429,7 +429,7 @@ function SearchInner() {
                     <button
                       type="button"
                       onClick={() => router.push('/compare')}
-                      className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
+                      className="ms-auto inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
                     >
                       <Layers className="h-3.5 w-3.5" />
                       Compare {passageKeys.length}

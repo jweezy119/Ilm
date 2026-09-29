@@ -139,7 +139,7 @@ function ExploreInner() {
                         >
                           {step.book} {step.chapter}:{step.verse}
                         </a>
-                        <span className="ml-auto font-mono text-xs text-fg-faint">{percent(step.score)}</span>
+                        <span className="ms-auto font-mono text-xs text-fg-faint">{percent(step.score)}</span>
                       </div>
                       <p className="line-clamp-2 text-sm text-ink-700 dark:text-ink-300">{step.preview}</p>
                     </li>

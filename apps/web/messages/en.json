@@ -24,7 +24,8 @@
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar",
     "journey": "Journey",
-    "topics": "Topics"
+    "topics": "Topics",
+    "library": "Library"
   },
   "language": {
     "label": "Language",
@@ -228,5 +229,26 @@
     "inCorpus": "{corpus} · {count}",
     "run": "{words}-word run",
     "runs": "{count} separate runs"
+  },
+  "library": {
+    "title": "Library",
+    "description": "Passages you kept. Each one is the current text from the corpus, not a copy taken when you saved it.",
+    "noAccount": "There is no account here. This library belongs to this browser, identified by an anonymous cookie — so it survives a reload and a closed tab, but not clearing cookies or switching device. Copying a citation is the durable way to keep something.",
+    "loadFailed": "Could not load your library.",
+    "loading": "Loading your library…",
+    "empty": "Nothing saved yet",
+    "emptyBody": "Use the bookmark button on any passage — a search result, a journey member, a citation — and it will appear here.",
+    "missing": "This passage is no longer in the corpus ({key}).",
+    "remove": "Remove",
+    "open": "Open",
+    "save": "Save",
+    "copyCitation": "Copy citation",
+    "copied": "Copied",
+    "copyFailed": "The browser refused clipboard access. Select the text above and copy it manually.",
+    "format": "Citation format",
+    "format_plain": "Plain",
+    "format_cited": "Cited",
+    "noInterpretation": "No interpretation is included, because none was written. The permalink resolves back to the passage and the scores, so any claim made with it can be checked.",
+    "takeWithYou": "Take it with you"
   }
 }

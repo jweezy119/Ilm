@@ -239,6 +239,25 @@ export type Topic = z.infer<typeof TopicSchema>;
 export type TopicFacet = z.infer<typeof TopicFacetSchema>;
 
 // ============================================================================
+// Library
+// ============================================================================
+
+/**
+ * A saved passage, hydrated.
+ *
+ * `passage` is null when the passage has left the corpus since it was saved. The
+ * entry is still returned, because a list that silently shortens is
+ * indistinguishable from data loss and the reader is the only one who can tell.
+ */
+export const LibraryEntrySchema = z.object({
+  passageKey: z.string(),
+  savedAt: z.string(),
+  collectionId: z.string().nullable().default(null),
+  passage: PassageSchema.nullable().default(null),
+});
+export type LibraryEntry = z.infer<typeof LibraryEntrySchema>;
+
+// ============================================================================
 // Citations
 // ============================================================================
 

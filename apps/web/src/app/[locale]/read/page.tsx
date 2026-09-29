@@ -170,7 +170,7 @@ function ReadInner() {
                         {result.passage.primaryTranslationName ?? 'English'}
                       </span>
                       {result.score !== undefined ? (
-                        <span className="ml-auto font-mono text-[11px] text-fg-faint">
+                        <span className="ms-auto font-mono text-[11px] text-fg-faint">
                           {Math.round(result.score * 100)}%
                         </span>
                       ) : null}
@@ -364,7 +364,7 @@ function ReadingPane({
             </button>
           ) : null}
 
-          <span className="ml-auto flex items-center gap-1">
+          <span className="ms-auto flex items-center gap-1">
             <button
               type="button"
               onClick={onPrev}

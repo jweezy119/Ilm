@@ -90,7 +90,7 @@ function CompareInner() {
       {sharedKeys.length === 0 && passageKeys.length > 0 ? (
         <ul className="mb-4 flex flex-wrap gap-2">
           {passageKeys.map((key) => (
-            <li key={key} className="inline-flex items-center gap-1 rounded-full border border-ink-300 py-0.5 pl-2.5 pr-1 text-xs dark:border-ink-700">
+            <li key={key} className="inline-flex items-center gap-1 rounded-full border border-ink-300 py-0.5 pe-2.5 ps-1 text-xs dark:border-ink-700">
               <span className="font-mono">{key}</span>
               <button type="button" onClick={() => remove(key)} aria-label={`Remove ${key}`} className="grid h-5 w-5 place-items-center rounded-full hover:bg-ink-200 dark:hover:bg-ink-700">
                 <X className="h-3 w-3" />
@@ -394,7 +394,7 @@ function Panel({
           {passage.book} {passage.chapter}:{passage.verse}
         </a>
         {onRemove ? (
-          <button type="button" onClick={onRemove} aria-label="Remove from comparison" className="ml-auto grid h-6 w-6 place-items-center rounded hover:bg-ink-100 dark:hover:bg-ink-800">
+          <button type="button" onClick={onRemove} aria-label="Remove from comparison" className="ms-auto grid h-6 w-6 place-items-center rounded hover:bg-ink-100 dark:hover:bg-ink-800">
             <X className="h-3.5 w-3.5" />
           </button>
         ) : null}

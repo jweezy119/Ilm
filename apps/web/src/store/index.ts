@@ -7,6 +7,7 @@ import {
   type SearchResponse,
   type TextId,
 } from '@ilm/shared';
+import { api } from '@/lib/api';
 
 const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
 
@@ -176,3 +177,71 @@ export const useUiStore = create<UiState>()(
 );
 
 export { ALL_TEXTS, DEFAULT_WEIGHTS };
+
+/**
+ * The library: passages this reader kept.
+ *
+ * **Not** persisted to localStorage, unlike everything else in this file, and the
+ * difference is the point. The other stores are device-local because they are
+ * preferences and scratch state — clearing them costs a click. The library is a
+ * record of what someone found, and the server is the only copy. A local mirror
+ * would drift from it and then contradict it, which is worse than having no mirror
+ * at all.
+ *
+ * So this store holds keys and a loading flag and re-fetches on mount. The
+ * identity is an anonymous cookie the API mints on first contact, so a reader who
+ * has never saved anything still gets a library, and one that is empty.
+ */
+interface LibraryState {
+  keys: string[];
+  loaded: boolean;
+  saving: string | null;
+  load: () => Promise<void>;
+  toggle: (passageKey: string) => Promise<boolean>;
+  has: (passageKey: string) => boolean;
+}
+
+export const useLibraryStore = create<LibraryState>()((set, get) => ({
+  keys: [],
+  loaded: false,
+  saving: null,
+
+  load: async () => {
+    // A failed load is not an error state: the reader can still use the app, and
+    // a save button that shows "unavailable" is worse than one that quietly
+    // re-tries. `loaded` stays true so the UI does not spin forever.
+    try {
+      const { keys } = await api.libraryKeys();
+      set({ keys, loaded: true });
+    } catch {
+      set({ loaded: true });
+    }
+  },
+
+  toggle: async (passageKey) => {
+    const saved = get().keys.includes(passageKey);
+    // Optimistic: the button flips immediately and rolls back if the request
+    // fails. A save is cheap and usually succeeds, and a button that takes a
+    // round trip to acknowledge feels broken.
+    set((state) => ({
+      saving: passageKey,
+      keys: saved ? state.keys.filter((k) => k !== passageKey) : [passageKey, ...state.keys],
+    }));
+
+    try {
+      if (saved) {
+        await api.unsavePassage(passageKey);
+        return false;
+      }
+      await api.savePassage(passageKey);
+      return true;
+    } catch {
+      set((state) => ({ keys: saved ? [passageKey, ...state.keys] : state.keys.filter((k) => k !== passageKey) }));
+      return saved;
+    } finally {
+      set({ saving: null });
+    }
+  },
+
+  has: (passageKey) => get().keys.includes(passageKey),
+}));

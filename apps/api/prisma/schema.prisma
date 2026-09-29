@@ -328,6 +328,58 @@ model UserPreference {
 }
 
 // ============================================================================
+// Library
+// ============================================================================
+
+// What a reader kept.
+//
+// A passage key, not a search result and not a copy of the text. The passage is
+// already in `passages` and can be corrected, re-translated or re-ingested; a
+// duplicate copy here would be a second thing to keep in step, and it could
+// disagree with the first. Storing the key means an entry cannot go stale, and
+// hydrating a page is one batched query rather than N.
+//
+// Keyed by an anonymous id in a cookie. There is no account, and `email` on
+// Collection exists only so that "claim this library" can be a later migration
+// rather than a rewrite. Until then it is null and nothing reads it.
+model SavedPassage {
+  id         String @id @default(cuid())
+  userId     String @map("user_id")
+  passageKey String @map("passage_key")
+
+  // Null means "kept, not filed". Most saved passages are, on the grounds that
+  // asking someone to name a collection before they have saved anything is a
+  // question they have no context to answer.
+  collectionId String? @map("collection_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  // One save per passage, so a double click cannot produce two rows and the
+  // unsave endpoint has something unambiguous to delete.
+  @@unique([userId, passageKey])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("saved_passages")
+}
+
+// A named group of saved passages. Unused by the first version of the library,
+// which saves without filing; the table exists so that adding collections is a
+// change to the UI and not a second migration.
+model Collection {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  email     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  passages SavedPassage[]
+
+  @@unique([userId, name])
+  @@map("collections")
+}
+
+// ============================================================================
 // Indexing Jobs (BullMQ)
 // ============================================================================
 

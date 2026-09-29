@@ -16,6 +16,7 @@ import type {
   Topic,
   PassageCitations,
   ResolvedCitation,
+  LibraryEntry,
 } from '@ilm/shared';
 
 /** The comparison options the API accepts, as the client sends them. */
@@ -67,6 +68,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const put = <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 // ============================================================================
 // Types mirrored from the API's own responses
@@ -300,6 +302,23 @@ export const api = {
    * pretending an Arabic or Greek word has no entry because nothing was asked.
    */
   lexicon: (word: string) => get<LexiconLookup>(`/api/lexicon?word=${encodeURIComponent(word)}`),
+
+  /**
+   * The reader's saved passages, newest first, hydrated.
+   *
+   * Identity is an anonymous cookie the API mints on first contact — there is no
+   * account — so this works with no arguments and no prior setup.
+   */
+  library: () => get<{ entries: LibraryEntry[] }>('/api/library'),
+
+  /** Just the keys, for the save buttons. Much smaller than the hydrated list. */
+  libraryKeys: () => get<{ keys: string[] }>('/api/library/keys'),
+
+  savePassage: (passageKey: string) =>
+    post<{ passageKey: string; saved: boolean }>('/api/library', { passageKey }),
+
+  unsavePassage: (passageKey: string) =>
+    del<{ removed: boolean }>(`/api/library/${encodeURIComponent(passageKey)}`),
 
   /**
    * Cross-corpus citations for a passage: other texts that share these words.
