@@ -275,42 +275,47 @@ async function main(): Promise<void> {
    * (source, target, type), so re-running replaces rather than duplicates.
    */
   console.log(`\nWriting ${findings.length.toLocaleString()} cross-references…`);
+
+  /*
+   * Batched inserts rather than one upsert per finding.
+   *
+   * The obvious loop awaited a round trip per row, so against a pooled Postgres
+   * over the network it wrote about 500 findings a minute — ninety minutes for
+   * this corpus, and the first attempt was killed partway through at 30,000 rows.
+   * `createMany` with `skipDuplicates` sends a few hundred rows per statement, so
+   * the same run takes minutes. The unique constraint on
+   * (source, target, type) is what makes skipping duplicates the correct
+   * behaviour: a re-run cannot double anything, it just leaves the existing row
+   * alone.
+   */
+  const BATCH = 500;
   let written = 0;
-  for (const f of findings) {
-    // Orientation: the verse order is per-corpus, so a shared global ordering does
-    // not exist. Direction is therefore left bidirectional rather than guessed.
-    await prisma.crossReference.upsert({
-      where: {
-        sourcePassageId_targetPassageId_type: {
-          sourcePassageId: f.a.id,
-          targetPassageId: f.b.id,
-          type: f.kind,
-        },
-      },
-      create: {
-        sourcePassageId: f.a.id,
-        targetPassageId: f.b.id,
-        type: f.kind,
-        strength: f.strength,
-        direction: 'bidirectional',
-        detectedBy: 'ngram',
-        notes:
-          `Longest verbatim run ${f.longestRun} words, ${f.totalShared} shared in total ` +
-          `(${segmentsSummary(f.segments)}).`,
-        matchedSegments: f.segments as unknown as object,
-      },
-      update: {
-        strength: f.strength,
-        detectedBy: 'ngram',
-        notes:
-          `Longest verbatim run ${f.longestRun} words, ${f.totalShared} shared in total ` +
-          `(${segmentsSummary(f.segments)}).`,
-        matchedSegments: f.segments as unknown as object,
-      },
-    });
-    written += 1;
-    if (written % 500 === 0) console.log(`  ${written.toLocaleString()} written`);
+
+  for (let i = 0; i < findings.length; i += BATCH) {
+    const batch = findings.slice(i, i + BATCH).map((f) => ({
+      sourcePassageId: f.a.id,
+      targetPassageId: f.b.id,
+      type: f.kind,
+      strength: f.strength,
+      // Orientation: the verse order is per-corpus, so a shared global ordering
+      // does not exist. Direction is therefore left bidirectional rather than
+      // guessed.
+      direction: 'bidirectional' as const,
+      detectedBy: 'ngram',
+      notes:
+        `Longest verbatim run ${f.longestRun} words, ${f.totalShared} shared in total ` +
+        `(${segmentsSummary(f.segments)}).`,
+      matchedSegments: f.segments as unknown as object,
+    }));
+
+    const result = await prisma.crossReference.createMany({ data: batch, skipDuplicates: true });
+    written += result.count;
+
+    if (Math.floor(i / BATCH) % 10 === 0) {
+      console.log(`  ${written.toLocaleString()} written`);
+    }
   }
+
   console.log(`Done: ${written.toLocaleString()} cross-references stored.`);
 }
 
