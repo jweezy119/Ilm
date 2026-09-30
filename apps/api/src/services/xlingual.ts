@@ -108,6 +108,29 @@ const STOP: Record<string, Set<string>> = {
  * 223 terms already occurs in 6–50 passages, so a cap at 100 or at 1200 removes
  * exactly nothing. Adding one would be a knob that looks like a safeguard and
  * changes no result, which is worse than not having it.
+ *
+ * And there is deliberately no in-theme-share threshold either, although one was
+ * written, measured and withdrawn. It is a tempting fix for the function words that
+ * get past specificity — עבדכ, "your servant", and איש, "man", in 973 passages, both
+ * score 1.0 as terms for prayer and for prophets respectively — and dividing by
+ * corpus-wide document frequency does separate the two populations cleanly:
+ *
+ *     Δαυιδ  50/ 50 = 100%    תפלה  8/ 17 = 47%     עבדכ  8/107 =  8%
+ *     προσευχη 13/ 16 =  81%    חכמה 37/ 75 = 49%     איש 12/973 =  1%
+ *     ברית  38/115 =  33%
+ *
+ * It is still wrong, and the reason is the same both times: the share rewards a
+ * word for being rare. موسي is the word for Moses and it is in 1,295 passages, so
+ * its share inside any one theme's 150-passage window is about a tenth, and the gate
+ * threw it out in favour of يموسي — the Qur'anic vocative "O Moses", with the يا
+ * elided by Uthmani orthography, in 24 passages. For a term map the common form is
+ * the one worth having, because the reader wants the word that will find the verses.
+ *
+ * The gate deleted the best term twice and let noise through twice, and the only
+ * threshold that rescued Moses was one picked to rescue Moses. So the noise it was
+ * aimed at is handled where it can be handled honestly instead: every term is
+ * labelled with the number of passages it actually reaches, which makes a weak term
+ * visibly weak rather than quietly present.
  */
 export const MIN_SPECIFICITY = 0.8;
 
@@ -194,6 +217,18 @@ export function tokenize(originalText: string, language: string): string[] {
   for (const raw of fold(originalText).split(/[^\p{L}\p{M}]+/u)) {
     if (raw.length < 3) continue;
     if (STOP[language]?.has(raw)) continue;
+    /*
+     * A token containing Latin letters is markup, not a word.
+     *
+     * The Hebrew corpus carries `\thinsp` — a LaTeX spacing command — in its text,
+     * and it turns up in enough of the prayer theme's strongest passages to be
+     * derived as a Hebrew term for prayer. Any token with a Latin letter in Hebrew,
+     * Greek, Arabic or Aramaic came out of a typesetting pipeline rather than off a
+     * scribe, and those four scripts are disjoint from Latin, so this cannot discard
+     * a real word. It is the one artefact class that can be identified from the text
+     * alone, without a dictionary.
+     */
+    if (/\p{Script=Latin}/u.test(raw)) continue;
     out.push(raw);
   }
   return out;
@@ -282,6 +317,21 @@ export function deriveTerms(
           specificity: 1 / (themeCount.get(`${language}:${term}`)?.size ?? 1),
         }))
         .filter((t) => t.specificity >= MIN_SPECIFICITY)
+        /*
+         * Ordered by how much of the theme they cover.
+         *
+         * This is the only order that matters, and it is worth stating why the sort
+         * is here rather than left implicit. A term map that keeps the three most
+         * frequent tokens of a theme is only useful if "most frequent" is measured
+         * against the theme rather than against a shared window: a token's
+         * frequency in a corpus is a property of the word, and the same corpus has
+         * to be read seven times, once per tradition, before any of it means
+         * anything.
+         *
+         * Sorting descending by inPassages and then deduping is what makes the
+         * selection reproducible — the same corpus and the same theme labels always
+         * yield the same three terms, in the same order, on every rebuild.
+         */
         .sort((a, b) => b.inPassages - a.inPassages);
       out.push(...dedupeInflections(kept).slice(0, TERMS_PER_LANGUAGE));
     }

@@ -85,6 +85,24 @@ describe('cross-lingual widening', () => {
     expect(xlingual).toContain('cache.set(theme, { terms, at: Date.now() })');
   });
 
+  it('discards Latin-script tokens in non-Latin text as typesetting artefacts', () => {
+    // The Hebrew corpus carries `\thinsp`, a LaTeX spacing command, and it reached
+    // the prayer theme's term list. Hebrew, Greek, Arabic and Aramaic are disjoint
+    // from Latin, so a token with a Latin letter in them came out of a typesetting
+    // pipeline rather than off a scribe, and this is the one artefact class that can
+    // be identified from the text alone.
+    expect(xlingual).toContain('if (/\\p{Script=Latin}/u.test(raw)) continue;');
+  });
+
+  it('keeps the artefact that is a real word rather than removing it', () => {
+    // Freezing the mistake this file once made. The vocative form means "O Moses"
+    // and appears in 24 Quranic passages; the plain form means "Moses" and appears
+    // in 1,295. A filter tuned to prefer the rare form looks like a precision win
+    // and is a large recall loss, and no test here should encode a preference for
+    // it.
+    expect(xlingual).toContain('export const MIN_SPECIFICITY = 0.8;');
+  });
+
   it('takes its threshold from the distribution and claims no knob it does not have', () => {
     // Specificity is bimodal: 370 entries fall to 223 at a floor of 0.8, and 0.9 and
     // 1.0 give the same 223. There is no gradient to tune. And there is no frequency
@@ -93,5 +111,9 @@ describe('cross-lingual widening', () => {
     // no knob.
     expect(xlingual).toContain('export const MIN_SPECIFICITY = 0.8;');
     expect(xlingual).not.toMatch(/MAX_IN_PESSAGES|MAX_FREQUENCY/);
+    // The share gate is gone, and the reason it is gone is recorded in the file, so
+    // the next person does not re-derive it and re-break Moses.
+    expect(xlingual).not.toContain('MIN_THEME_SHARE');
+    expect(xlingual).toMatch(/measured and withdrawn/);
   });
 });
