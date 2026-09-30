@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { hasLocale, NextIntlClientProvider } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Providers } from '@/components/Providers';
+import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration';
 import { routing, isRtl } from '@/i18n/routing';
 import '../globals.css';
 
@@ -57,6 +58,10 @@ export async function generateMetadata({
   const t = await getTranslations({ locale, namespace: 'meta' });
 
   return {
+    // The manifest is read by the browser and by the TWA wrapper; declaring it here
+    // puts the `<link rel=manifest>` in the head, which is what Chrome's
+    // installability check looks for.
+    manifest: '/manifest.webmanifest',
     metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
     title: { default: t('title'), template: `%s · ${locale === 'en' ? 'Ilm' : t('title').split('—')[0].trim()}` },
     description: t('description'),
@@ -73,6 +78,22 @@ export async function generateMetadata({
       languages: Object.fromEntries(routing.locales.map((l) => [l, `/${l}`])),
     },
     robots: { index: true, follow: true },
+    /*
+     * Tells iOS this is an app. Without `apple-mobile-web-app-capable`, an installed
+     * iOS shortcut opens in a Safari tab with a URL bar, which is the difference
+     * between an app and a bookmark.
+     */
+    applicationName: 'Ilm',
+    appleWebApp: { capable: true, title: 'Ilm', statusBarStyle: 'black-translucent' },
+    formatDetection: { telephone: false },
+    icons: {
+      icon: [
+        { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      ],
+      // iOS does not read the manifest, and takes its home-screen icon from here.
+      apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    },
   };
 }
 
@@ -118,6 +139,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider>
           <Providers>{children}</Providers>
         </NextIntlClientProvider>
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

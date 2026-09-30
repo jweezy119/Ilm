@@ -25,7 +25,9 @@
     "collapseSidebar": "Collapse sidebar",
     "journey": "Journey",
     "topics": "Topics",
-    "library": "Library"
+    "library": "Library",
+    "terms": "Terms",
+    "privacy": "Privacy"
   },
   "language": {
     "label": "Language",
@@ -341,5 +343,31 @@
     "back": "All topics",
     "loadFailed": "Could not load the figure",
     "notice": "This passage names {name} as {form} — see where each text names him."
+  },
+  "legal": {
+    "privacy": {
+      "title": "Privacy",
+      "intro": "Ilm has no accounts, asks for no email, and sets no advertising or analytics cookies. This page says exactly what leaves your device, because the honest version is short.",
+      "readTitle": "What stays on your device",
+      "readBody": "Your saved passages, collections, reading history and settings are stored in your browser's local storage. They are never sent to our servers, and clearing your browser data deletes them. They do not follow you to another device or another browser.",
+      "searchTitle": "What is sent to our servers",
+      "searchBody": "Every search you run is sent to our server, because the search runs there. The query text, which texts you had filtered to, how many results came back and how long it took are written to a log kept on our server. That log is not shown to you and is not used to build a profile of you. It is kept so we can see which searches fail.",
+      "thirdPartyTitle": "What is sent to a third party",
+      "thirdPartyBody": "A search query is sent to Jev, an external AI service we use, so the app can work out what kind of question you are asking and re-order results accordingly. The query text is sent. If you would rather it were not, the app still works: Jev is optional, and without it the app falls back to a deterministic method and labels every score as derived rather than model-produced.",
+      "noSell": "We do not sell or share your data for advertising. There are no third-party advertising or analytics scripts on this site.",
+      "rights": "If you want the search log deleted, contact us and we will remove it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when.",
+      "changes": "If this policy changes, the date below changes with it."
+    },
+    "terms": {
+      "title": "Terms",
+      "intro": "Two things, kept short because they are the two that matter.",
+      "useTitle": "What Ilm is",
+      "useBody": "Ilm is a way to read and compare religious texts. It retrieves passages that match what you searched for and shows you the evidence for each one. It does not write commentary about what the texts mean, and it does not claim which tradition is correct. Where these texts disagree, Ilm shows the disagreement rather than resolving it.",
+      "accuracyTitle": "What Ilm is not",
+      "accuracyBody": "Ilm is not an authority on religion and should not be used as one. The search ranks passages by how well they match your words and, where a model was available, by a model's judgement of relevance. Every score says which of the two it was. Verbatim matches are exact and you can check them by reading. Theme tags come from a keyword classifier and are the weakest kind of match in the app, and the interface says so wherever they appear.",
+      "quoteTitle": "Quoting from Ilm",
+      "quoteBody": "The original-language texts are not subject to copyright. The English translations are each governed by their own rights, and several in this app are. Quote the language you want to quote and name the translation.",
+      "contact": "Questions about either of these can go to the address on the contact page."
+    }
   }
 }
