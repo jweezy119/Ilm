@@ -89,6 +89,15 @@ export interface IndexHit {
 export type MatchMode = 'exact' | 'relaxed' | 'filters-only';
 
 export interface IndexSearchResult {
+  /**
+   * Set only by the theme-widening pass, never by a literal search.
+   *
+   * Which term reached each passage, and the full list of terms used, so a result
+   * that was not found by the words the reader typed can say so. A literal search
+   * leaves both empty, which is the common case and needs no explanation.
+   */
+  provenance?: Map<string, { kind: 'theme' | 'xlingual'; term: string; language?: string }>;
+  widenedTerms?: Array<{ kind: 'theme' | 'xlingual'; term: string; language?: string; hits: number; novel: number }>;
   hits: IndexHit[];
   count: number;
   elapsedMs: number;

@@ -558,6 +558,7 @@ function SearchInner() {
                     searchedPassages={searched ?? undefined}
                     texts={activeTexts}
                     expandedTheme={response.expandedTheme}
+                    widenedTerms={response.widenedTerms}
                     suggestions={response.suggestions}
                     narrowed={activeTexts.length < TEXT_IDS.length}
                     hasResults={results.length > 0}
@@ -603,6 +604,7 @@ function SearchInner() {
                 searchedPassages={searched ?? undefined}
                 texts={activeTexts}
                 expandedTheme={response.expandedTheme}
+                widenedTerms={response.widenedTerms}
                 suggestions={response.suggestions}
                 hasResults={false}
                 narrowed={activeTexts.length < TEXT_IDS.length}

@@ -32,6 +32,7 @@ export function VerdictPanel({
   searchedPassages,
   texts,
   expandedTheme,
+  widenedTerms,
   suggestions,
   narrowed,
   hasResults = true,
@@ -50,6 +51,16 @@ export function VerdictPanel({
   searchedPassages?: number;
   texts: TextId[];
   expandedTheme?: string | null;
+  /**
+   * The theme's own words in the languages the reader did not search in.
+   *
+   * Shown, not applied. These passages rank below the reader's own words on purpose
+   * — a widened result that quietly outranked a literal one would make the score on
+   * the row above it a lie — so the terms are offered rather than imposed. Each
+   * carries how many passages it reaches that the reader's words did not, which is
+   * the number that says whether the term is worth their attention.
+   */
+  widenedTerms?: Array<{ kind: 'theme' | 'xlingual'; term: string; language?: string; hits: number; novel: number }>;
   suggestions?: string[];
   /** True when the reader has filtered the search down to fewer than all texts. */
   narrowed?: boolean;
@@ -160,6 +171,53 @@ export function VerdictPanel({
         <p className="mt-2 text-[12px] text-fg-faint">
           {t('expandedTheme', { theme: expandedTheme })}
         </p>
+      ) : null}
+
+      {/*
+          The same theme in Hebrew, Greek, Arabic and Aramaic.
+
+          This is the disclosure that makes the cross-lingual map honest rather than
+          clever. The words were read out of the texts themselves, they are the
+          reason a reader searching in English can be shown a verse that contains no
+          English, and they are shown here so that the connection is one click away
+          instead of an invisible widening that quietly reordered their results.
+
+          Only terms that actually reach something are listed. A term whose novel
+          count is zero matched only passages the English widening had already found
+          through the translation, so listing it would be offering a word that leads
+          nowhere new.
+      */}
+      {widenedTerms && widenedTerms.some((w) => w.kind === 'xlingual' && w.novel > 0) ? (
+        <div className="mt-3 border-t border-line pt-2 text-[12px] leading-relaxed dark:border-white/10">
+          <p className="font-medium text-fg-muted">{t('crossLingualHeading')}</p>
+          <p className="mt-1 text-fg-faint">
+            {t('crossLingualBody', {
+              count: widenedTerms.filter((w) => w.kind === 'xlingual').reduce((n, w) => n + w.novel, 0),
+              texts: new Set(
+                widenedTerms
+                  .filter((w) => w.kind === 'xlingual')
+                  .map((w) => w.language ?? '')
+              ).size,
+            })}
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {widenedTerms
+              .filter((w) => w.kind === 'xlingual' && w.novel > 0)
+              .map((w) => (
+                <li key={`${w.language}-${w.term}`}>
+                  <span
+                    dir="rtl"
+                    className="inline-flex items-baseline gap-1.5 rounded-md border border-line px-2 py-0.5 dark:border-white/10"
+                  >
+                    <span className="text-[13px] text-fg">{w.term}</span>
+                    <span className="text-[11px] text-fg-faint">
+                      {t('crossLingualTerm', { count: w.novel })}
+                    </span>
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </div>
       ) : null}
       </div>
 

@@ -79,7 +79,10 @@
     "literalRanking": "מיון מילולי",
     "narrow": "הצמצה",
     "narrowed": "מוצמצם · {count} טקסטים",
-    "rankByMeaning": "דרג לפי משמעות"
+    "rankByMeaning": "דרג לפי משמעות",
+    "crossLingualHeading": "אותו נושא, בשפות המקור",
+    "crossLingualBody": "המילים האלה נקראו מתוך הטקסטים עצמם. הן מדורגות מתחת למילים שלך, ולכן רוב הפסוקים האלה אינם בתוצאות למעלה — עוד {count} {count, plural, one {פסוק} other {פסוקים}} ב{texts, plural, one {טקסט אחד} other {# טקסטים}}.",
+    "crossLingualTerm": "עוד {count}"
   },
   "common": {
     "loading": "טוען…",

@@ -271,6 +271,22 @@ export const SearchResultSchema = z.object({
   textScore: z.number().min(0).max(1).optional(),
   /** Jev's relevance for this result, 0-1. Absent when Jev did not run. */
   semanticScore: z.number().min(0).max(1).optional(),
+  /**
+   * Present when this passage was not found by the words the reader typed.
+   *
+   * A search result that does not contain the query is not a search result, and
+   * the difference is invisible unless the result says so. `term` is the word that
+   * actually reached this passage: a theme keyword for an English widening, or an
+   * original-language term drawn from the cross-lingual map. Absent on a literal
+   * match, which is the case that needs no explanation.
+   */
+  widenedVia: z
+    .object({
+      kind: z.enum(['theme', 'xlingual']),
+      term: z.string(),
+      language: z.string().optional(),
+    })
+    .optional(),
 });
 export type SearchResult = z.infer<typeof SearchResultSchema>;
 
@@ -293,6 +309,31 @@ export const SearchResponseSchema = z.object({
   suggestions: z.array(z.string()).default([]),
   intent: SearchIntentSchema.default('unknown'),
   intentSource: ScoreSourceSchema.default('derived'),
+  /**
+   * The terms a query was widened with, so the page can say so once rather than
+   * per row. Empty when the query was taken literally.
+   */
+  widenedTerms: z
+    .array(
+      z.object({
+        kind: z.enum(['theme', 'xlingual']),
+        term: z.string(),
+        language: z.string().optional(),
+        /** Passages this term matches at all. */
+        hits: z.number().int().nonnegative(),
+        /**
+         * Passages it reaches that the reader's own words did not.
+         *
+         * `hits - novel` is what the English widening had already found through the
+         * translation, which is most of it: the corpus is translated, so a passage
+         * about wisdom usually contains the English word as well. `novel` is the
+         * part that exists only because of this term, and it is the number worth
+         * showing.
+         */
+        novel: z.number().int().nonnegative(),
+      })
+    )
+    .default([]),
   /**
    * 'unaddressed' means these texts say nothing on the topic. That is a real
    * answer, and a more useful one than the least-bad keyword matches.

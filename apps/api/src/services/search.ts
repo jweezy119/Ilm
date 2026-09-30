@@ -9,6 +9,8 @@
 import { SearchQuery, SearchResponse, SearchResult, Passage, TextId, SearchIntent, CorpusVerdict, MatchMode } from '@ilm/shared';
 import { searchIndex, getIndexedPassage, getIndexedThemes, initializeOramaIndex, type PassageDoc } from '../search/engine';
 import { getPassagesByKeys, prisma } from './passage';
+import { xlingualTermsForTheme } from './xlingual';
+import type { WidenedTerm, WidenedLabel } from './xlingual';
 import { classifySearchIntent, localIntent, expandQueryTheme, rerankForQuery, blendSearchScore, themeSearchTerms, significantTerms, type QueryExpansion, type ScoreSource } from './typesafe';
 import { matchesAnyReading } from '../lib/script-normalize';
 
@@ -35,11 +37,32 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
     : await classifySearchIntent(query.query);
 
   // Widen the query when it names a theme the literal words miss. The full-text
-  // pass runs first so we only pay for expansion when recall looks thin.
+  // pass runs first so we only pay for expansion when there is a reason to.
   const firstPass = await runFullText(query.query, query);
 
+  /*
+   * Two reasons to widen, and the second is the one that matters.
+   *
+   * The first is thin recall: the words are wrong, so find the passages anyway.
+   * That was the only condition until the cross-lingual map existed, and it is the
+   * wrong condition for it. "wisdom" is not a thin-recall query — it matches
+   * hundreds of passages — but every one of those matches is an English
+   * translation, so the Hebrew, Greek, Arabic and Aramaic passages carrying the
+   * theme were all invisible while the result count looked perfectly healthy.
+   *
+   * The gap is not "we found too little". It is "we found nothing in the languages
+   * the reader did not ask in", and the only way to see that from the outside is to
+   * check whether any literal hit reached the original text at all.
+   *
+   * Which also keeps the cost honest: a reader who typed Hebrew and was shown
+   * Hebrew does not get a widening, and the searches that already work pay for
+   * nothing.
+   */
+  const reachedOriginal = firstPass.hits.some((h) => (h.document.matchedIn ?? '').includes('original'));
+  const shouldWiden = firstPass.count < THIN_RECALL || !reachedOriginal;
+
   let expansion: QueryExpansion = { theme: null, confidence: 0, source: 'derived' };
-  if (query.expand !== false && firstPass.count < THIN_RECALL) {
+  if (query.expand !== false && shouldWiden) {
     expansion = await expandQueryTheme(query.query);
   }
 
@@ -54,7 +77,14 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
   const candidates = indexResult.hits
     .map((hit) => ({ hit, passage: byKey.get(hit.document.passageKey) }))
     .filter((c): c is { hit: typeof c.hit; passage: Passage } => Boolean(c.passage))
-    .map((c) => ({ ...c, textScore: scoreCandidate(normalizeBm25(c.hit.score), c.hit.document.density, termCoverage(c.passage, terms)) }))
+    .map((c) => ({
+      ...c,
+      textScore: scoreCandidate(
+        normalizeBm25(c.hit.score),
+        c.hit.document.density,
+        termCoverage(c.passage, terms, indexResult.provenance?.get(c.passage.passageKey))
+      ),
+    }))
     /*
      * Sort by the score we are about to report, not by the index's BM25 order.
      *
@@ -106,6 +136,10 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
       intentConfidence: intent.confidence || undefined,
       textScore,
       ...(semanticScore === undefined ? {} : { semanticScore }),
+      // Absent on a literal match, which is the case that needs no explanation.
+      ...(indexResult.provenance?.get(passage.passageKey)
+        ? { widenedVia: indexResult.provenance.get(passage.passageKey) }
+        : {}),
     };
   });
 
@@ -121,6 +155,7 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
     // Off the reply, so a fallback engine is reported as itself.
     rerankSource: reranked?.source ?? 'derived',
     expandedTheme: expansion.theme,
+    widenedTerms: indexResult.widenedTerms ?? [],
     // Carried through from the retrieval layer so the UI can say when the
     // results came from the trigram fallback rather than the query as typed.
     matchMode: (indexResult.matchMode ?? 'exact') as MatchMode,
@@ -163,7 +198,22 @@ function queryTerms(query: string): string[] {
  * match a vocalised corpus is compared the same way rather than against a spelling
  * it can never contain.
  */
-function termCoverage(passage: Passage, terms: string[]): number {
+function termCoverage(passage: Passage, terms: string[], widenedVia?: WidenedLabel | null): number {
+  /*
+   * A passage found through a widened term counts as covered.
+   *
+   * Coverage is what separates "a weak match on your words" from "a different
+   * passage", and the filter built on it is right for the literal path. A passage
+   * reached through חכמה contains none of the English words in "wisdom", so without
+   * this it scores zero coverage and is discarded as a different passage — which
+   * would delete every result the cross-lingual map exists to produce, silently,
+   * while looking like the feature had simply found nothing.
+   *
+   * Full coverage rather than a share, because the term that matched is the whole
+   * of what this passage was retrieved for; there is no partial credit to give
+   * against a query it does not otherwise contain.
+   */
+  if (widenedVia) return 1;
   if (terms.length === 0) return 1;
 
   let hits = 0;
@@ -215,37 +265,80 @@ async function runFullText(term: string, query: SearchQuery) {
  */
 async function runExpanded(term: string, query: SearchQuery, theme: string) {
   const terms = themeSearchTerms(theme);
-  if (terms.length === 0) return runFullText(term, query);
+  const widenedTerms: WidenedTerm[] = [];
 
   const candidates: PassageDoc[] = [];
   const seen = new Set<string>();
+  /*
+   * Which term reached each passage, so a result can say it was widened.
+   *
+   * Without this the widening is silent, and a silent widening is the one failure
+   * this product cannot have: a reader who searched "wisdom" and was shown a
+   * Hebrew verse has been shown a passage that does not contain the word they
+   * typed. The term is carried per passage rather than per query so the row can
+   * name the word that actually found it, which is also the only way a reader can
+   * check the claim.
+   */
+  const provenance = new Map<string, WidenedLabel>();
 
-  const add = (hits: Array<{ document: PassageDoc }>) => {
+  const add = (hits: Array<{ document: PassageDoc }>, via: WidenedLabel | null) => {
+    let fresh = 0;
     for (const hit of hits) {
-      if (seen.has(hit.document.passageKey)) continue;
-      seen.add(hit.document.passageKey);
+      const key = hit.document.passageKey;
+      if (seen.has(key)) continue;
+      seen.add(key);
       candidates.push(hit.document);
+      if (via) provenance.set(key, via);
+      fresh += 1;
     }
+    return fresh;
   };
 
   // Literal matches first, so an exact hit is never demoted by the widening.
   const literal = await runFullText(term, query);
-  add(literal.hits);
+  add(literal.hits, null);
+
+  const searchFor = async (t: string) =>
+    searchIndex({
+      term: t,
+      textIds: query.filters?.texts,
+      books: query.filters?.books,
+      chapters: query.filters?.chapters,
+      languages: query.filters?.languages,
+      limit: Math.min(query.limit + query.offset + EXAMINATION_SLACK, MAX_HYDRATE),
+      properties: ['translation', 'themes'],
+    });
+
+  const record = (via: WidenedTerm, hits: number, novel: number) => {
+    const existing = widenedTerms.find((w) => w.term === via.term);
+    if (existing) existing.novel += novel;
+    else widenedTerms.push({ ...via, hits, novel });
+  };
 
   for (const themeTerm of terms.slice(0, 3)) {
-    add(
-      (
-        await searchIndex({
-          term: themeTerm,
-          textIds: query.filters?.texts,
-          books: query.filters?.books,
-          chapters: query.filters?.chapters,
-          languages: query.filters?.languages,
-          limit: Math.min(query.limit + query.offset + EXAMINATION_SLACK, MAX_HYDRATE),
-          properties: ['translation', 'themes'],
-        })
-      ).hits
-    );
+    const hits = (await searchFor(themeTerm)).hits;
+    const label: WidenedLabel = { kind: 'theme', term: themeTerm };
+    record({ ...label, hits: 0, novel: 0 }, hits.length, add(hits, label));
+  }
+
+  /*
+   * And now the same theme in the languages the reader did not type.
+   *
+   * Every term above is an English keyword, so the widening can only ever reach the
+   * English translations. These are the theme's own words in Hebrew, Greek, Arabic
+   * and Aramaic, derived from the corpus, and they go through the same index call —
+   * which searches `search_vector_original` as well as `search_vector` — so a
+   * query in English reaches a passage that contains none of the query's words.
+   *
+   * That last clause is why these passages need a coverage credit below. A Hebrew
+   * passage has zero coverage of the English query, and the filter that discards
+   * zero-coverage results as "a different passage" would otherwise throw away
+   * exactly the results this exists to find.
+   */
+  for (const x of await xlingualTermsForTheme(theme)) {
+    const via: WidenedTerm = { kind: 'xlingual', term: x.term, language: x.language, hits: 0, novel: 0 };
+    const hits = (await searchFor(x.term)).hits;
+    record(via, hits.length, add(hits, via));
   }
 
   return {
@@ -255,6 +348,8 @@ async function runExpanded(term: string, query: SearchQuery, theme: string) {
     // The theme terms are always matched exactly, so the widened set is only as
     // relaxed as the literal query the reader actually typed was.
     matchMode: literal.matchMode,
+    provenance,
+    widenedTerms,
   };
 }
 

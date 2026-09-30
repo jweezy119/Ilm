@@ -151,6 +151,29 @@ function dedupeInflections(terms: XlingualTerm[]): XlingualTerm[] {
   return kept;
 }
 
+/**
+ * A term a query was widened with, and what kind of widening it was.
+ *
+ * 'theme' is an English keyword for the theme; 'xlingual' is the theme's own word
+ * in another language, taken from the corpus. Both are reported to the reader, and
+ * the distinction is not cosmetic: one is a synonym the app already had, the other
+ * is a leap across languages that a reader may not be able to check.
+ */
+/** The per-result label: which term reached this passage. Carries no counts. */
+export interface WidenedLabel {
+  kind: 'theme' | 'xlingual';
+  term: string;
+  language?: string;
+}
+
+/** The same term, with how far it reached, for the disclosure under the results. */
+export interface WidenedTerm extends WidenedLabel {
+  /** Passages the term matches at all. */
+  hits: number;
+  /** Passages it reaches that the reader's own words did not. */
+  novel: number;
+}
+
 export interface XlingualTerm {
   theme: string;
   language: string;
@@ -272,37 +295,46 @@ export function deriveTerms(
  * Cached because it is read on the slow path of a search and changes only when the
  * corpus does, which is what a backfill is for.
  */
-let cache: Map<string, XlingualTerm[]> | null = null;
-let cachedAt = 0;
+/*
+ * Read on every widened search, so the default is four rather than the twelve the
+ * derivation could supply across four languages. Each term is one extra index
+ * query, and a search that returns nothing useful because six extra queries found
+ * four more passages is not a better search.
+ */
+type CacheEntry = { terms: XlingualTerm[]; at: number };
+const cache = new Map<string, CacheEntry>();
 const TTL_MS = 5 * 60_000;
 
 export function invalidateXlingualCache(): void {
-  cache = null;
+  cache.clear();
 }
 
-export async function xlingualTermsForTheme(theme: string, limit = 6): Promise<XlingualTerm[]> {
-  if (!cache || Date.now() - cachedAt > TTL_MS) {
-    const { prisma } = await import('./passage');
-    const rows = await prisma.xlingualTerm.findMany({
-      where: { theme },
-      orderBy: { inPassages: 'desc' },
-      take: limit,
-    });
-    const grouped = new Map<string, XlingualTerm[]>();
-    for (const row of rows) {
-      grouped.set(row.theme, [
-        ...(grouped.get(row.theme) ?? []),
-        {
-          theme: row.theme,
-          language: row.language,
-          term: row.term,
-          inPassages: row.inPassages,
-          specificity: row.specificity,
-        },
-      ]);
-    }
-    cache = grouped;
-    cachedAt = Date.now();
-  }
-  return cache.get(theme) ?? [];
+export async function xlingualTermsForTheme(theme: string, limit = 4): Promise<XlingualTerm[]> {
+  const entry = cache.get(theme);
+  if (entry && Date.now() - entry.at < TTL_MS) return entry.terms;
+
+  const { prisma } = await import('./passage');
+  const rows = await prisma.xlingualTerm.findMany({
+    where: { theme },
+    orderBy: { inPassages: 'desc' },
+    take: limit,
+  });
+  const terms = rows.map((row) => ({
+    theme: row.theme,
+    language: row.language,
+    term: row.term,
+    inPassages: row.inPassages,
+    specificity: row.specificity,
+  }));
+  // Cached per theme, and only once the query has actually answered for it.
+  //
+  // The first version kept one map of everything fetched so far and asked the
+  // database for a single theme, so a theme that had not been searched yet was
+  // absent from the cache and returned nothing for the whole five minutes. Since a
+  // search asks for exactly one theme, that made the map work for whichever theme
+  // happened to be searched first and silently do nothing for every other one —
+  // which is what it did: 'wisdom' returned its three terms and 'prophets' and
+  // 'hell' returned none, from the same table, in the same process.
+  cache.set(theme, { terms, at: Date.now() });
+  return terms;
 }

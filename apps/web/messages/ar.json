@@ -79,7 +79,10 @@
     "literalRanking": "ترتيب حرفي",
     "narrow": "تضييق",
     "narrowed": "مُضيَّق · {count} نصوص",
-    "rankByMeaning": "الترتيب بالمعنى"
+    "rankByMeaning": "الترتيب بالمعنى",
+    "crossLingualHeading": "الموضوع نفسه، بلغات المصدر",
+    "crossLingualBody": "قرئت هذه الكلمات من النصوص نفسها. وهي مرتّبة دون كلماتك، لذا معظم هذه الآيات ليست في النتائج أعلاه — {count} آية إضافية في {texts, plural, one {نص واحد} other {# نصوص}}.",
+    "crossLingualTerm": "{count} إضافية"
   },
   "common": {
     "loading": "جارٍ التحميل…",
