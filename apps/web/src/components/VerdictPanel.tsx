@@ -64,7 +64,16 @@ export function VerdictPanel({
    */
   hasResults?: boolean;
   onWiden?: () => void;
-  onPick?: (term: string) => void;
+  /**
+   * Required, and called directly rather than optionally.
+   *
+   * It was `onPick?:` and the chips called `onPick?.(s)`, which meant a call site
+   * that forgot to pass it would render four "Try instead" buttons that did nothing
+   * — a dead control, discovered by the check in dead-controls.test.ts. Both call
+   * sites do pass it, so this was never actually broken, but the optional signature
+   * is what allows the next one to be.
+   */
+  onPick: (term: string) => void;
   className?: string;
 }) {
   const t = useTranslations('search');
@@ -169,7 +178,7 @@ export function VerdictPanel({
             <button
               key={s}
               type="button"
-              onClick={() => onPick?.(s)}
+              onClick={() => onPick(s)}
               className="rounded-full border border-line px-2 py-0.5 text-[12px] text-fg-muted transition-colors hover:border-accent hover:text-accent"
             >
               {s}

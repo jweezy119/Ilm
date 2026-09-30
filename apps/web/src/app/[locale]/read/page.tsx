@@ -269,7 +269,14 @@ function BookPicker({
   books: BookMetadata[];
   loading: boolean;
   onPick: (bookId: string) => void;
-  onText?: (textId: string) => void;
+  /**
+   * Required, for the reason VerdictPanel's onPick is: an optional prop called as
+   * `onText?.(id)` renders a control that does nothing when it is absent, and that
+   * is exactly what happened here — the corpus pills were rendered by a call site
+   * that did not pass it, so selecting a corpus silently did nothing while looking
+   * entirely live. Required means the next omission is a type error.
+   */
+  onText: (textId: string) => void;
 }) {
   /*
    * A filter, only where the list is long enough to need one.
@@ -303,7 +310,7 @@ function BookPicker({
           <button
             key={id}
             type="button"
-            onClick={() => onText?.(id)}
+            onClick={() => onText(id)}
             aria-pressed={id === textId}
             className={cn('toggle-pill', id === textId ? 'toggle-pill-on' : 'toggle-pill-off')}
           >
