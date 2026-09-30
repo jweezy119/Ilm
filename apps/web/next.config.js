@@ -62,6 +62,10 @@ const nextConfig = {
       // rewrites are matched in order, so a specific rule placed after it would be
       // dead configuration.
       { source: '/api/topics', destination: `${API_ORIGIN}/api/topics` },
+      // Figures. Added with the figure feature and missing from the first attempt, so
+      // the page fetched a 404 from Next rather than from the API. The test in
+      // src/lib/proxy-routes.test.ts now fails if a new route family is not listed.
+      { source: '/api/figures/:path*', destination: `${API_ORIGIN}/api/figures/:path*` },
       // The library. Listed explicitly because it is a bare path with a DELETE
       // child: without this the browser gets a Next HTML error page from
       // /api/library and the save button does nothing at all, which is exactly
