@@ -72,6 +72,52 @@ export const ThemeScoreSchema = z.object({
 });
 export type ThemeScore = z.infer<typeof ThemeScoreSchema>;
 
+/**
+ * One theme, one column per tradition.
+ *
+ * Retrieval, not summary: the passages each corpus holds on the theme, with their
+ * references. A comparison is the texts beside each other; anything written about
+ * what they mean would be commentary, which this product does not write.
+ *
+ * `absent` is the field that matters most. A corpus with nothing above the bar is
+ * reported as unlabelled, never as silent — the first is a fact about a classifier
+ * and the second is a claim about a tradition, and only the first is supported.
+ */
+export const ThemeComparisonColumnSchema = z.object({
+  textId: TextIdSchema,
+  name: z.string(),
+  direction: z.enum(['rtl', 'ltr']),
+  total: z.number().int().nonnegative(),
+  passages: z.array(z.object({
+    passageKey: z.string(),
+    book: z.string(),
+    chapter: z.number().int(),
+    verse: z.number().int(),
+    text: z.string(),
+    originalText: z.string(),
+    language: z.string(),
+    /** This passage's score for the theme, which is the column's own evidence. */
+    score: z.number().min(0).max(1),
+    /** Whether a model judged it or the local classifier did. */
+    source: z.string(),
+  })),
+});
+export type ThemeComparisonColumn = z.infer<typeof ThemeComparisonColumnSchema>;
+
+export const ThemeComparisonSchema = z.object({
+  theme: z.string(),
+  label: z.string(),
+  /** The bar used, returned so the page can state it rather than imply a fixed one. */
+  bar: z.number().min(0).max(1),
+  total: z.number().int().nonnegative(),
+  columns: z.array(ThemeComparisonColumnSchema),
+  absent: z.array(z.object({ textId: TextIdSchema, name: z.string() })),
+  corporaSearched: z.number().int().nonnegative(),
+  /** The distinct scores the bar admits. See the note on the schema. */
+  scoreLevels: z.array(z.number()),
+});
+export type ThemeComparison = z.infer<typeof ThemeComparisonSchema>;
+
 export const CrossRefTypeSchema = z.enum([
   'quote',
   'allusion',

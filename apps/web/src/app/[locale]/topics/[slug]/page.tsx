@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { ArrowLeft, Search } from 'lucide-react';
+import { ArrowLeft, Scale, Search } from 'lucide-react';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { SourceBadge, type DisplaySource } from '@/components/SourceBadge';
 import { api } from '@/lib/api';
@@ -109,6 +109,22 @@ function TopicView() {
       />
 
       {error ? <p className="text-sm text-fg-muted">{error}</p> : null}
+
+      {/*
+          The comparison, offered from the topic page because this is where a reader
+          is already thinking about one subject across texts. The passages on a topic
+          page are all one tradition, which is the thing the comparison exists to put
+          beside something else.
+      */}
+      {topic ? (
+        <Link
+          href={`/compare-theme/${encodeURIComponent(topic.theme)}`}
+          className="mb-8 inline-flex items-center gap-2 rounded-lg border border-line bg-panel/50 px-3 py-2 text-[13px] transition-colors hover:border-accent/50 hover:bg-panel"
+        >
+          <Scale className="h-4 w-4 text-fg-faint" />
+          {t('compareAcross', { topic: t(`items.${topic.slug}.label`) })}
+        </Link>
+      ) : null}
 
       {/* Facets. Each is a search, so each says what it will search for rather
           than presenting itself as a section of this page. */}

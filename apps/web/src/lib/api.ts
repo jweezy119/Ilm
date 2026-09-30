@@ -12,6 +12,7 @@ import type {
   ScoreBreakdown,
   SearchResponse,
   TextId,
+  ThemeComparison,
   ThemeJourneyStep,
   Topic,
   PassageCitations,
@@ -377,6 +378,19 @@ export const api = {
     ),
 
   themeMap: (theme: string) => get<ThemeMap>(`/api/themes/${encodeURIComponent(theme)}/map`),
+
+  /**
+   * One theme, one column per tradition.
+   *
+   * `bar` is sent rather than left to a server default because the bar decides
+   * which columns exist, so it is the reader's to see and move — and a link with
+   * the bar in it is shareable, which a reader comparing two traditions at a
+   * particular strictness wants to send to someone.
+   */
+  themeCompare: (theme: string, options: { bar?: number } = {}) =>
+    get<ThemeComparison>(
+      `/api/themes/${encodeURIComponent(theme)}/compare${options.bar === undefined ? '' : `?bar=${options.bar}`}`
+    ),
 
   weights: (userId: string) => get<RecommendationWeights>(`/api/users/${encodeURIComponent(userId)}/weights`),
 

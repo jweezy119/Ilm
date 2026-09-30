@@ -16,6 +16,7 @@ import {
   parseCitation,
 } from '@ilm/shared';
 import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
+import { compareTheme, isKnownTheme } from '../services/compare';
 import {
   getPassageById,
   getPassageByKey,
@@ -646,6 +647,30 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/themes/:theme/map', async (request: FastifyRequest<{ Params: { theme: string } }>) => {
     return ok(await getThemeMap(request.params.theme));
+  });
+
+  /*
+   * One theme, one column per tradition.
+   *
+   * `bar` is a query parameter rather than a constant so the reader can move it and
+   * see what changes, which is the point: the bar decides which columns exist, so
+   * hiding it would make an absence of evidence look like an absence of content.
+   *
+   * An unknown theme is a 404 rather than an empty comparison. A theme with no
+   * labelled passages anywhere is a valid 200 with every column absent, which is a
+   * different answer from a theme that does not exist.
+   */
+  app.get('/api/themes/:theme/compare', async (request: FastifyRequest<{ Params: { theme: string }; Querystring: { bar?: string; texts?: string; per?: string } }>, reply: FastifyReply) => {
+    const theme = request.params.theme;
+    if (!isKnownTheme(theme)) return fail(reply, 404, 'NOT_FOUND', `"${theme}" is not a theme in the taxonomy`);
+
+    const requested = Number(request.query.bar);
+    const bar = Number.isFinite(requested) ? Math.min(Math.max(requested, 0), 1) : undefined;
+    const texts = request.query.texts?.split(',').filter((t): t is TextId => TextIdSchema.safeParse(t).success);
+    const per = Number(request.query.per);
+    const perColumn = Number.isFinite(per) ? Math.min(Math.max(per, 1), 10) : undefined;
+
+    return ok(await compareTheme(theme, { bar, texts, perColumn }));
   });
 
   app.get('/api/themes/:theme/shared', async (request: FastifyRequest<{ Params: { theme: string }; Querystring: { keys: string } }>, reply: FastifyReply) => {

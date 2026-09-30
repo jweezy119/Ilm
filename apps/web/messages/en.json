@@ -244,7 +244,8 @@
         }
       }
     },
-    "browse": "Browse by topic"
+    "browse": "Browse by topic",
+    "compareAcross": "Compare how each text treats {topic}"
   },
   "citation": {
     "single": "That is a reference",
@@ -309,5 +310,18 @@
   },
   "brand": {
     "word": "علم"
+  },
+  "compare": {
+    "title": "Compare",
+    "back": "All topics",
+    "description": "The passages each text holds on this theme, side by side. Nothing is written about what they mean — the comparison is the texts beside each other.",
+    "bar": "Show passages scoring",
+    "atLeast": "{score} or above",
+    "levels": "Scores in the corpus take a few discrete values, so the bar moves in steps: this one admits {levels}.",
+    "absentPrefix": "No column for",
+    "absentSuffix": "at this bar — no passage is labelled for the theme strongly enough to show. That is a fact about the classifier, not about the text, and it is not evidence that the tradition is silent on the subject.",
+    "noColumnsTitle": "Nothing is labelled strongly enough",
+    "noColumnsBody": "No passage in any searched corpus scored {floor} or above for this theme. Lower the bar to see weaker matches.",
+    "loadFailed": "Could not load the comparison"
   }
 }
