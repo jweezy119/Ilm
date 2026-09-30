@@ -309,7 +309,12 @@
     }
   },
   "brand": {
-    "word": "דַּעַת"
+    "word": "דַּעַת",
+    "marks": {
+      "latin": "Ilm",
+      "arabic": "علم",
+      "hebrew": "דַּעַת"
+    }
   },
   "compare": {
     "title": "השוואה",

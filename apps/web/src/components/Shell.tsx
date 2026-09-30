@@ -126,6 +126,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme();
   const t = useTranslations('nav');
   const tb = useTranslations('brand');
+  const locale = useLocale();
   // Strip the locale prefix before comparing. usePathname from next-intl already
   // removes it, which is the point of importing it instead of next/navigation.
   const pathname = usePathname();
@@ -310,11 +311,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
             right. `justify-end` does that for free; a physical `right` would have
             put it on the wrong side for every Hebrew reader.
 
-            The second word is the locale's own, so the mark reads Ilm علم in Arabic
-            and Ilm דַּעַת in Hebrew rather than showing the same Arabic to everyone.
-            דַּעַת is the Hebrew counterpart of علم — knowledge, not wisdom, which is
-            a different claim — and it is a common noun in the corpus rather than a
-            borrowing.
+            The mark itself is the locale's own word set to the side: דַּעַת is the
+            Hebrew counterpart of علم — knowledge, not wisdom, which is a different
+            claim — and it is a common noun in the corpus rather than a borrowing.
 
             The drawer trigger stays at the start, and the collapse control stayed in
             the rail footer where it already was.
@@ -353,9 +352,37 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <PanelLeftOpen className="h-5 w-5" />
           </button>
           <Link href="/" className="flex items-center gap-2" aria-label={t('home')}>
-            <span className="truncate text-[17px] font-medium tracking-tight">
-              Ilm
-              <span className="ms-1.5 text-xs text-fg-faint">{tb('word')}</span>
+            {/*
+                The name in all three of the languages the corpus is read in, with
+                the reader's own script carrying the weight and the other two quiet.
+
+                Showing only the locale's word was the previous behaviour and it was
+                a small lie in both directions: an English reader saw "Ilm علم" and
+                reasonably concluded the app was an Arabic product with an English
+                interface, and a Hebrew reader saw "Ilm דַּעַת" and could not tell
+                what the other two-thirds of the corpus was read in. The mark now
+                says what is actually true, which is that this is one name in
+                several scripts — and it is the same name, so the letters are the
+                same word rather than three translations to keep in sync.
+
+                The locale keys map onto the scripts one for one, so which word is
+                emphasised is read off the locale rather than a parallel piece of
+                state that could disagree with it.
+            */}
+            <span className="flex min-w-0 items-baseline gap-1.5 truncate text-[17px] tracking-tight">
+              {(Object.keys(tb.raw('marks')) as Array<'latin' | 'arabic' | 'hebrew'>).map((script) => (
+                <span
+                  key={script}
+                  dir={script === 'latin' ? 'ltr' : 'rtl'}
+                  className={
+                    script === locale
+                      ? 'font-medium text-fg'
+                      : 'font-medium text-fg-faint'
+                  }
+                >
+                  {tb(`marks.${script}`)}
+                </span>
+              ))}
             </span>
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-accent-fg">
               <BookOpen className="h-3.5 w-3.5" />
