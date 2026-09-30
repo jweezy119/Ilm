@@ -15,19 +15,19 @@ datasource db {
 // ============================================================================
 
 model Text {
-  id          String   @id @default(cuid())
-  textId      String   @unique @map("text_id") // quran, talmud, torah, ot, nt
-  name        String
-  originalLang String  @map("original_lang")
-  direction   String   @default("ltr") // rtl or ltr
-  bookCount   Int      @default(0) @map("book_count")
-  verseCount  Int      @default(0) @map("verse_count")
-  metadata    Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  textId       String   @unique @map("text_id") // quran, talmud, torah, ot, nt
+  name         String
+  originalLang String   @map("original_lang")
+  direction    String   @default("ltr") // rtl or ltr
+  bookCount    Int      @default(0) @map("book_count")
+  verseCount   Int      @default(0) @map("verse_count")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  books       Book[]
-  passages    Passage[]
+  books        Book[]
+  passages     Passage[]
   translations Translation[]
 
   @@index([textId])
@@ -35,25 +35,25 @@ model Text {
 }
 
 model Book {
-  id              String   @id @default(cuid())
-  textId          String   @map("text_id")
-  text            Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
-  bookId          String   @map("book_id") // e.g., "2" for Al-Baqarah, "john" for John
-  name            String
-  nameOriginal    String?  @map("name_original")
-  nameTranslit    String?  @map("name_translit")
-  chapterCount    Int      @default(0) @map("chapter_count")
-  verseCount      Int      @default(0) @map("verse_count")
-  order           Int
-  testament       String?  // old, new, quran, talmud, torah
-  category        String?  // pentateuch, gospel, pauline, meccan, medinan, etc.
-  description     String?
-  metadata        Json     @default("{}")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  textId       String   @map("text_id")
+  text         Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
+  bookId       String   @map("book_id") // e.g., "2" for Al-Baqarah, "john" for John
+  name         String
+  nameOriginal String?  @map("name_original")
+  nameTranslit String?  @map("name_translit")
+  chapterCount Int      @default(0) @map("chapter_count")
+  verseCount   Int      @default(0) @map("verse_count")
+  order        Int
+  testament    String? // old, new, quran, talmud, torah
+  category     String? // pentateuch, gospel, pauline, meccan, medinan, etc.
+  description  String?
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  passages        Passage[]
-  chapters        Chapter[]
+  passages Passage[]
+  chapters Chapter[]
 
   @@unique([textId, bookId])
   @@index([textId, order])
@@ -61,18 +61,18 @@ model Book {
 }
 
 model Chapter {
-  id          String   @id @default(cuid())
-  bookRef     String   @map("book_ref")
-  book        Book     @relation(fields: [bookRef], references: [id], onDelete: Cascade)
-  number      Int
-  name        String?  // Surah name, etc.
-  nameOriginal String? @map("name_original")
-  verseCount  Int      @default(0) @map("verse_count")
-  metadata    Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  bookRef      String   @map("book_ref")
+  book         Book     @relation(fields: [bookRef], references: [id], onDelete: Cascade)
+  number       Int
+  name         String? // Surah name, etc.
+  nameOriginal String?  @map("name_original")
+  verseCount   Int      @default(0) @map("verse_count")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  passages    Passage[]
+  passages Passage[]
 
   @@unique([bookRef, number])
   @@index([bookRef])
@@ -80,37 +80,37 @@ model Chapter {
 }
 
 model Passage {
-  id                    String   @id @default(cuid())
-  passageKey            String   @unique @map("passage_key") // quran:2:255, nt:john:3:16
-  textId                String   @map("text_id")
-  text                  Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
-  bookRef               String   @map("book_ref")
-  book                  Book     @relation(fields: [bookRef], references: [id], onDelete: Cascade)
-  bookSlug              String   @map("book_slug")
-  chapterRef            String   @map("chapter_ref")
-  chapter               Chapter  @relation(fields: [chapterRef], references: [id], onDelete: Cascade)
-  chapterNum            Int      @map("chapter_num")
-  verseNum              Int      @map("verse_num")
-  originalText          String   @map("original_text") @db.Text
-  primaryTranslation    String   @map("primary_translation") @db.Text
-  primaryTranslationId  String?  @map("primary_translation_id")
-  language              String   @default("english")
-  verseOrder            Int      @map("verse_order") // Global ordering within text
-  metadata              Json     @default("{}")
+  id                   String          @id @default(cuid())
+  passageKey           String          @unique @map("passage_key") // quran:2:255, nt:john:3:16
+  textId               String          @map("text_id")
+  text                 Text            @relation(fields: [textId], references: [textId], onDelete: Cascade)
+  bookRef              String          @map("book_ref")
+  book                 Book            @relation(fields: [bookRef], references: [id], onDelete: Cascade)
+  bookSlug             String          @map("book_slug")
+  chapterRef           String          @map("chapter_ref")
+  chapter              Chapter         @relation(fields: [chapterRef], references: [id], onDelete: Cascade)
+  chapterNum           Int             @map("chapter_num")
+  verseNum             Int             @map("verse_num")
+  originalText         String          @map("original_text") @db.Text
+  primaryTranslation   String          @map("primary_translation") @db.Text
+  primaryTranslationId String?         @map("primary_translation_id")
+  language             String          @default("english")
+  verseOrder           Int             @map("verse_order") // Global ordering within text
+  metadata             Json            @default("{}")
   // Semantic embeddings stored as JSON array (or use pgvector extension)
-  embeddings            Json?    @default("[]")
-  figureMentions        FigureMention[]
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  embeddings           Json?           @default("[]")
+  figureMentions       FigureMention[]
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
 
-  themes                PassageTheme[]
-  passageTranslations   PassageTranslation[]
-  crossRefsSource       CrossReference[] @relation("CrossRefSource")
-  crossRefsTarget       CrossReference[] @relation("CrossRefTarget")
-  alignmentsSource      Alignment[] @relation("AlignmentSource")
-  alignmentsTarget      Alignment[] @relation("AlignmentTarget")
-  affinitiesSource      PassageAffinity[] @relation("AffinitySource")
-  affinitiesTarget      PassageAffinity[] @relation("AffinityTarget")
+  themes              PassageTheme[]
+  passageTranslations PassageTranslation[]
+  crossRefsSource     CrossReference[]     @relation("CrossRefSource")
+  crossRefsTarget     CrossReference[]     @relation("CrossRefTarget")
+  alignmentsSource    Alignment[]          @relation("AlignmentSource")
+  alignmentsTarget    Alignment[]          @relation("AlignmentTarget")
+  affinitiesSource    PassageAffinity[]    @relation("AffinitySource")
+  affinitiesTarget    PassageAffinity[]    @relation("AffinityTarget")
 
   @@index([textId, verseOrder])
   @@index([textId, bookSlug, chapterNum, verseNum])
@@ -123,19 +123,19 @@ model Passage {
 // ============================================================================
 
 model Translation {
-  id          String   @id @default(cuid())
-  textId      String   @map("text_id")
-  text        Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
-  name        String   // e.g., "Sahih International", "KJV", "ESV"
-  language    String   @default("english")
-  translator  String?
-  year        Int?
-  isPrimary   Boolean  @default(false) @map("is_primary")
-  license     String?  // public_domain, creative_commons, proprietary
-  sourceUrl   String?  @map("source_url")
-  metadata    Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  textId     String   @map("text_id")
+  text       Text     @relation(fields: [textId], references: [textId], onDelete: Cascade)
+  name       String // e.g., "Sahih International", "KJV", "ESV"
+  language   String   @default("english")
+  translator String?
+  year       Int?
+  isPrimary  Boolean  @default(false) @map("is_primary")
+  license    String? // public_domain, creative_commons, proprietary
+  sourceUrl  String?  @map("source_url")
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   passageTranslations PassageTranslation[]
 
@@ -144,13 +144,13 @@ model Translation {
 }
 
 model PassageTranslation {
-  id            String   @id @default(cuid())
-  passageId     String   @map("passage_id")
-  passage       Passage  @relation(fields: [passageId], references: [id], onDelete: Cascade)
-  translationId String   @map("translation_id")
+  id            String      @id @default(cuid())
+  passageId     String      @map("passage_id")
+  passage       Passage     @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  translationId String      @map("translation_id")
   translation   Translation @relation(fields: [translationId], references: [id], onDelete: Cascade)
-  text          String   @db.Text
-  createdAt     DateTime @default(now()) @map("created_at")
+  text          String      @db.Text
+  createdAt     DateTime    @default(now()) @map("created_at")
 
   @@unique([passageId, translationId])
   @@index([passageId])
@@ -164,7 +164,7 @@ model PassageTranslation {
 model Theme {
   id          String   @id @default(cuid())
   name        String   @unique
-  category    String?  // divine_attributes, covenant_law, salvation, etc.
+  category    String? // divine_attributes, covenant_law, salvation, etc.
   description String?
   taxonomy    String[] @default([]) // hierarchical path
   createdAt   DateTime @default(now()) @map("created_at")
@@ -177,17 +177,17 @@ model Theme {
 }
 
 model PassageTheme {
-  id        String  @id @default(cuid())
-  passageId String  @map("passage_id")
-  passage   Passage @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  passageId  String   @map("passage_id")
+  passage    Passage  @relation(fields: [passageId], references: [id], onDelete: Cascade)
   // Stores Theme.name, not Theme.id, so theme queries stay readable and stable.
-  themeId   String  @map("theme_id")
-  theme     Theme   @relation(fields: [themeId], references: [name], onDelete: Cascade)
-  score     Float   @default(0) // 0-1 from Jev Score
-  confidence Float  @default(0) // 0-1 from Jev
-  evidence  String[] @default([])
-  source    String  @default("jev") // jev, manual, derived
-  createdAt DateTime @default(now()) @map("created_at")
+  themeId    String   @map("theme_id")
+  theme      Theme    @relation(fields: [themeId], references: [name], onDelete: Cascade)
+  score      Float    @default(0) // 0-1 from Jev Score
+  confidence Float    @default(0) // 0-1 from Jev
+  evidence   String[] @default([])
+  source     String   @default("jev") // jev, manual, derived
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@unique([passageId, themeId])
   @@index([passageId])
@@ -205,7 +205,7 @@ model CrossReference {
   sourcePassage   Passage  @relation("CrossRefSource", fields: [sourcePassageId], references: [id], onDelete: Cascade)
   targetPassageId String   @map("target_passage_id")
   targetPassage   Passage  @relation("CrossRefTarget", fields: [targetPassageId], references: [id], onDelete: Cascade)
-  type            String   // quote, allusion, thematic, linguistic, narrative, theological
+  type            String // quote, allusion, thematic, linguistic, narrative, theological
   strength        Float    @default(0) // 0-1 from Jev Score
   direction       String   @default("bidirectional") // bidirectional, source_to_target, target_to_source
   notes           String?
@@ -230,7 +230,7 @@ model Alignment {
   sourcePassage   Passage  @relation("AlignmentSource", fields: [sourcePassageId], references: [id], onDelete: Cascade)
   targetPassageId String   @map("target_passage_id")
   targetPassage   Passage  @relation("AlignmentTarget", fields: [targetPassageId], references: [id], onDelete: Cascade)
-  type            String   // direct_quote, strong_allusion, thematic_parallel, linguistic_cognate, narrative_parallel, theological_echo, none
+  type            String // direct_quote, strong_allusion, thematic_parallel, linguistic_cognate, narrative_parallel, theological_echo, none
   strength        Float    @default(0)
   matchedSegments Json     @default("[]")
   notes           String?
@@ -261,16 +261,16 @@ model Alignment {
 /// for one person. The differing names are most of what is interesting about the
 /// relation and an edge would have thrown them away.
 model Figure {
-  id   String @id @default(cuid())
-  slug String @unique // jesus
+  id        String   @id @default(cuid())
+  slug      String   @unique // jesus
   /// The name used in the product's own voice, in English.
-  name String
+  name      String
   /// Why these passages are the same figure, with the citation that establishes it.
   ///
   /// The identification is not made here. The Qur'an makes it of Isa at 4:171 and
   /// 3:45 — "the Messiah, Jesus son of Mary" — so the basis is a passage in the
   /// corpus rather than an opinion of this product, and the page links it.
-  basis Json @default("{}")
+  basis     Json     @default("{}")
   createdAt DateTime @default(now()) @map("created_at")
 
   mentions FigureMention[]
@@ -280,14 +280,14 @@ model Figure {
 
 /// One passage naming a figure.
 model FigureMention {
-  id        String @id @default(cuid())
-  figureId  String @map("figure_id")
-  figure    Figure @relation(fields: [figureId], references: [id], onDelete: Cascade)
-  passageId String @map("passage_id")
+  id        String  @id @default(cuid())
+  figureId  String  @map("figure_id")
+  figure    Figure  @relation(fields: [figureId], references: [id], onDelete: Cascade)
+  passageId String  @map("passage_id")
   passage   Passage @relation(fields: [passageId], references: [id], onDelete: Cascade)
 
   /// The surface form found in this passage's original text, for display.
-  form String
+  form   String
   /// Whether this corpus's references attest the figure or argue against it.
   ///
   /// The Talmud names Yeshu in a handful of polemical passages, which are evidence
@@ -326,22 +326,22 @@ model PassageAffinity {
 /// Jastrow, Klein and Strong's, each kept with the dictionary it came from so the
 /// reader can see which tradition is defining the word.
 model LexiconEntry {
-  id            String   @id @default(cuid())
+  id              String   @id @default(cuid())
   /// The word as looked up, with vowel points and cantillation removed, so every
   /// vocalisation of one root shares a cache row.
-  lookupWord    String   @map("lookup_word")
+  lookupWord      String   @map("lookup_word")
   /// The dictionary's own headword, with its pointing, which is what to display.
-  headword      String
-  lexicon       String
-  language      String   @default("hebrew")
+  headword        String
+  lexicon         String
+  language        String   @default("hebrew")
   transliteration String?
-  strongNumber  String?  @map("strong_number")
-  morphology    String?
+  strongNumber    String?  @map("strong_number")
+  morphology      String?
   /// The entry's senses, verbatim, as an array of strings.
-  senses        Json     @default("[]")
+  senses          Json     @default("[]")
   /// Attribution for the dictionary itself.
-  source        String?
-  createdAt     DateTime @default(now()) @map("created_at")
+  source          String?
+  createdAt       DateTime @default(now()) @map("created_at")
 
   @@unique([lookupWord, lexicon, headword])
   @@index([lookupWord])
@@ -351,17 +351,36 @@ model LexiconEntry {
 // ============================================================================
 // Search & Analytics
 // ============================================================================
+model XlingualTerm {
+  id          String   @id @default(cuid())
+  // Theme.name, for the same reason PassageTheme stores the name: these are looked
+  // up by taxonomy slug from a query string.
+  theme       String
+  language    String // hebrew | greek | arabic | aramaic
+  // The term in the corpus's own orthography, folded at query time.
+  term        String
+  inPassages  Int      @default(0) @map("in_passages")
+  // How far this term's distribution inside the theme exceeds its distribution
+  // corpus-wide. Kept so a wrong row can be diagnosed rather than just deleted.
+  specificity Float    @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([theme, language, term])
+  @@index([theme])
+  @@map("xlingual_terms")
+}
+
 model SearchLog {
-  id        String   @id @default(cuid())
-  query     String
-  intent    String?
-  filters   Json     @default("{}")
-  resultCount Int     @map("result_count")
-  tookMs    Int      @map("took_ms")
-  userId    String?  @map("user_id")
-  sessionId String?  @map("session_id")
-  ipHash    String?  @map("ip_hash")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(cuid())
+  query       String
+  intent      String?
+  filters     Json     @default("{}")
+  resultCount Int      @map("result_count")
+  tookMs      Int      @map("took_ms")
+  userId      String?  @map("user_id")
+  sessionId   String?  @map("session_id")
+  ipHash      String?  @map("ip_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([createdAt])
   @@index([userId])
@@ -369,15 +388,15 @@ model SearchLog {
 }
 
 model UserPreference {
-  id            String   @id @default(cuid())
-  userId        String   @unique @map("user_id")
+  id                    String   @id @default(cuid())
+  userId                String   @unique @map("user_id")
   // RecommendationWeights, stored as JSON
-  weights       Json     @default("{}")
-  preferredTexts String[] @default([]) @map("preferred_texts")
-  preferredTranslations Json @default("{}") @map("preferred_translations")
-  uiSettings    Json     @default("{}") @map("ui_settings")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  weights               Json     @default("{}")
+  preferredTexts        String[] @default([]) @map("preferred_texts")
+  preferredTranslations Json     @default("{}") @map("preferred_translations")
+  uiSettings            Json     @default("{}") @map("ui_settings")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("user_preferences")
 }
@@ -439,18 +458,18 @@ model Collection {
 // ============================================================================
 
 model IndexingJob {
-  id          String   @id @default(cuid())
-  type        String   // full_reindex, incremental, passage_update, theme_extract, crossref_detect, alignment_compute
-  status      String   @default("pending") // pending, running, completed, failed
-  progress    Int      @default(0)
-  totalItems  Int      @default(0) @map("total_items")
-  processedItems Int   @default(0) @map("processed_items")
-  error       String?
-  metadata    Json     @default("{}")
-  startedAt   DateTime? @map("started_at")
-  completedAt DateTime? @map("completed_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id             String    @id @default(cuid())
+  type           String // full_reindex, incremental, passage_update, theme_extract, crossref_detect, alignment_compute
+  status         String    @default("pending") // pending, running, completed, failed
+  progress       Int       @default(0)
+  totalItems     Int       @default(0) @map("total_items")
+  processedItems Int       @default(0) @map("processed_items")
+  error          String?
+  metadata       Json      @default("{}")
+  startedAt      DateTime? @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([type, status])
