@@ -21,6 +21,27 @@
  * configuration in this database, and stemming is actively harmful for Arabic: the
  * prefixes and suffixes carry the meaning, and a stemmer strips them.
  *
+ * **Greek carries a second, stemmed vector, at a lower weight.** Every other script
+ * is indexed by surface form alone. Greek is the one corpus where that loses
+ * passages: θεός, θεοῦ, θεῷ, θεοί and θεῶν are five unrelated lexemes for one word,
+ * and a reader who types one does not find the other four. Measured reach on the
+ * Greek New Testament was 71% before this and the concept figure was 11%.
+ *
+ * The stems go in as *additional, lower-weighted* lexemes rather than replacing the
+ * surface forms, and that is the whole design. Replacing them was tried and it cost
+ * more than it gained: every passage containing ανθρωπ then competes for one lexeme,
+ * so the passages that contain the word the reader actually typed get pushed out of
+ * the page by passages that only contain a relative of it — ἀνθρωποι fell from 19 of
+ * 27 to 7 of 27. Weight A for the surface form and weight D for the stem means an
+ * exact hit outranks a stemmed one, so widening costs the reader nothing when the
+ * exact form is present, and still finds the sibling forms when it is not.
+ *
+ * Stems are added for Greek only, and the query side stems its Greek tokens exactly
+ * once. The algorithm is not idempotent — 39% of the corpus's tokens stem to
+ * something that stems to something else — so an index or a query stemmed twice
+ * would simply stop matching, which is a failure that looks exactly like a language
+ * the app cannot search.
+ *
  * Idempotent, and re-runnable. Pass --reindex to rebuild rows that already have a
  * vector, which is what a change to the normaliser requires.
  */
@@ -28,6 +49,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/passage';
 import { expandForIndex } from '../src/lib/script-normalize';
+import { stemGreekTokens } from '../src/lib/greek-stem';
 import { loadLocalEnv } from '../src/lib/env';
 
 loadLocalEnv();
@@ -118,7 +140,11 @@ async function main(): Promise<void> {
       SET search_vector_original = v.tsv
       FROM (
         VALUES ${Prisma.join(
-          batch.map((row) => Prisma.sql`(${row.id}::text, to_tsvector('simple', ${expandForIndex(row.originalText ?? '')}))`),
+          batch.map(
+            (row) =>
+              Prisma.sql`(${row.id}::text, setweight(to_tsvector('simple', ${expandForIndex(row.originalText ?? '')}), 'A')
+                || setweight(to_tsvector('simple', ${stemGreekTokens(expandForIndex(row.originalText ?? ''))}), 'D'))`
+          ),
           ','
         )}
       ) AS v(id, tsv)

@@ -53,6 +53,16 @@ npm run build
   relation (themes, cross-references, corpora) should query Postgres, and must
   not truncate results ordered by `verseOrder` — that biases toward the start of
   whichever corpus sorted first.
+- **The original-text index is two vectors for Greek, one for everything else.**
+  `search_vector_original` holds surface forms at weight `A`; for Greek it *also*
+  holds Snowball stems at weight `D`, and the query offers both with `|`. Two traps
+  in that one sentence: tsquery spells OR as `|`, not `||` — `||` is the Snowball
+  stemmer's own syntax and is a syntax error on every PostgreSQL version, and it took
+  Greek search down completely. And the stemmer is not idempotent (39% of the NT's
+  tokens stem to something that stems to something else), so the index and the query
+  must each stem exactly once. Do not replace the surface form with the stem: that
+  was tried, and every passage containing ανθρωπ then competes for one lexeme, so
+  exact matches get crowded out (ἀνθρωποι fell from 19/27 to 7/27).
 - **Passage keys are `textId:book:chapter:verse`.** The Quran is
   `quran:2:1:255` (surah:chapter:verse), not `quran:2:255`.
 - **A blended score must stay unsaturated.** Search multiplies by

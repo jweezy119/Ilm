@@ -20,6 +20,7 @@
 
 import { Prisma } from '@prisma/client';
 import { normalizeForSearch } from '../lib/script-normalize';
+import { stemGreekTokens } from '../lib/greek-stem';
 import { TextId } from '@ilm/shared';
 import { prisma } from '../lib/db';
 
@@ -195,9 +196,35 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
    * normaliser is the same function the backfill used, which is the only reason
    * the two sides cannot drift.
    */
+  /*
+   * The original-language query, carrying both the surface form and the stem.
+   *
+   * The index holds surface forms at weight A and Greek stems at weight D, so a
+   * query has to offer both or it will only ever match one of them. The pipe is the
+   * disjunction: a query for θεοῦ has to find θεός, and a query for θεός has to find
+   * θεοῦ, and ANDing them would require every passage to contain both.
+   *
+   * `|`, not `||`. The Snowball documentation writes the or as `||` because that is
+   * the stemmer's own syntax; tsquery spells it with a single pipe, and `||` is a
+   * syntax error on every PostgreSQL version. That one character took Greek search
+   * down entirely, and it presented as a query error rather than as an indexing
+   * problem, which is why it is written down here.
+   *
+   * Greek tokens are stemmed exactly once. The algorithm is not idempotent — 39% of
+   * the New Testament's tokens stem to something that stems to something else — so
+   * this is not a detail. A query stemmed twice simply stops matching the index,
+   * which presents as a language the app cannot search rather than as a bug.
+   *
+   * Only Greek is stemmed. Arabic and Hebrew keep surface forms alone because their
+   * prefixes carry the meaning, and both already measure 100% reachable.
+   */
+  const origSurface = query ? normalizeForSearch(query) : '';
+  const origStemmed = query ? stemGreekTokens(origSurface) : '';
+  const origLexemes =
+    origStemmed && origStemmed !== origSurface ? `${origSurface} | ${origStemmed}` : origSurface;
   const origQ = query
-    ? Prisma.sql`websearch_to_tsquery('simple', ${normalizeForSearch(query)})`
-    : Prisma.sql`websearch_to_tsquery('simple', '')`;
+    ? Prisma.sql`to_tsquery('simple', ${origLexemes})`
+    : Prisma.sql`to_tsquery('simple', '')`;
 
   /*
    * Two passes, strictest first, the second run only if the first found nothing.

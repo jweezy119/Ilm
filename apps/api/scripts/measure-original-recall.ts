@@ -39,6 +39,11 @@ const STOPWORD_CEILING = 300;
 /** A term in fewer passages than this is not something a reader is likely to type. */
 const MIN_DF = 12;
 const TOP_K = 20;
+/**
+ * The depth at which 'reachable' is measured, and at which a concept set stops being
+ * a page-size artefact and becomes a property of the index.
+ */
+const DEEP_K = 200;
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -195,12 +200,30 @@ async function main(): Promise<void> {
     let conceptWithinTotal = 0;
     let conceptBeyondHits = 0;
     let conceptBeyondTotal = 0;
+    let reachableHits = 0;
+    let reachableTotal = 0;
+    let measurable = 0;
     const detail: string[] = [];
 
     for (const [term, truth] of sample) {
+      /*
+       * One deep search, sliced to the first page.
+       *
+       * The concept set of a Greek word is routinely larger than twenty, because
+       * stemming merges every case of it, so a twenty-result page can never hold the
+       * answer and a recall figure measured only at that size is a measurement of
+       * the page limit. Measuring only the terms whose concept set happens to fit
+       * would be worse: those are the easy ones, so it would report a good number
+       * about a case that was never in doubt.
+       *
+       * Both are reported instead. `within one page` is what a reader sees first.
+       * `reachable` is whether the passages exist in the result set at all, which is
+       * the question the index can actually answer, and the count of terms it could
+       * be measured on is printed so the number can be read honestly.
+       */
       const result = await searchPassages({
         query: term,
-        limit: TOP_K,
+        limit: DEEP_K,
         offset: 0,
         includeScores: false,
         semantic: false,
@@ -210,7 +233,10 @@ async function main(): Promise<void> {
         expand: false,
         filters: { texts: [corpus.textId] },
       });
-      const returned = new Set(result.results.map((r) => r.passage.passageKey));
+      // The first page, as a reader would meet it.
+      const firstPage = result.results.slice(0, TOP_K);
+      const returned = new Set(firstPage.map((r) => r.passage.passageKey));
+      const deep = new Set(result.results.map((r) => r.passage.passageKey));
       const found = [...truth].filter((key) => returned.has(key)).length;
       hits += found;
       denominator += truth.size;
@@ -240,6 +266,18 @@ async function main(): Promise<void> {
         conceptBeyondTotal += concept.size;
       }
 
+      /*
+       * Reachable: the concept set, against a deep result set, restricted to terms
+       * whose whole concept set could fit in it. Without the restriction a term with
+       * 685 concept passages is scored against a 200-result list and the number
+       * describes the depth rather than the index.
+       */
+      if (concept.size <= DEEP_K) {
+        reachableHits += [...concept].filter((key) => deep.has(key)).length;
+        reachableTotal += concept.size;
+        measurable += 1;
+      }
+
       detail.push(
         `      ${term.padEnd(14)} ${String(found).padStart(3)}/${String(truth.size).padEnd(4)}` +
           (truth.size > TOP_K ? '  (page too small to hold them all)' : '') +
@@ -258,6 +296,18 @@ async function main(): Promise<void> {
     console.log(`    concept, within one page: ${conceptWithinHits}/${conceptWithinTotal} (${(conceptWithin * 100).toFixed(0)}%)`);
     console.log(`    surface, beyond one page: ${beyondHits}/${beyondTotal}, capped by the ${TOP_K}-result limit`);
     console.log(`    concept, beyond one page: ${conceptBeyondHits}/${conceptBeyondTotal}`);
+    /*
+     * The number that answers "can the index find this word at all". Reported with
+     * the count of terms it was measurable on, because a recall figure without its
+     * denominator's eligibility is the mistake this whole rewrite exists to fix.
+     */
+    if (measurable > 0) {
+      console.log(
+        `    reachable at ${DEEP_K} results: ${reachableHits}/${reachableTotal} (${((reachableHits / reachableTotal) * 100).toFixed(0)}%) over ${measurable}/${sample.length} measurable terms`
+      );
+    } else {
+      console.log(`    reachable: not measurable — no term's concept set fits ${DEEP_K} results`);
+    }
     console.log(detail.join('\n'));
   }
 

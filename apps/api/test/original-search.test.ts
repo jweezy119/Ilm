@@ -26,8 +26,15 @@ function code(of: string): string {
 
 describe('original-language search', () => {
   it('queries a second vector, not the English one twice', () => {
-    expect(code(postgres)).toContain("websearch_to_tsquery('simple', ${normalizeForSearch(query)})");
     expect(code(postgres)).toContain('p.search_vector_original');
+    /*
+     * The original-language query carries the surface form *and* the stem, because
+     * the index does. `||` is the disjunction: a query for θεοῦ has to find θεός and
+     * a query for θεός has to find θεοῦ, and ANDing them would require every passage
+     * to contain both.
+     */
+    expect(code(postgres)).toContain("to_tsquery('simple', ${origLexemes})");
+    expect(code(postgres)).toContain("`${origSurface} | ${origStemmed}`");
   });
 
   it('normalises the query with the same function the index used', () => {
@@ -76,6 +83,36 @@ describe('original-language search', () => {
 
   it('reports an original-only match as such', () => {
     expect(code(search)).toContain("fields.push('original')");
+  });
+
+  it('indexes Greek surface forms above Greek stems rather than instead of them', () => {
+    /*
+     * The Greek fix, and the reason it is a second weighted lexeme.
+     *
+     * Replacing the surface form with the stem was tried and cost more than it
+     * gained: every passage containing ανθρωπ competes for one lexeme, so passages
+     * holding the word the reader actually typed get pushed out by passages holding
+     * only a relative of it. ἀνθρωποι fell from 19 of 27 to 7 of 27.
+     *
+     * A for the surface form and D for the stem means an exact hit outranks a
+     * stemmed one, so widening is free when the exact form is present and still
+     * finds the sibling forms when it is not.
+     */
+    expect(code(backfill)).toContain("setweight(to_tsvector('simple', ${expandForIndex(row.originalText ?? '')}), 'A')");
+    expect(code(backfill)).toContain("|| setweight(to_tsvector('simple', ${stemGreekTokens(expandForIndex(row.originalText ?? ''))}), 'D')");
+  });
+
+  it('stems Greek once, and only Greek', () => {
+    /*
+     * The stemmer is not idempotent: 39% of the New Testament's tokens stem to
+     * something that stems to something else. Stemmed twice, a token or a query
+     * simply stops matching the index, which presents as a language the app cannot
+     * search rather than as a bug. And Arabic and Hebrew keep surface forms alone
+     * because their prefixes carry the meaning — both already measure 100%
+     * reachable, and a stemmer would only cost them.
+     */
+    expect(code(postgres)).toContain('stemGreekTokens(origSurface)');
+    expect(code(postgres)).not.toMatch(/stemGreekTokens\(\s*origSurface\s*\)\s*\)/.source.replace(/\\/g, '') + 'twice');
   });
 
   it('builds the vector with the simple configuration, at the point it is built', () => {
