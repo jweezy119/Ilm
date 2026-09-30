@@ -29,6 +29,7 @@
  */
 
 import { prisma } from '../src/lib/db';
+import { stemGreek } from '../src/lib/greek-stem';
 import { fold } from '../src/lib/script-normalize';
 import { searchPassages } from '../src/services/search';
 import type { TextId } from '@ilm/shared';
@@ -87,22 +88,54 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // term -> the passage keys in this sample that contain it
-    const index = new Map<string, Set<string>>();
+    /*
+     * Two indexes over the same rows, because one number cannot answer the
+     * question a reader is asking.
+     *
+     * `surface` maps a token to the passages containing that exact spelling. `stem`
+     * maps a token's stem to the passages containing *any* inflected form. The
+     * second is the honest definition of "the passages this word means" — a reader
+     * typing ἀνθρωποι wants ἀνθρώπων and ἀνθρώπῳ as well, and none of those three
+     * passages contains the string they typed.
+     *
+     * Having only ever measured against `surface` is why the Greek figure was
+     * 53% and why it could not be read. A surface-truth measurement scores a
+     * stem-based index for failing to match a form it was never asked for, and it
+     * scores an exact index for the thing it is actually good at. Both numbers are
+     * reported from here on, because a stem index trades the first for the second
+     * and a single figure can only hide that trade.
+     */
+    const surface = new Map<string, Set<string>>();
+    const stemIndex = new Map<string, Set<string>>();
     for (const row of rows) {
       const text = fold(row.originalText ?? '');
       if (text.length < 20) continue;
       const seen = new Set<string>();
+      const stems = new Set<string>();
       for (const word of text.split(/[^\p{L}\p{M}]+/u)) {
         if (word.length < 2) continue;
         if (!seen.has(word)) {
           seen.add(word);
-          const set = index.get(word) ?? new Set<string>();
+          const set = surface.get(word) ?? new Set<string>();
           set.add(row.passageKey);
-          index.set(word, set);
+          surface.set(word, set);
+        }
+        if (/\p{Script=Greek}/u.test(word)) {
+          const st = stemGreek(word);
+          if (st.length < 2) continue;
+          stems.add(st);
         }
       }
+      for (const st of stems) {
+        const set = stemIndex.get(st) ?? new Set<string>();
+        set.add(row.passageKey);
+        stemIndex.set(st, set);
+      }
     }
+    // Greek has no surface/stem distinction to measure without a stemmer; for every
+    // other script the two indexes are the same thing and the columns collapse to
+    // one number, which is the correct answer rather than a gap in the report.
+    const index = surface;
 
     /*
      * Function words are excluded, and the first attempt found the problem rather
@@ -156,6 +189,12 @@ async function main(): Promise<void> {
     let withinTotal = 0;
     let beyondHits = 0;
     let beyondTotal = 0;
+    let conceptHits = 0;
+    let conceptDenominator = 0;
+    let conceptWithinHits = 0;
+    let conceptWithinTotal = 0;
+    let conceptBeyondHits = 0;
+    let conceptBeyondTotal = 0;
     const detail: string[] = [];
 
     for (const [term, truth] of sample) {
@@ -182,18 +221,43 @@ async function main(): Promise<void> {
         beyondHits += found;
         beyondTotal += truth.size;
       }
+
+      // The concept score: every passage holding any form of this word, whether or
+      // not it holds the exact string. Non-Greek terms have no stemmer and their
+      // concept set is the surface set, so they report the same number twice — which
+      // is the honest result, not a missing column.
+      const concept = /\p{Script=Greek}/u.test(fold(term))
+        ? (stemIndex.get(stemGreek(fold(term))) ?? new Set<string>())
+        : truth;
+      const conceptFound = [...concept].filter((key) => returned.has(key)).length;
+      conceptHits += conceptFound;
+      conceptDenominator += concept.size;
+      if (concept.size <= TOP_K) {
+        conceptWithinHits += conceptFound;
+        conceptWithinTotal += concept.size;
+      } else {
+        conceptBeyondHits += conceptFound;
+        conceptBeyondTotal += concept.size;
+      }
+
       detail.push(
         `      ${term.padEnd(14)} ${String(found).padStart(3)}/${String(truth.size).padEnd(4)}` +
-          (truth.size > TOP_K ? '  (page too small to hold them all)' : '')
+          (truth.size > TOP_K ? '  (page too small to hold them all)' : '') +
+          (concept.size !== truth.size
+            ? `   concept ${String(conceptFound).padStart(3)}/${String(concept.size).padEnd(4)}`
+            : '')
       );
     }
 
     const recall = denominator > 0 ? hits / denominator : 0;
     const within = withinTotal > 0 ? withinHits / withinTotal : 0;
+    const conceptWithin = conceptWithinTotal > 0 ? conceptWithinHits / conceptWithinTotal : 0;
     totals.push({ label: corpus.label, hits, of: denominator, recall });
     console.log(`\n  ${corpus.label} — ${sample.length} terms, ${hits}/${denominator} passages (${(recall * 100).toFixed(0)}% overall)`);
-    console.log(`    within one page: ${withinHits}/${withinTotal} (${(within * 100).toFixed(0)}%)`);
-    console.log(`    beyond one page: ${beyondHits}/${beyondTotal}, capped by the ${TOP_K}-result limit`);
+    console.log(`    surface, within one page: ${withinHits}/${withinTotal} (${(within * 100).toFixed(0)}%)`);
+    console.log(`    concept, within one page: ${conceptWithinHits}/${conceptWithinTotal} (${(conceptWithin * 100).toFixed(0)}%)`);
+    console.log(`    surface, beyond one page: ${beyondHits}/${beyondTotal}, capped by the ${TOP_K}-result limit`);
+    console.log(`    concept, beyond one page: ${conceptBeyondHits}/${conceptBeyondTotal}`);
     console.log(detail.join('\n'));
   }
 
