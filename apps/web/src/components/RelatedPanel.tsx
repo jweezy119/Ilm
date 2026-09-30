@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { Quote, Sparkles, Bookmark, Layers } from 'lucide-react';
+import { ArrowRight, Quote, Sparkles, Bookmark, Layers, Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import { getTextLabel } from '@/lib/utils';
 import type { RelatedPassages, RelatedPassage } from '@ilm/shared';
@@ -33,6 +33,55 @@ const GROUPS: Array<{ kind: RelatedPassage['kind']; icon: typeof Quote }> = [
   { kind: 'relation', icon: Sparkles },
   { kind: 'theme', icon: Bookmark },
 ];
+
+/**
+ * Which figures this passage names, offered above the relations.
+ *
+ * A cross-tradition figure is not a relation between two passages, so it does not
+ * belong in the three relation groups below — it is the same person appearing under
+ * four names, which is a different kind of claim and needs its own surface. Placed
+ * first because a verse that names the figure is where a reader is most likely to
+ * want to see it.
+ */
+export function FigureNotice({ passageId }: { passageId: string }) {
+  const t = useTranslations('figure');
+  const [figures, setFigures] = useState<Array<{ slug: string; name: string; form: string; stance: string }>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .passageFigures(passageId)
+      .then((r) => {
+        if (!cancelled) setFigures(r.figures);
+      })
+      // Silent on failure. A notice that cannot be fetched should leave the page as
+      // it was, not show an error where nothing was wrong.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [passageId]);
+
+  if (figures.length === 0) return null;
+
+  return (
+    <section className="mb-6">
+      {figures.map((f) => (
+        <Link
+          key={f.slug}
+          href={`/figure/${f.slug}`}
+          className="flex items-center gap-2 rounded-lg border border-line bg-raised px-3 py-2.5 text-[13px] transition-colors hover:border-accent/50"
+        >
+          <Users className="h-4 w-4 shrink-0 text-fg-faint" aria-hidden />
+          <span className="text-fg-muted">
+            {t('notice', { name: f.name, form: f.form })}
+          </span>
+          <ArrowRight className="ms-auto h-3.5 w-3.5 shrink-0 text-fg-faint" aria-hidden />
+        </Link>
+      ))}
+    </section>
+  );
+}
 
 export function RelatedPanel({ passageId }: { passageId: string }) {
   const t = useTranslations('related');

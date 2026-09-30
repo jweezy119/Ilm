@@ -99,6 +99,7 @@ model Passage {
   metadata              Json     @default("{}")
   // Semantic embeddings stored as JSON array (or use pgvector extension)
   embeddings            Json?    @default("[]")
+  figureMentions        FigureMention[]
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
@@ -247,6 +248,60 @@ model Alignment {
 /// composite does — so they are stored without a composite and recombined on read.
 /// That is what lets the weight sliders re-rank instantly and for free, which is
 /// what the settings page promises.
+/// A figure named across traditions, and the passages that name them.
+///
+/// Not a cross-reference, and the difference matters. A cross-reference is a relation
+/// between two passages — this passage quotes that one. A figure is not a passage, so
+/// an edge between every attesting passage would be 26 × 963 edges for Jesus alone
+/// and almost none of them would mean anything. The relation is passage → figure,
+/// which is a different shape and needs a different table.
+///
+/// One row per passage that names the figure, carrying the surface form found, so the
+/// page can show that the Qur'an says عيسى, the Gospels Ἰησοῦς and the hadith يسوع
+/// for one person. The differing names are most of what is interesting about the
+/// relation and an edge would have thrown them away.
+model Figure {
+  id   String @id @default(cuid())
+  slug String @unique // jesus
+  /// The name used in the product's own voice, in English.
+  name String
+  /// Why these passages are the same figure, with the citation that establishes it.
+  ///
+  /// The identification is not made here. The Qur'an makes it of Isa at 4:171 and
+  /// 3:45 — "the Messiah, Jesus son of Mary" — so the basis is a passage in the
+  /// corpus rather than an opinion of this product, and the page links it.
+  basis Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  mentions FigureMention[]
+
+  @@map("figures")
+}
+
+/// One passage naming a figure.
+model FigureMention {
+  id        String @id @default(cuid())
+  figureId  String @map("figure_id")
+  figure    Figure @relation(fields: [figureId], references: [id], onDelete: Cascade)
+  passageId String @map("passage_id")
+  passage   Passage @relation(fields: [passageId], references: [id], onDelete: Cascade)
+
+  /// The surface form found in this passage's original text, for display.
+  form String
+  /// Whether this corpus's references attest the figure or argue against it.
+  ///
+  /// The Talmud names Yeshu in a handful of polemical passages, which are evidence
+  /// that the name was in use and evidence of a dispute — not a confession. Filing
+  /// those beside the Gospels without the distinction would present a polemic as
+  /// agreement, so the stance travels with the mention.
+  stance String @default("attesting") // attesting | polemical
+
+  @@unique([figureId, passageId])
+  @@index([figureId, stance])
+  @@index([passageId])
+  @@map("figure_mentions")
+}
+
 model PassageAffinity {
   id              String   @id @default(cuid())
   sourcePassageId String   @map("source_passage_id")

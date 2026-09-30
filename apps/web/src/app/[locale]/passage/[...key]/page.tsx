@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
-import { RelatedPanel } from '@/components/RelatedPanel';
+import { FigureNotice, RelatedPanel } from '@/components/RelatedPanel';
 import { SaveButton } from '@/components/SaveButton';
 import { CopyCitation } from '@/components/CopyCitation';
 import { useParams } from 'next/navigation';
@@ -233,6 +233,7 @@ export default function PassagePage() {
         {/* Related passages, replacing the citations-only panel. Same verbatim
             matches, plus the model relations and shared themes that were
             previously in two other places, each labelled with its kind. */}
+        <FigureNotice passageId={passage.id} />
         <RelatedPanel passageId={passage.id} />
 
         <RecommendationPanel passage={passage} />

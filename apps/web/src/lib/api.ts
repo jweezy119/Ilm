@@ -12,6 +12,7 @@ import type {
   ScoreBreakdown,
   SearchResponse,
   TextId,
+  Figure,
   ThemeComparison,
   ThemeJourneyStep,
   Topic,
@@ -378,6 +379,12 @@ export const api = {
     ),
 
   themeMap: (theme: string) => get<ThemeMap>(`/api/themes/${encodeURIComponent(theme)}/map`),
+
+  figure: (slug: string) => get<Figure>(`/api/figures/${encodeURIComponent(slug)}`),
+  passageFigures: (passageId: string) =>
+    get<{ figures: Array<{ slug: string; name: string; form: string; stance: string }> }>(
+      `/api/passages/${encodeURIComponent(passageId)}/figures`
+    ),
 
   /**
    * One theme, one column per tradition.

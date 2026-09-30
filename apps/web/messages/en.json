@@ -323,5 +323,15 @@
     "noColumnsTitle": "Nothing is labelled strongly enough",
     "noColumnsBody": "No passage in any searched corpus scored {floor} or above for this theme. Lower the bar to see weaker matches.",
     "loadFailed": "Could not load the comparison"
+  },
+  "figure": {
+    "description": "Where this figure is named, in which form, and how much of each corpus carries the name. The names differ and the counts are not like for like; both are shown as they are.",
+    "basisPrefix": "The identification is the corpus’s own:",
+    "mention": "mention",
+    "mentions": "mentions",
+    "total": "{count} passages across the corpora below name him.",
+    "back": "All topics",
+    "loadFailed": "Could not load the figure",
+    "notice": "This passage names {name} as {form} — see where each text names him."
   }
 }

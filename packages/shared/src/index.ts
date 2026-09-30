@@ -118,6 +118,57 @@ export const ThemeComparisonSchema = z.object({
 });
 export type ThemeComparison = z.infer<typeof ThemeComparisonSchema>;
 
+/**
+ * A figure named across traditions.
+ *
+ * `unit` is load-bearing. The Quran corpus holds one passage per surah and the New
+ * Testament one per verse, so the mention counts are not measuring the same thing
+ * and printing them side by side without the unit would invent a comparison.
+ *
+ * `absent` carries a reason for every corpus deliberately left out, because a gap in
+ * a page about one person is the easiest place in the product to imply a silence
+ * that is really a coverage gap or a name collision.
+ */
+export const FigureCorpusSchema = z.object({
+  textId: TextIdSchema,
+  name: z.string(),
+  direction: z.enum(['rtl', 'ltr']),
+  /** 'surah' or 'verse' — how this corpus is divided. */
+  unit: z.string(),
+  mentions: z.number().int().nonnegative(),
+  /** The surface forms this corpus uses for the figure. */
+  forms: z.array(z.string()),
+  /** 'attesting' or 'polemical'. */
+  stance: z.string(),
+  sample: z.array(z.object({
+    passageKey: z.string(),
+    book: z.string(),
+    chapter: z.number().int(),
+    verse: z.number().int(),
+    text: z.string(),
+  })),
+});
+export type FigureCorpus = z.infer<typeof FigureCorpusSchema>;
+
+export const FigureSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  basis: z.object({
+    identification: z.string().optional(),
+    passageKeys: z.array(z.string()).optional(),
+    excluded: z
+      .object({
+        corpora: z.array(z.string()),
+        reasons: z.record(z.string()).optional(),
+      })
+      .optional(),
+  }),
+  corpora: z.array(FigureCorpusSchema),
+  absent: z.array(z.object({ textId: z.string(), name: z.string(), reason: z.string() })),
+  totalMentions: z.number().int().nonnegative(),
+});
+export type Figure = z.infer<typeof FigureSchema>;
+
 export const CrossRefTypeSchema = z.enum([
   'quote',
   'allusion',

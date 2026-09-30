@@ -17,6 +17,7 @@ import {
 } from '@ilm/shared';
 import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
 import { compareTheme, isKnownTheme } from '../services/compare';
+import { getFigure, getFiguresForPassage } from '../services/figures';
 import {
   getPassageById,
   getPassageByKey,
@@ -393,6 +394,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
    * relation, shared theme. Each row says which kind it is, because an eleven-word
    * verbatim run and a shared theme are not the same claim.
    */
+  /*
+   * Which figures a passage names, so the relation is offered from the passage page
+   * where a reader meets the figure, and not only from a figure index they would
+   * have to know to look for.
+   */
+  app.get('/api/passages/:id/figures', async (request: FastifyRequest<{ Params: { id: string } }>) => {
+    return ok({ figures: await getFiguresForPassage(request.params.id) });
+  });
+
   app.get('/api/passages/:id/related', async (request: FastifyRequest<{ Params: { id: string }; Querystring: { limit?: string } }>, reply: FastifyReply) => {
     const id = decodeURIComponent(request.params.id);
     const passage = await getPassageById(id);
@@ -660,6 +670,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
    * labelled passages anywhere is a valid 200 with every column absent, which is a
    * different answer from a theme that does not exist.
    */
+  /*
+   * A figure named across traditions.
+   *
+   * `?figure=` on the passage route rather than a second one, because the question
+   * "which figures does this passage name" is a property of the passage and there
+   * is exactly one passage.
+   */
+  app.get('/api/figures/:slug', async (request: FastifyRequest<{ Params: { slug: string }; Querystring: { limit?: string } }>, reply: FastifyReply) => {
+    const limit = clamp(Number(request.query.limit ?? 4), 1, 12);
+    const figure = await getFigure(request.params.slug, limit);
+    if (!figure) return fail(reply, 404, 'NOT_FOUND', `No figure called "${request.params.slug}"`);
+    return ok(figure);
+  });
+
   app.get('/api/themes/:theme/compare', async (request: FastifyRequest<{ Params: { theme: string }; Querystring: { bar?: string; texts?: string; per?: string } }>, reply: FastifyReply) => {
     const theme = request.params.theme;
     if (!isKnownTheme(theme)) return fail(reply, 404, 'NOT_FOUND', `"${theme}" is not a theme in the taxonomy`);
