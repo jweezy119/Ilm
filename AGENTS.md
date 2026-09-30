@@ -69,3 +69,20 @@ collide with a Postgres already on 5432; `apps/api/.env` expects that.
 
 `apps/api/data/search-index/` is generated and gitignored. Delete it to force a
 rebuild.
+
+### Migrations are applied by the API on boot — do not apply them by hand
+
+`src/index.ts` runs `npx prisma migrate deploy` before `app.listen`, and calls
+`process.exit(1)` if it fails, so a schema change cannot ship ahead of its migration.
+This is deliberate: a half-migrated database cannot serve requests, and refusing to
+boot rolls the deploy back to a commit whose code matches the schema.
+
+The consequence is that **running the migration SQL through `psql` breaks it.** A
+hand-applied migration leaves no row in `_prisma_migrations`, the next boot replays
+it, it fails against tables that already exist, and the service will not start. It
+looks like the new code broke the API when the migration did. If you need a
+migration applied to production out of band, delete it from `_prisma_migrations` and
+drop what it created, and let the deploy do it.
+
+Render is otherwise not involved: it builds and runs, and the migration happens as
+part of starting up.
