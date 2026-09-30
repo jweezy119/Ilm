@@ -110,6 +110,33 @@ describe('installability', () => {
     expect(assetlinks).toContain('delegate_permission/common.handle_all_urls');
   });
 
+  it('cannot commit the release keystore', () => {
+    /*
+     * The single file in this repository that would let someone publish an update to
+     * Ilm, and the one whose loss means unpublishing rather than shipping the next
+     * version — because Android identifies an update by its signing key.
+     *
+     * Asserted rather than trusted because the failure is invisible until it is
+     * catastrophic, and because the natural first keystore someone generates lands in
+     * the repo root, which is exactly where a .gitignore entry has to already be.
+     */
+    const ignore = readFileSync(join(root, '..', '..', '.gitignore'), 'utf8');
+    for (const pattern of ['*.keystore', '*.jks', 'keystore.properties']) {
+      expect(ignore, `${pattern} is not ignored`).toContain(pattern);
+    }
+  });
+
+  it('keeps the keystore and the fingerprint apart', () => {
+    /*
+     * The fingerprint is derived from the keystore and is public — Android fetches
+     * it from the site to verify the link — so it belongs in a committed file. The
+     * keystore does not. Conflating them is how one of the two leaks.
+     */
+    expect(assetlinks).toContain('delegate_permission/common.handle_all_urls');
+    expect(read('scripts/build-android-twa.ts')).toContain('fingerprintOf');
+    expect(read('scripts/build-android-twa.ts')).toContain('writeAssetlinks(packageName, fingerprint)');
+  });
+
   it('publishes a privacy policy, because Play will not review without one', () => {
     // Not a nice-to-have. The Play listing requires a public URL, and this one has
     // to exist in three languages because a policy a Hebrew-speaking reader cannot
