@@ -13,7 +13,7 @@
  */
 
 import type { Prisma } from '@prisma/client';
-import { TextId, type Passage } from '@ilm/shared';
+import { TextId, TEXT_METADATA, type Passage } from '@ilm/shared';
 import { loadLocalEnv } from '../src/lib/env';
 import { prisma, setPassageThemesBatch } from '../src/services/passage';
 import { classifyThemes, scoreSemanticDensity, needsJudgement } from '../src/services/typesafe';
@@ -80,13 +80,37 @@ const JEV_INPUT_USD_PER_M = 0.042;
 
 function parseArgs(): Options {
   const args = process.argv.slice(2);
+  /*
+   * Accepts both `--flag value` and `--flag=value`.
+   *
+   * It accepted only the first, and the second form was not an error — it was
+   * silently ignored. Running with `--only=bukhari,muslim` therefore scored all
+   * 59,949 passages instead of the 14,496 asked for, because the flag never
+   * matched and an empty corpus filter means every corpus. It would have replaced
+   * every theme score in the table, which is the kind of failure a mistyped flag
+   * should never be able to cause.
+   */
   const value = (flag: string) => {
+    const inline = args.find((a) => a.startsWith(`${flag}=`));
+    if (inline) return inline.slice(flag.length + 1);
     const i = args.indexOf(flag);
     return i >= 0 ? args[i + 1] : undefined;
   };
 
   const themesArg = value('--themes');
-  const only = (value('--only') ?? '').split(',').filter((t): t is TextId => ['quran', 'torah', 'talmud', 'ot', 'nt'].includes(t));
+  /*
+   * The corpus list is the shared one, not a literal here.
+   *
+   * This was hardcoded to the five original corpora and silently ignored
+   * `--only=bukhari,muslim`, so the hadith were invisible to the theme scorer — the
+   * same drift as the copy of the recommendation weights in the web store, and fixed
+   * the same way: one list, imported, so it cannot fall behind.
+   */
+  const all: TextId[] = Object.keys(TEXT_METADATA) as TextId[];
+  const only = (value('--only') ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t): t is TextId => (all as string[]).includes(t));
 
   return {
     themes: themesArg ? Number(themesArg) : null,
