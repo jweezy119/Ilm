@@ -27,7 +27,8 @@
     "topics": "Topics",
     "library": "Library",
     "terms": "Terms",
-    "privacy": "Privacy"
+    "privacy": "Privacy",
+    "contact": "Contact"
   },
   "language": {
     "label": "Language",
@@ -355,7 +356,7 @@
       "thirdPartyTitle": "What is sent to a third party",
       "thirdPartyBody": "A search query is sent to Jev, an external AI service we use, so the app can work out what kind of question you are asking and re-order results accordingly. The query text is sent. If you would rather it were not, the app still works: Jev is optional, and without it the app falls back to a deterministic method and labels every score as derived rather than model-produced.",
       "noSell": "We do not sell or share your data for advertising. There are no third-party advertising or analytics scripts on this site.",
-      "rights": "If you want the search log deleted, contact us and we will remove it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when.",
+      "rights": "Write to us and we will delete it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when — the contact page has the address.",
       "changes": "If this policy changes, the date below changes with it."
     },
     "terms": {
@@ -367,7 +368,21 @@
       "accuracyBody": "Ilm is not an authority on religion and should not be used as one. The search ranks passages by how well they match your words and, where a model was available, by a model's judgement of relevance. Every score says which of the two it was. Verbatim matches are exact and you can check them by reading. Theme tags come from a keyword classifier and are the weakest kind of match in the app, and the interface says so wherever they appear.",
       "quoteTitle": "Quoting from Ilm",
       "quoteBody": "The original-language texts are not subject to copyright. The English translations are each governed by their own rights, and several in this app are. Quote the language you want to quote and name the translation.",
-      "contact": "Questions about either of these can go to the address on the contact page."
+      "contact": "Write to us and we will delete it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when — the contact page has the address."
     }
+  },
+  "contact": {
+    "title": "Contact",
+    "intro": "Three kinds of message, and one address for all of them.",
+    "addressLabel": "Email",
+    "correctionsTitle": "A wrong passage or translation",
+    "correctionsBody": "If Ilm quotes a passage that is not there, gives the wrong reference, or shows a translation that is not the one it says it is, that is a bug and the most important thing you can tell us. Include the passage and what it should say.",
+    "privacyTitle": "Deleting a search",
+    "privacyBody": "Ilm keeps a log of searches. Tell us what you searched for and roughly when, and it will be deleted. There are no accounts, so that text is the only way to find the record — which is also why it is a short, honest limitation rather than a one-click button.",
+    "securityTitle": "A security problem",
+    "securityBody": "Please report it before disclosing it publicly, and say how to reproduce it.",
+    "responseTitle": "What to expect",
+    "responseBody": "Corrections are the ones we can most often fix, and a confirmed wrong reference is usually fixed within days. Search-log deletions are done as soon as we read them. Security reports get a reply either way.",
+    "addressNote": "Replace this with your real address before shipping, or set NEXT_PUBLIC_CONTACT_EMAIL."
   }
 }

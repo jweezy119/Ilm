@@ -7,6 +7,8 @@ import { DEFAULT_WEIGHTS } from '@ilm/shared';
 import { api, ApiError, type Health, type CorpusStats } from '@/lib/api';
 import { Page, PageHeader } from '@/components/Shell';
 import { useSettingsStore } from '@/store';
+import { Link } from '@/i18n/navigation';
+import { useTranslations } from 'next-intl';
 import { getTextLabel, percent, TEXT_IDS } from '@/lib/utils';
 
 const DIMENSIONS: Array<{ key: keyof RecommendationWeights; label: string; help: string }> = [
@@ -21,6 +23,7 @@ const USER_ID = 'local';
 type TextId = (typeof TEXT_IDS)[number];
 
 export default function SettingsPage() {
+  const t = useTranslations('nav');
   const { weights, setWeights, resetWeights } = useSettingsStore();
 
   const [health, setHealth] = useState<Health | null>(null);
@@ -244,6 +247,34 @@ export default function SettingsPage() {
         this app can have: a reader searches the New Testament, gets nothing, and
         concludes the texts do not address it — a claim about scripture, and false.
       */}
+      {/*
+          The legal pages, and the only route to them.
+
+          They existed and nothing pointed at them. A privacy policy a reader cannot
+          find is not published in any sense that matters — Play requires a public
+          URL rather than a discoverable one, so the store listing would have passed
+          while the app told nobody anything. Settings is where they belong: it is the
+          one page a reader reaches deliberately, and these are pages a reader reaches
+          deliberately or not at all.
+
+          A foot of links rather than three in the sidebar, because a nav entry for a
+          privacy policy is the fastest way to make it look like the place where
+          privacy policy goes.
+      */}
+      <section className="mt-6 border-t border-line pt-4 dark:border-white/10">
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+          <Link href="/privacy" className="text-fg-muted underline underline-offset-4 hover:text-fg">
+            {t('privacy')}
+          </Link>
+          <Link href="/terms" className="text-fg-muted underline underline-offset-4 hover:text-fg">
+            {t('terms')}
+          </Link>
+          <Link href="/contact" className="text-fg-muted underline underline-offset-4 hover:text-fg">
+            {t('contact')}
+          </Link>
+        </div>
+      </section>
+
       {corpus ? (
         <section className="mt-5">
           <h2 className="mb-3 text-sm font-medium">This deployment</h2>
