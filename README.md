@@ -5,10 +5,18 @@ A Quranic AI assistant with search, recommendations, and multilingual support.
 ## Features
 
 - **AI Chat Interface**: Ask questions about the Quran and receive intelligent answers with context
-- **AI Intuitive Search & Indexing**:
-  - Semantic search with vector embeddings
-  - Inverted index for fast keyword lookup
-  - Multi-strategy ranking (keyword + semantic)
+- **Reading Glossary**:
+  - 129 curated Quranic terms chosen from a frequency analysis of the English translations
+  - Inline tap-to-define: terms in any translation carry a dotted underline
+  - Popover gloss with transliteration, Arabic script, meaning, and verse references
+  - Browseable Glossary tab with search and category filtering
+  - One-tap toggle to switch glossing off for uninterrupted reading
+  - Covers transliterations too, so `salah`, `zakat` and `jannah` resolve
+- **Online Quran Reader**: View the Quran online with translation options
+- **Fast AI Search & Indexing**:
+  - Full-text inverted index over all 6,236 verses
+  - TF-IDF ranking with light stemming and transliteration synonyms
+  - TTL query cache; whole-Quran text cached to disk on first run
 - **Context Intelligence**:
   - User profiling and reading history
   - Topic tracking and knowledge graph
@@ -19,7 +27,6 @@ A Quranic AI assistant with search, recommendations, and multilingual support.
   - Exploratory recommendations for new topics
   - Complementary verse suggestions
   - 7-day personalized reading plans
-- **Online Quran Reader**: View the Quran online with translation options
 - **Multilingual Support**: Read the Quran in preferred languages
 - **Hadith Inferences**: Separate section for hadith-related insights (separate from Quran text)
 
@@ -38,13 +45,71 @@ A Quranic AI assistant with search, recommendations, and multilingual support.
 
 ## Structure
 
-- `data_service.py` - API integration with real Quran/Hadith sources
-- `search_engine.py` - AI search, indexing, query understanding, context intelligence
+- `data_service.py` - API integration with real Quran/Hadith sources, bulk loader + disk cache
+- `search_engine.py` - Inverted index, TF-IDF ranking, stemming, synonyms, query cache
+- `glossary.py` - Reading glossary data, matching engine, and corpus self-test
 - `recommendations.py` - Context-aware recommendation engine
 - `app.py` - Main application controller
+- `web_app.py` - Flask routes and the single-page frontend
 - `api/quran_api.py` - REST API layer
 - `models/quran_model.py` - Data models
 - `views/` - Frontend views (chat, search, recommendations, hadith)
+
+## Reading Glossary
+
+A curated dictionary of Quranic terms, built from a frequency analysis of the
+`en.sahih` translation so it covers the words a reader actually meets often.
+
+```bash
+# Self-test the glossary against the live corpus
+python glossary.py
+```
+
+The check reports coverage, duplicate terms, and any verse reference that does
+not exist. Add or edit entries in `ENTRIES` in `glossary.py`; each entry is:
+
+```python
+dict(
+    term="Zakat",              # canonical name
+    variants=["alms", "alms-tax", "zakat"],  # matched in translation text
+    translit="Zakāh",
+    arabic="زكاة",
+    short="Obligatory almsgiving on wealth.",   # inline popover
+    detail="From a root meaning 'growth'...",   # full entry
+    category=PRACTICE,
+    refs=["2:263", "9:60"],     # verified against the corpus
+)
+```
+
+Matching is whole-word and case-insensitive by default. Set
+`case_sensitive=True` for names that double as ordinary English words (for
+example `Lot`, the prophet). Where a variant is too common to be a reliable
+signal — `light`, `good`, `know`, `trust` — it is deliberately left out so the
+highlights stay meaningful.
+
+Note: a few entries are *reference only*. The `en.sahih` translation says
+"alms" rather than "zakat" and never uses "taqwa", so those entries appear in
+the Glossary tab but are not highlighted inline.
+
+### API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/glossary` | All entries; `?q=` and `?category=` filters |
+| `GET /api/glossary/<term>` | One entry by name |
+| `POST /api/gloss` | Annotate text: `{"text": "..."}` |
+| `GET /api/verse-gloss/<verse_key>` | Terms present in one verse |
+
+The browser fetches the glossary once and matches locally, so highlighting a
+translation costs no extra network requests.
+
+## Performance Notes
+
+- The whole Quran (Arabic + translation) is fetched in two requests and cached
+  to `data/` for 7 days; the search index is built in the background at startup.
+- First request does not block on indexing. If a request arrives before the
+  index is ready, the engine falls back to live API search instead of hanging.
+- Search queries run in single-digit milliseconds and are memoized for 5 minutes.
 
 ## Installation
 

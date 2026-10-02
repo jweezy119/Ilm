@@ -1,9 +1,13 @@
 """Minimal web interface for Ilm - deployable on Render/Railway/Fly.io"""
 
+import os
+import threading
+
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from app import app as ilm_app
 from quran_reader import QuranReader, SurahInfo
+from glossary import GLOSSARY
 
 app = Flask(__name__)
 CORS(app)
@@ -69,7 +73,8 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; min-height:
   font-weight: 600;
 }
 .nav-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-.nav-btn.secondary { background: #f1f5f9; }
+.nav-btn.secondary { background: var(--bg); }
+[data-theme="dark"] .nav-btn.secondary { background: #1e293b; }
 .panels { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .panel { display: none; flex: 1; min-height: 0; }
 .panel.open { display: flex; flex-direction: column; min-height: 0; }
@@ -307,15 +312,8 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; min-height:
 
 .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
 .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-  padding: 0.35rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  color: var(--text);
-}
-.chip:hover { border-color: var(--primary); background: #f0fdfa; }
+.chip.suggestion { cursor: pointer; }
+.chip.suggestion:hover { border-color: var(--primary); background: #f0fdfa; }
 .insights { margin-top: 0.75rem; padding: 0.9rem; background: #f0fdfa; border-radius: 0.6rem; border: 1px solid #99f6e4; }
 .insights b { color: var(--primary); }
 .error { color: #dc2626; background: #fef2f2; padding: 0.9rem; border-radius: 0.6rem; border: 1px solid #fecaca; }
@@ -334,7 +332,6 @@ body { background: var(--bg); color: var(--text); min-height: 100vh; min-height:
 .hadith-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
 @media (min-width: 768px) { .hadith-grid { grid-template-columns: repeat(2, 1fr); }
 }
-init();
 .collection-btn {
   padding: 0.7rem 0.9rem;
   background: var(--surface);
@@ -345,17 +342,23 @@ init();
   font-weight: 600;
   text-align: left;
 }
-.collection-btn:hover { border-color: var(--hadith-accent); background: #f5f3ff; }
+.collection-btn:hover { border-color: var(--hadith-accent); background: var(--bg); }
 .reader-header { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.6rem 0; }
 select {
   padding: 0.6rem 0.8rem;
   border-radius: 0.5rem;
-  border: 1px solid #cbd5e1;
-  background: #f1f5f9;
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text);
   font-size: 1rem;
 }
-.back { padding: 0.5rem 0.8rem; border-radius: 0.5rem; border: 1px solid var(--border); background: #f1f5f9; color: var(--text); cursor: pointer; font-weight: 700; }
+/* Native <option> elements follow the OS colour scheme, so they need
+   explicit colours to stay readable in dark mode. */
+select option { background: var(--surface); color: var(--text); }
+[data-theme="dark"] select option { background: #1e293b; color: #e2e8f0; }
+[data-theme="dark"] select { background: #1e293b; color: #e2e8f0; border-color: #334155; }
+.back { padding: 0.5rem 0.8rem; border-radius: 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; font-weight: 700; }
+[data-theme="dark"] .back { background: #1e293b; color: #e2e8f0; border-color: #334155; }
 .copy-btn {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -373,6 +376,78 @@ select {
   transform: scale(1.05);
 }
 .icon-btn:hover { color: var(--text); transform: scale(1.1); }
+.bubble.thinking { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--muted); font-style: italic; }
+.bubble.error-bubble { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.verse-ref { font-weight: 700; color: var(--verse-accent); }
+.match-badge { font-size: 0.72rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0.1rem 0.5rem; }
+.card-actions { display: flex; gap: 0.35rem; margin-top: 0.6rem; }
+.expand-btn { margin-top: 0.6rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 0.4rem 0.9rem; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.expand-btn:hover { border-color: var(--primary); color: var(--primary); }
+button[disabled] { opacity: 0.6; cursor: not-allowed; transform: none !important; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Reading glossary ---------- */
+g-term {
+  cursor: help;
+  border-bottom: 1px dotted var(--muted);
+  background: transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+g-term:hover, g-term:focus, g-term.active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border-bottom-color: var(--primary);
+  border-bottom-style: solid;
+  outline: none;
+}
+[data-theme="dark"] g-term { border-bottom-color: var(--muted); }
+body.glossing-off g-term { cursor: text; border-bottom: none; background: none; }
+
+.gloss-pop {
+  position: fixed;
+  z-index: 100;
+  max-width: 340px;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  border-radius: 0.7rem;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.gloss-pop .g-term-name { font-weight: 700; color: var(--primary-strong); font-size: 1rem; }
+.gloss-pop .g-term-translit { color: var(--muted); font-size: 0.82rem; margin-left: 0.4rem; }
+.gloss-pop .g-term-arabic { font-family: 'Traditional Arabic','Amiri',serif; font-size: 1.5rem; direction: rtl; color: var(--text); margin: 0.3rem 0; line-height: 1.8; }
+.gloss-pop .g-term-short { margin: 0.35rem 0; color: var(--text); }
+.gloss-pop .g-term-detail { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.83rem; }
+.gloss-pop .g-term-refs { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.gloss-pop .g-term-refs button {
+  font: inherit; font-size: 0.78rem; padding: 0.15rem 0.55rem; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--primary); cursor: pointer;
+}
+.gloss-pop .g-term-refs button:hover { border-color: var(--primary); background: var(--primary); color: #fff; }
+.gloss-pop .g-term-close { position: absolute; top: 0.35rem; right: 0.5rem; border: none; background: none; color: var(--muted); font-size: 1rem; cursor: pointer; line-height: 1; }
+
+.gloss-toolbar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.gloss-search {
+  flex: 1; min-width: 180px; padding: 0.6rem 0.9rem; border-radius: 0.6rem;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.95rem;
+}
+.gloss-search:focus { outline: none; border-color: var(--primary); }
+.gloss-cat { padding: 0.5rem 0.7rem; border-radius: 0.6rem; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 0.85rem; }
+.gloss-entry {
+  border: 1px solid var(--border); border-radius: 0.7rem; padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem; background: var(--surface);
+}
+.gloss-entry-head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.gloss-entry-head .t { font-weight: 700; color: var(--text); }
+.gloss-entry-head .tr { color: var(--muted); font-size: 0.85rem; }
+.gloss-entry-head .ar { font-family: 'Traditional Arabic','Amiri',serif; font-size: 1.3rem; direction: rtl; color: var(--primary); }
+.gloss-entry .short { color: var(--text); font-size: 0.9rem; margin: 0.35rem 0; }
+.gloss-entry .detail { color: var(--muted); font-size: 0.85rem; margin: 0.3rem 0 0; }
+.gloss-entry .cat-tag { font-size: 0.72rem; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0.1rem 0.5rem; }
+.gloss-empty { color: var(--muted); font-style: italic; padding: 1.5rem 0; text-align: center; }
+.legend-note { font-size: 0.82rem; color: var(--muted); margin: 0.5rem 0 0; }
 </style>
 </head>
 <body>
@@ -389,6 +464,7 @@ select {
     <button class="nav-btn active" id="nav-chat" onclick="switchTab('chat')">Chat</button>
     <button class="nav-btn" id="nav-discover" onclick="switchTab('discover')">Discover</button>
     <button class="nav-btn" id="nav-reader" onclick="switchTab('reader')">Quran Reader</button>
+    <button class="nav-btn" id="nav-glossary" onclick="switchTab('glossary')">Glossary</button>
     <button class="nav-btn" id="nav-hadith" onclick="switchTab('hadith')">Hadith</button>
   </nav>
   
@@ -415,8 +491,8 @@ select {
       <div class="controls">
         <div class="controls-inner">
           <button class="icon-btn" onclick="clearChat()" title="Clear Chat" style="background:transparent; border:none; cursor:pointer; font-size:1.2rem; padding:0.5rem; color:var(--muted);">🔄</button>
-          <input id="query" placeholder="Ask about the Quran or Hadith..." onkeydown="if(event.key==='Enter')send()">
-          <button class="primary" onclick="send()">Ask</button>
+          <input id="query" placeholder="Ask about the Quran or Hadith..." autocomplete="off" aria-label="Ask a question" onkeydown="if(event.key==='Enter'){event.preventDefault();send();}">
+          <button class="primary" id="send-btn" onclick="send()">Ask</button>
         </div>
       </div>
     </section>
@@ -444,6 +520,24 @@ select {
       </div>
     </section>
 
+    <section id="tab-glossary" class="panel" aria-label="Glossary">
+      <div class="pad">
+        <div class="reader-header">
+          <h2 style="margin: 0; color: var(--text);">Reading Glossary</h2>
+          <button class="nav-btn secondary" id="gloss-toggle" onclick="toggleGlossing()" title="Turn inline definitions on or off">Glossing: on</button>
+        </div>
+        <p style="color: var(--muted); margin-bottom: 0.75rem;">Quranic terms as they appear in the English translation. In Chat and the Reader, these words are marked with a dotted underline &mdash; tap one for its meaning.</p>
+        <div class="gloss-toolbar">
+          <input id="gloss-search" class="gloss-search" type="search" placeholder="Search terms, Arabic, or meanings..." oninput="renderGlossary()" aria-label="Search glossary">
+          <select id="gloss-cat" class="gloss-cat" onchange="renderGlossary()" aria-label="Filter by category">
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <div id="glossary-content"></div>
+        <p class="legend-note">Definitions are brief summaries for reading help. For full commentary see a recognised tafsir.</p>
+      </div>
+    </section>
+
     <section id="tab-hadith" class="panel" aria-label="Hadith">
       <div class="pad">
         <div class="reader-header">
@@ -466,7 +560,209 @@ function switchTab(tab) {
   if(tab === 'reader') loadQuranReader();
   if(tab === 'hadith') loadHadithHome();
   if(tab === 'discover') loadDiscover();
+  if(tab === 'glossary') loadGlossary();
 }
+
+// ---------------------------------------------------------------- glossary
+// The glossary is fetched once and cached, so highlighting a translation
+// costs no extra requests. Matching runs locally on the plain text of each
+// translation, which is why glossing never interferes with rendering.
+
+let GLOSSARY_ENTRIES = null;
+let GLOSSARY_BY_TERM = {};
+let GLOSSARY_CATEGORIES = [];
+let GLOSS_MATCHERS = [];
+let glossingEnabled = localStorage.getItem('glossing') !== 'off';
+
+function escapeRegExp(s) {
+  var specials = '\\\\^-.*+?()|[]{}$';
+  return String(s).split('').map(function(ch) {
+    return specials.indexOf(ch) > -1 ? '\\\\' + ch : ch;
+  }).join('');
+}
+
+function buildGlossMatchers(entries) {
+  return entries.map(e => {
+    const variants = (e.variants || []).slice().sort((a,b) => b.length - a.length);
+    if (!variants.length) return null;
+    // Mirror the server-side matcher: whole-word boundaries, case-insensitive.
+    // Note the doubled backslashes: inside a JS string literal a single
+    // "\\b" is a backspace character, not a word boundary.
+    const re = new RegExp('\\\\b(?:' + variants.map(escapeRegExp).join('|') + ')\\\\b', 'gi');
+    return { re, term: e.term };
+  }).filter(Boolean);
+}
+
+function fillCategoryFilter() {
+  const cat = document.getElementById('gloss-cat');
+  if (!cat || cat.dataset.filled) return;
+  cat.innerHTML = '<option value="">All categories</option>';
+  GLOSSARY_CATEGORIES.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    cat.appendChild(o);
+  });
+  cat.dataset.filled = '1';
+}
+
+function loadGlossary() {
+  const content = document.getElementById('glossary-content');
+  if (GLOSSARY_ENTRIES) { fillCategoryFilter(); renderGlossary(); return; }
+  content.innerHTML = '<div class="loading">Loading glossary...</div>';
+  fetch('/api/glossary')
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Request failed')))
+    .then(data => {
+      GLOSSARY_ENTRIES = data.entries || [];
+      GLOSSARY_CATEGORIES = data.categories || [];
+      GLOSSARY_BY_TERM = {};
+      GLOSSARY_ENTRIES.forEach(e => { GLOSSARY_BY_TERM[e.term] = e; });
+      GLOSS_MATCHERS = buildGlossMatchers(GLOSSARY_ENTRIES);
+      fillCategoryFilter();
+      renderGlossary();
+    })
+    .catch(() => {
+      content.innerHTML = '<div class="error">Could not load the glossary.</div>';
+    });
+}
+
+function renderGlossary() {
+  const content = document.getElementById('glossary-content');
+  if (!GLOSSARY_ENTRIES) return;
+  const q = document.getElementById('gloss-search').value.trim().toLowerCase();
+  const cat = document.getElementById('gloss-cat').value;
+
+  const list = GLOSSARY_ENTRIES.filter(e => {
+    if (cat && e.category !== cat) return false;
+    if (!q) return true;
+    return (e.term + ' ' + (e.translit||'') + ' ' + (e.short||'') + ' ' +
+            (e.variants||[]).join(' ') + ' ' + (e.category||'')).toLowerCase().includes(q);
+  });
+
+  if (!list.length) {
+    content.innerHTML = '<div class="gloss-empty">No terms match that search.</div>';
+    return;
+  }
+
+  let html = '<div class="meta" style="margin-bottom:0.6rem;">' + list.length +
+             ' of ' + GLOSSARY_ENTRIES.length + ' terms</div>';
+  list.forEach(e => {
+    html += `<div class="gloss-entry">
+      <div class="gloss-entry-head">
+        <span class="t">${escapeHtml(e.term)}</span>
+        ${e.translit ? `<span class="tr">${escapeHtml(e.translit)}</span>` : ''}
+        ${e.arabic ? `<span class="ar">${escapeHtml(e.arabic)}</span>` : ''}
+        <span class="cat-tag">${escapeHtml(e.category)}</span>
+      </div>
+      <div class="short">${escapeHtml(e.short)}</div>
+      ${e.detail ? `<div class="detail">${escapeHtml(e.detail)}</div>` : ''}
+      ${(e.refs && e.refs.length) ? `<div class="g-term-refs">${e.refs.map(r =>
+        `<button onclick="askAboutRef('${escapeHtml(r)}')">${escapeHtml(r)}</button>`).join('')}</div>` : ''}
+    </div>`;
+  });
+  content.innerHTML = html;
+}
+
+function askAboutRef(ref) {
+  const input = document.getElementById('query');
+  input.value = 'Tell me about ' + ref;
+  switchTab('chat');
+  send();
+}
+
+// Wrap glossary terms found in already-escaped plain text. Input must be
+// escaped text with no markup, which is how translations are rendered here.
+function glossText(escapedText) {
+  if (!glossingEnabled || !escapedText || !GLOSS_MATCHERS.length) return escapedText;
+
+  // Collect non-overlapping spans, preferring the longest match.
+  const spans = [];
+  GLOSS_MATCHERS.forEach(m => {
+    m.re.lastIndex = 0;
+    let mm;
+    while ((mm = m.re.exec(escapedText)) !== null) {
+      if (!mm[0].length) { m.re.lastIndex++; continue; }
+      spans.push({ start: mm.index, end: mm.index + mm[0].length, term: m.term });
+    }
+  });
+  if (!spans.length) return escapedText;
+
+  spans.sort((a,b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
+  const chosen = [];
+  let lastEnd = -1;
+  spans.forEach(s => { if (s.start >= lastEnd) { chosen.push(s); lastEnd = s.end; } });
+
+  let out = '', cursor = 0;
+  chosen.forEach(s => {
+    out += escapedText.slice(cursor, s.start);
+    out += '<g-term data-term="' + escapeHtml(s.term) + '" tabindex="0" role="button">' +
+           escapedText.slice(s.start, s.end) + '</g-term>';
+    cursor = s.end;
+  });
+  out += escapedText.slice(cursor);
+  return out;
+}
+
+let activeGloss = null;
+
+function closeGloss() {
+  if (activeGloss) { activeGloss.remove(); activeGloss = null; }
+  document.querySelectorAll('g-term.active').forEach(el => el.classList.remove('active'));
+}
+
+function showGloss(el) {
+  if (!glossingEnabled) return;
+  const term = el.getAttribute('data-term');
+  const entry = GLOSSARY_BY_TERM[term];
+  if (!entry) return;
+  closeGloss();
+  el.classList.add('active');
+
+  const pop = document.createElement('div');
+  pop.className = 'gloss-pop';
+  pop.innerHTML =
+    '<button class="g-term-close" aria-label="Close">&times;</button>' +
+    '<span class="g-term-name">' + escapeHtml(entry.term) + '</span>' +
+    (entry.translit ? '<span class="g-term-translit">' + escapeHtml(entry.translit) + '</span>' : '') +
+    (entry.arabic ? '<div class="g-term-arabic">' + escapeHtml(entry.arabic) + '</div>' : '') +
+    '<div class="g-term-short">' + escapeHtml(entry.short) + '</div>' +
+    (entry.detail ? '<div class="g-term-detail">' + escapeHtml(entry.detail) + '</div>' : '') +
+    ((entry.refs && entry.refs.length) ? '<div class="g-term-refs">' + entry.refs.map(r =>
+      '<button data-ref="' + escapeHtml(r) + '">' + escapeHtml(r) + '</button>').join('') + '</div>' : '');
+
+  document.body.appendChild(pop);
+  activeGloss = pop;
+
+  // Position near the term, kept inside the viewport.
+  const rect = el.getBoundingClientRect();
+  const pr = pop.getBoundingClientRect();
+  let left = rect.left + window.scrollX;
+  let top = rect.bottom + window.scrollY + 6;
+  if (left + pr.width > window.scrollX + window.innerWidth - 10) {
+    left = window.scrollX + window.innerWidth - pr.width - 10;
+  }
+  if (left < window.scrollX + 8) left = window.scrollX + 8;
+  if (rect.bottom + pr.height + 12 > window.innerHeight) {
+    top = rect.top + window.scrollY - pr.height - 6;
+  }
+  pop.style.left = left + 'px';
+  pop.style.top = Math.max(top, window.scrollY + 8) + 'px';
+
+  pop.querySelector('.g-term-close').addEventListener('click', closeGloss);
+  pop.querySelectorAll('button[data-ref]').forEach(b => {
+    b.addEventListener('click', () => { closeGloss(); askAboutRef(b.getAttribute('data-ref')); });
+  });
+}
+
+function toggleGlossing() {
+  glossingEnabled = !glossingEnabled;
+  localStorage.setItem('glossing', glossingEnabled ? 'on' : 'off');
+  document.body.classList.toggle('glossing-off', !glossingEnabled);
+  const btn = document.getElementById('gloss-toggle');
+  if (btn) btn.textContent = 'Glossing: ' + (glossingEnabled ? 'on' : 'off');
+  closeGloss();
+  if (glossingEnabled && !GLOSSARY_ENTRIES) loadGlossary();
+}
+
 
 async function loadDiscover() {
   const content = document.getElementById('discover-content');
@@ -476,83 +772,97 @@ async function loadDiscover() {
         fetch('/api/recommendations?user_id=web-default'),
         fetch('/api/reading-plan?user_id=web-default&days=7')
     ]);
-    
-    const recs = await recsRes.json();
-    const plan = await planRes.json();
-    
+
+    const recs = recsRes.ok ? await recsRes.json() : [];
+    const plan = planRes.ok ? await planRes.json() : [];
+
     let html = '';
-    
-    // Render Reading Plan Section
+
     if (plan && plan.length) {
         html += '<h3 style="margin: 1.5rem 0 0.5rem 0; color: var(--primary-strong);">Your 7-Day Reading Plan</h3>';
         html += '<div style="display:flex; overflow-x:auto; gap:1rem; padding-bottom:1rem; margin-bottom:1rem; scroll-snap-type: x mandatory;">';
-        
+
         plan.forEach((p, idx) => {
-            let dayText = p.title || `Day ${idx + 1}`;
+            const dayText = p.title || `Day ${idx + 1}`;
+            const verseKey = (p.content && p.content.verse_key) || '';
+            const ask = verseKey ? `Tell me about ${verseKey}` : (p.title || 'this topic');
             html += `
               <div class="card" style="min-width:280px; max-width:300px; flex-shrink:0; border-top:4px solid var(--primary); scroll-snap-align: start; display:flex; flex-direction:column;">
-                <div style="font-weight:700; color:var(--primary); margin-bottom:0.25rem;">${dayText}</div>
-                <div style="font-size:0.85rem; color:var(--muted); margin-bottom:0.75rem;">${p.reason}</div>
+                <div style="font-weight:700; color:var(--primary); margin-bottom:0.25rem;">${escapeHtml(dayText)}</div>
+                <div style="font-size:0.85rem; color:var(--muted); margin-bottom:0.75rem;">${escapeHtml(p.reason || '')}</div>
             `;
             if (p.content && p.content.text) {
-                html += `<div class="arabic" style="font-size:1.1rem; margin-bottom:0.5rem;">${p.content.text.substring(0, 80)}...</div>`;
-                if(p.content.translation) {
-                   html += `<div class="translation" style="font-size:0.85rem;">${p.content.translation.substring(0, 100)}...</div>`;
+                html += `<div class="arabic" style="font-size:1.1rem; margin-bottom:0.5rem;">${escapeHtml(String(p.content.text).substring(0, 80))}...</div>`;
+                if (p.content.translation) {
+                   html += `<div class="translation" style="font-size:0.85rem;">${escapeHtml(String(p.content.translation).substring(0, 100))}...</div>`;
                 }
             }
             html += `
                 <div style="flex-grow:1;"></div>
-                <button class="nav-btn secondary" style="margin-top:1rem; align-self:flex-start;" onclick="document.getElementById('query').value='Tell me about ${p.content && p.content.verse_key ? p.content.verse_key : p.tags[1]}'; switchTab('chat'); send();">Explore</button>
+                <button class="nav-btn secondary" style="margin-top:1rem; align-self:flex-start;" data-ask="${escapeHtml(ask)}">Explore</button>
               </div>
             `;
         });
         html += '</div>';
     }
-    
+
     if(!recs || !recs.length) {
-      if(!html) content.innerHTML = '<div class="error">No recommendations available at this time.</div>';
-      else content.innerHTML = html;
+      content.innerHTML = html || '<div class="error">No recommendations available at this time.</div>';
+      bindExploreButtons(content);
       return;
     }
-    
+
     html += '<h3 style="margin: 1.5rem 0 0.5rem 0; color: var(--text);">For You</h3>';
-    html += '<div class="recommendations-grid" style="display:grid; gap:1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
+    html += '<div style="display:grid; gap:1rem; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">';
     recs.forEach(r => {
-      let icon = r.type === 'verse' ? '📖' : (r.type === 'hadith' ? '📜' : '✨');
-      let cardColor = r.type === 'verse' ? 'var(--verse-accent)' : (r.type === 'hadith' ? 'var(--hadith-accent)' : 'var(--primary)');
-      
+      const icon = r.type === 'verse' ? '📖' : (r.type === 'hadith' ? '📜' : '✨');
+      const cardColor = r.type === 'verse' ? 'var(--verse-accent)' : (r.type === 'hadith' ? 'var(--hadith-accent)' : 'var(--primary)');
+      const tag = (r.tags && r.tags[0]) || r.type || '';
+
       html += `
         <div class="card" style="border-top: 4px solid ${cardColor}; display:flex; flex-direction:column;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+          <div class="card-head">
             <span style="font-size:1.5rem;">${icon}</span>
-            <span class="meta" style="background:#f1f5f9; padding:0.2rem 0.5rem; border-radius:1rem;">${r.tags ? r.tags[0] : r.type}</span>
+            <span class="match-badge">${escapeHtml(tag)}</span>
           </div>
-          <h3 style="margin-bottom:0.5rem; color:var(--text);">${r.title}</h3>
-          <p style="color:var(--muted); font-size:0.9rem; margin-bottom:1rem;">${r.reason}</p>
+          <h3 style="margin-bottom:0.5rem; color:var(--text);">${escapeHtml(r.title || '')}</h3>
+          <p style="color:var(--muted); font-size:0.9rem; margin-bottom:1rem;">${escapeHtml(r.reason || '')}</p>
           <div style="flex-grow:1;"></div>
       `;
-      
+
       if (r.type === 'verse' && r.content && r.content.text) {
           html += `
-            <div class="arabic" style="font-size:1.2rem; margin-bottom:0.5rem;">${r.content.text}</div>
-            ${r.content.translation ? `<div class="translation" style="font-size:0.9rem;">${r.content.translation}</div>` : ''}
+            <div class="arabic" style="font-size:1.2rem; margin-bottom:0.5rem;">${escapeHtml(r.content.text)}</div>
+            ${r.content.translation ? `<div class="translation" style="font-size:0.9rem;">${glossText(escapeHtml(r.content.translation))}</div>` : ''}
           `;
       } else if (r.type === 'hadith' && r.content) {
           if(r.content.arabic_text) {
-             html += `<div class="arabic" style="font-size:1.1rem; margin-bottom:0.5rem;">${r.content.arabic_text.substring(0, 150)}...</div>`;
+             html += `<div class="arabic" style="font-size:1.1rem; margin-bottom:0.5rem;">${escapeHtml(String(r.content.arabic_text).substring(0, 150))}...</div>`;
           }
           if(r.content.english_text) {
-             html += `<div style="font-size:0.9rem; color:var(--text);">${r.content.english_text.substring(0, 150)}...</div>`;
+             html += `<div style="font-size:0.9rem; color:var(--text);">${escapeHtml(String(r.content.english_text).substring(0, 150))}...</div>`;
           }
       }
-      
+
       html += `</div>`;
     });
     html += '</div>';
     content.innerHTML = html;
+    bindExploreButtons(content);
   } catch(e) {
     content.innerHTML = '<div class="error">Failed to load recommendations. Please try again.</div>';
   }
+}
+
+function bindExploreButtons(root) {
+  root.querySelectorAll('button[data-ask]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById('query');
+      input.value = btn.getAttribute('data-ask') || '';
+      switchTab('chat');
+      send();
+    });
+  });
 }
 
 function addMsg(role, html) {
@@ -563,188 +873,319 @@ function addMsg(role, html) {
   m.className='bubble ' + role;
   m.innerHTML=html;
   d.appendChild(m);
-  d.scrollTop = d.scrollHeight;
+  scrollChatToBottom();
+  return m;
 }
+
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function scrollChatToBottom() {
+  const d = document.getElementById('chat');
+  if (d) d.scrollTop = d.scrollHeight;
+}
+
+// Builds a chip that runs a callback on click. Using data attributes plus a
+// listener avoids inline onclick handlers, which previously broke (and threw)
+// whenever the label contained an apostrophe or quote.
+function makeChip(label, onClick, extraClass) {
+  const el = document.createElement('div');
+  el.className = 'chip' + (extraClass ? ' ' + extraClass : '');
+  el.textContent = label;
+  el.setAttribute('role', 'button');
+  el.tabIndex = 0;
+  el.addEventListener('click', onClick);
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+  });
+  return el;
+}
+
 function renderVerses(results) {
-  if(!results||!results.length) return '<div class="error">No verses found. Try rephrasing.</div>';
-  return results.map(r=>`<div class="card verse"><div><b>${r.chapter||''}:${r.verse_number}</b> <span class="meta">Score: ${(r.score||0).toFixed(2)} | ${r.match_type}</span></div><div>${r.text||''}</div>${r.translation?`<div class="translation"><em>${r.translation}</em><div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div></div>`:''}<div class="source">Source: Quran</div></div>`).join('');
+  if(!results || !results.length) return '';
+  return results.map(r => {
+    const ref = escapeHtml(r.chapter || r.verse_id || '');
+    const score = typeof r.score === 'number' ? r.score.toFixed(2) : '';
+    const badge = [escapeHtml(r.match_type || ''), score ? 'score ' + score : ''].filter(Boolean).join(' · ');
+    return `<div class="card verse">
+      <div class="card-head">
+        <span class="verse-ref">${ref}:${escapeHtml(r.verse_number)}</span>
+        <span class="match-badge">${badge}</span>
+      </div>
+      <div class="arabic">${escapeHtml(r.text || '')}</div>
+      ${r.translation ? `<div class="translation"><em>${glossText(escapeHtml(r.translation))}</em></div>` : ''}
+      <div class="card-actions">
+        <button class="copy-btn" onclick="copyCard(this)" title="Copy verse">📋 Copy</button>
+      </div>
+    </div>`;
+  }).join('');
 }
+
 function renderHadiths(hadiths) {
-  if(!hadiths||!hadiths.length) return '<div class="error">No hadiths found.</div>';
-  return hadiths.map(h=>`<div class="card hadith"><div><b>${h.collection_name||h.collection||'Hadith'} ${h.hadith_number||''}</b> <span class="meta">${h.grade||''}</span></div>${h.english_text?`<div>${h.english_text}</div>`:''}${h.arabic_text?`<div class="arabic">${h.arabic_text}</div>`:''}<div class="source">Source: ${h.book||h.collection||'Hadith'}</div></div>`).join('');
+  if(!hadiths||!hadiths.length) return '';
+  return hadiths.map(h=>`<div class="card hadith"><div><b>${escapeHtml(h.collection_name||h.collection||'Hadith')} ${escapeHtml(h.hadith_number||'')}</b> <span class="meta">${escapeHtml(h.grade||'')}</span></div>${h.english_text?`<div>${escapeHtml(h.english_text)}</div>`:''}${h.arabic_text?`<div class="arabic">${escapeHtml(h.arabic_text)}</div>`:''}<div class="source">Source: ${escapeHtml(h.book||h.collection||'Hadith')}</div></div>`).join('');
 }
+
+function insightText(insight) {
+  if (insight.message) return insight.message;
+  if (insight.topic) return insight.topic;
+  if (insight.concepts) {
+    if (Array.isArray(insight.concepts)) {
+      // Entries may be objects (related concepts), so read the label out
+      // rather than stringifying the whole thing.
+      return insight.concepts
+        .map(c => (c && typeof c === 'object' ? (c.concept || c.data?.description || '') : c))
+        .filter(Boolean)
+        .join(', ');
+    }
+    return String(insight.concepts);
+  }
+  return 'No details available';
+}
+
 function renderInsights(insights) {
   if (!insights || !insights.length) return '';
-  
-  // Group insights by type for better organization
-  const groupedInsights = {};
-  insights.forEach(insight => {
-    const type = insight.type || 'general';
-    if (!groupedInsights[type]) groupedInsights[type] = [];
-    groupedInsights[type].push(insight);
-  });
-  
-  let html = '<div class="insights-container">';
-  html += '<div class="insights-header"><b>Insights</b></div>';
-  
-  // Define icons and colors for different insight types
+
   const insightTypes = {
-    'answer': { icon: '💡', color: 'var(--primary)' },
-    'context': { icon: '📖', color: 'var(--hadith-accent)' },
-    'relation': { icon: '🔗', color: 'var(--verse-accent)' },
-    'practical': { icon: '🎯', color: 'var(--primary-strong)' },
-    'reflection': { icon: '🤔', color: 'var(--muted)' },
-    'historical': { icon: '🏛️', color: 'var(--muted)' },
-    'linguistic': { icon: '🔤', color: 'var(--muted)' },
-    'theological': { icon: '🕋', color: 'var(--hadith-accent)' },
-    'general': { icon: '✨', color: 'var(--text)' }
+    'answer': '💡', 'context': '📖', 'related_concepts': '🔗', 'relation': '🔗',
+    'practical': '🎯', 'reflection': '🤔', 'historical': '🏛️', 'linguistic': '🔤',
+    'theological': '🕋', 'general': '✨'
   };
-  
-  // Process each insight type
-  Object.keys(groupedInsights).forEach(type => {
-    const typeInfo = insightTypes[type] || insightTypes['general'];
-    const insightsOfType = groupedInsights[type];
-    
-    html += `<div class="insights-type-section">`;
-    html += `<div class="insights-type-title" style="color: ${typeInfo.color};">${typeInfo.icon} ${type.charAt(0).toUpperCase() + type.slice(1)} Insights</div>`;
-    
-    insightsOfType.forEach(insight => {
-      // Build insight content
-      let content = insight.message || '';
-      if (!content && insight.concepts) {
-        content = Array.isArray(insight.concepts) 
-          ? insight.concepts.join(', ') 
-          : String(insight.concepts);
-      }
-      if (!content && insight.topic) {
-        content = insight.topic;
-      }
-      if (!content && insight.i) {
-        content = JSON.stringify(insight.i);
-      }
-      if (!content) {
-        content = 'No details available';
-      }
-      
-      html += `<div class="insight-item">
-                <div class="insight-content">${content}</div>
-              </div>`;
-    });
-    
-    html += `</div>`; // Close insights-type-section
+
+  const grouped = {};
+  insights.forEach(insight => {
+    const type = (insight && insight.type) || 'general';
+    (grouped[type] = grouped[type] || []).push(insight);
   });
-  
-  html += '</div>'; // Close insights-container
-  return html;
+
+  let html = '<div class="insights-container"><div class="insights-header"><b>Insights</b></div>';
+  Object.keys(grouped).forEach(type => {
+    const icon = insightTypes[type] || insightTypes['general'];
+    const label = type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ');
+    html += `<div class="insights-type-section">
+      <div class="insights-type-title">${icon} ${escapeHtml(label)}</div>`;
+    grouped[type].forEach(insight => {
+      html += `<div class="insight-item"><div class="insight-content">${escapeHtml(insightText(insight))}</div></div>`;
+    });
+    html += '</div>';
+  });
+  return html + '</div>';
 }
+
+let chatRequestId = 0;
+let chatInFlight = false;
+
 async function send() {
-  const q = document.getElementById('query').value.trim(); if(!q) return;
-  addMsg('user', q); document.getElementById('query').value='';
+  const input = document.getElementById('query');
+  const q = input.value.trim();
+  if(!q || chatInFlight) return;
+
+  chatInFlight = true;
+  const sendBtn = document.getElementById('send-btn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  addMsg('user', escapeHtml(q));
+  input.value = '';
+
+  const requestId = ++chatRequestId;
+  const thinking = addMsg('ai thinking', 'Thinking<span class="typing-indicator"><span></span><span></span><span></span></span>');
+
   try {
-    const res = await fetch('/api/chat', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:q})});
+    const res = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q})
+    });
     const data = await res.json();
+    // A newer question was asked while this one was in flight; discard it
+    // instead of letting a slow response overwrite the newer answer.
+    if (requestId !== chatRequestId) return;
+
+    if (thinking.parentNode) thinking.parentNode.removeChild(thinking);
+
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+
     let html = renderVerses(data.results) + renderInsights(data.insights);
-    if(data.suggestions && data.suggestions.length) {
-      html += '<div class="section-title">Suggestions</div><div class="chips">' + data.suggestions.map(s=>`<div class="chip" onclick="document.getElementById(\'query\').value='${s}';send()">${s}</div>`).join('') + '</div>';
-    }
     if(data.expanded_query && data.expanded_query !== data.query) {
-      html += '<div class="meta">Interpreted as: ' + data.expanded_query + '</div>';
+      html += '<div class="meta">Follow-up — searched: ' + escapeHtml(data.expanded_query) + '</div>';
     }
-    addMsg('ai', html || '<div class="error">No results.</div>');
+    if(data.suggestions && data.suggestions.length) {
+      html += '<div class="section-title">Suggestions</div><div class="chips" id="suggestion-chips"></div>';
+    }
+
     if(data.hadiths && data.hadiths.length) {
-      addMsg('ai', renderHadiths(data.hadiths));
+      html += renderHadiths(data.hadiths);
     }
-  } catch(e) { addMsg('ai', '<div class="error">Error: '+e.message+'</div>'); }
+
+    const body = addMsg('ai', html || '<div class="error">No results found. Try different words, or read a chapter in the Quran Reader tab.</div>');
+
+    if(data.suggestions && data.suggestions.length) {
+      const wrap = body.querySelector('#suggestion-chips');
+      data.suggestions.forEach(s => {
+        wrap.appendChild(makeChip(s, () => { input.value = s; send(); }, 'suggestion'));
+      });
+    }
+  } catch(e) {
+    if (requestId !== chatRequestId) return;
+    if (thinking.parentNode) thinking.parentNode.removeChild(thinking);
+    addMsg('ai error-bubble', 'Error: ' + escapeHtml(e.message) + '<br><span class="meta">Please try again.</span>');
+  } finally {
+    if (requestId === chatRequestId) {
+      chatInFlight = false;
+      if (sendBtn) sendBtn.disabled = false;
+      input.focus();
+    }
+  }
 }
+let readerRequestId = 0;
+
 async function loadQuranReader() {
   const content = document.getElementById('reader-content');
   const select = document.getElementById('surah-select');
-  
-  // Restore last selected surah if available
+
   const lastSurah = localStorage.getItem('lastSelectedSurah');
-  if (lastSurah) {
-    select.value = lastSurah;
-  }
-  
-  // Always load chapters first
-  try {
-    const res = await fetch('/api/chapters');
-    const chapters = await res.json();
-    
-    // Populate dropdown if it only has the placeholder option
-    if(!select || select.children.length <= 1) {
+  if (lastSurah && select) select.value = lastSurah;
+
+  const requestId = ++readerRequestId;
+
+  if (!select || select.children.length <= 1) {
+    content.innerHTML = '<div class="loading">Loading surahs...</div>';
+    try {
+      const res = await fetch('/api/chapters');
+      const chapters = await res.json();
+      if (requestId !== readerRequestId) return;
+      if (!chapters || !chapters.length) {
+        content.innerHTML = '<div class="error">Could not load the list of surahs.</div>';
+        return;
+      }
       select.innerHTML = '<option value="">All Surahs</option>';
       chapters.forEach(ch => {
-        const opt = document.createElement('option'); opt.value=ch.id; opt.textContent=ch.name_simple||ch.id;
+        const opt = document.createElement('option');
+        opt.value = ch.id;
+        opt.textContent = ch.name_simple || ch.id;
         select.appendChild(opt);
       });
-    }
-    
-    // If no surah is selected, show the grid of all surahs
-    if (!select || !select.value) {
-      content.innerHTML = '<div class="section-title">All Surahs (Chapters)</div><div class="surahs-grid">' + chapters.map(ch => 
-        `<div class="surah-card" style="background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('surah-select').value=${ch.id}; loadQuranReader()">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:700;color:var(--primary);">${ch.id}</span>
-            <span style="font-weight:600;">${ch.name_simple||ch.id}</span>
-            <span style="color:var(--muted);font-size:0.85rem;">${ch.verses||'?'} verses</span>
-          </div>
-          ${ch.name_arabic?`<div class="arabic" style="font-size:1.1rem;margin-top:0.25rem;">${ch.name_arabic}</div>`:''}
-          ${ch.revelation?`<div class="meta" style="margin-top:0.25rem;">${ch.revelation} order</div>`:''}
-        </div>`
-      ).join('') + '</div>';
+      if (lastSurah) select.value = lastSurah;
+    } catch(e) {
+      if (requestId !== readerRequestId) return;
+      content.innerHTML = '<div class="error">Error loading surahs.</div>';
       return;
     }
-  } catch(e) { content.innerHTML = '<div class="error">Error loading surahs.</div>'; }
-  
-  // If a surah is selected, load its verses
-  if(select && select.value) {
-    content.innerHTML = '<div class="loading">Loading...</div>';
-try {
-       const res = await fetch(`/api/surah/${select.value}?lang=en`);
-       const verses = await res.json();
-       if(!verses||!verses.length) { content.innerHTML = '<div class="error">No verses found for this surah.</div>'; return; }
-       content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is provided as a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>' + verses.map(v=>`<div class="card verse"><div><b>Verse ${v.verse_number}</b></div><div class="arabic">${v.text||''}</div>${v.translation?`<div class="translation"><em>${v.translation}</em></div>`:''}</div><button class="copy-btn" onclick="copyToClipboard(this)" title="Copy verse">📋</button></div>`).join('');
-     } catch(e) { content.innerHTML = '<div class="error">Error loading surah.</div>'; }
+  }
+
+  const surah = select ? select.value : '';
+
+  if (!surah) {
+    const chapters = await fetch('/api/chapters').then(r => r.json()).catch(() => []);
+    if (requestId !== readerRequestId) return;
+    const grid = document.createElement('div');
+    grid.className = 'surahs-grid';
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(180px, 1fr))';
+    grid.style.gap = '0.75rem';
+    chapters.forEach(ch => {
+      const card = document.createElement('div');
+      card.className = 'surah-card';
+      card.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:0.5rem;padding:0.75rem;cursor:pointer;transition:all 0.2s;';
+      card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:700;color:var(--primary);">${escapeHtml(ch.id)}</span>
+          <span style="font-weight:600;">${escapeHtml(ch.name_simple||ch.id)}</span>
+          <span style="color:var(--muted);font-size:0.85rem;">${escapeHtml(ch.verses||'?')} verses</span>
+        </div>
+        ${ch.name_arabic ? `<div class="arabic" style="font-size:1.1rem;margin-top:0.25rem;">${escapeHtml(ch.name_arabic)}</div>` : ''}`;
+      card.addEventListener('click', () => {
+        select.value = ch.id;
+        localStorage.setItem('lastSelectedSurah', ch.id);
+        loadQuranReader();
+      });
+      grid.appendChild(card);
+    });
+    content.innerHTML = '<div class="section-title">All Surahs (Chapters)</div>';
+    content.appendChild(grid);
+    return;
+  }
+
+  content.innerHTML = '<div class="loading">Loading surah...</div>';
+  try {
+    const res = await fetch(`/api/surah/${encodeURIComponent(surah)}?lang=en`);
+    if (requestId !== readerRequestId) return;
+    if (!res.ok) throw new Error('Request failed');
+    const verses = await res.json();
+    if (requestId !== readerRequestId) return;
+    if(!verses || !verses.length) {
+      content.innerHTML = '<div class="error">No verses found for this surah.</div>';
+      return;
+    }
+    content.innerHTML = '<div class="disclaimer">Translation disclaimer: This translation is a best-effort interpretation. For authoritative wording, refer to the original Arabic text and established scholarly translations.</div>'
+       + verses.map(v=>`<div class="card verse"><div class="card-head"><span class="verse-ref">Verse ${escapeHtml(v.verse_number)}</span></div><div class="arabic">${escapeHtml(v.text||'')}</div>${v.translation?`<div class="translation"><em>${glossText(escapeHtml(v.translation))}</em></div>`:''}<div class="card-actions"><button class="copy-btn" onclick="copyCard(this)">📋 Copy</button></div></div>`).join('');
+  } catch(e) {
+    if (requestId !== readerRequestId) return;
+    content.innerHTML = '<div class="error">Error loading surah.</div>';
   }
 }
+let hadithRequestId = 0;
+
 async function loadHadithHome() {
   const content = document.getElementById('hadith-content');
   content.innerHTML = '<div class="loading">Loading collections...</div>';
+  const requestId = ++hadithRequestId;
   try {
     const res = await fetch('/api/hadith/collections');
+    if (requestId !== hadithRequestId) return;
     const collections = await res.json();
-    if(!collections||!collections.length) { content.innerHTML = '<div class="error">No collections available.</div>'; return; }
-    content.innerHTML = '<div class="section-title">Collections</div><div class="hadith-grid">' + collections.map(c=>`<button class="collection-btn" onclick="loadHadithCollection('${c}')">${c}</button>`).join('') + '</div>';
-  } catch(e) { content.innerHTML = '<div class="error">Error loading collections.</div>'; }
+    if (requestId !== hadithRequestId) return;
+    if(!collections || !collections.length) { content.innerHTML = '<div class="error">No collections available right now.</div>'; return; }
+    const grid = document.createElement('div');
+    grid.className = 'hadith-grid';
+    collections.forEach(c => {
+      grid.appendChild(makeChip(String(c), () => loadHadithCollection(String(c)), 'collection-btn'));
+    });
+    content.innerHTML = '<div class="section-title">Collections</div>';
+    content.appendChild(grid);
+  } catch(e) {
+    if (requestId === hadithRequestId) content.innerHTML = '<div class="error">Error loading collections.</div>';
+  }
 }
+
 async function loadHadithCollection(collection) {
   const content = document.getElementById('hadith-content');
   content.innerHTML = '<div class="loading">Loading hadiths...</div>';
+  const requestId = ++hadithRequestId;
   try {
     const res = await fetch(`/api/hadith/collection/${encodeURIComponent(collection)}`);
+    if (requestId !== hadithRequestId) return;
+    if (!res.ok) throw new Error('Request failed (' + res.status + ')');
     const hadiths = await res.json();
-    if(!hadiths||!hadiths.length) { content.innerHTML = '<div class="error">No hadiths found in this collection.</div>'; return; }
-    content.innerHTML = '<div class="section-title">Hadiths from ' + collection + '</div><div class="hadith-grid">' + renderHadiths(hadiths.slice(0,20)) + '</div>';
-  } catch(e) { content.innerHTML = '<div class="error">Error loading hadiths.</div>'; }
+    if (requestId !== hadithRequestId) return;
+    if(!hadiths || !hadiths.length) { content.innerHTML = '<div class="error">No hadiths found in this collection.</div>'; return; }
+    content.innerHTML = '<div class="section-title">Hadiths from ' + escapeHtml(collection) + '</div><div class="hadith-grid">' + renderHadiths(hadiths.slice(0,20)) + '</div>';
+  } catch(e) {
+    if (requestId === hadithRequestId) content.innerHTML = '<div class="error">Error loading hadiths.</div>';
+  }
 }
 async function init() {
   const chips = document.getElementById('chips');
   const questions = [
     "What does the Quran say about patience?",
     "Show me a hadith about charity.",
-    "Read Surah Al-Kahf",
-    "How should we treat our parents?",
     "Verses about mercy and forgiveness",
-    "What is the importance of prayer?"
+    "What is the importance of prayer?",
+    "How should we treat our parents?",
+    "Verses about light and guidance"
   ];
-  
+
   questions.forEach(q => {
-    const btn = document.createElement('div'); 
-    btn.className='chip'; 
-    btn.textContent=q;
-    btn.onclick=()=>{ document.getElementById('query').value=q; send(); };
-    chips.appendChild(btn);
+    chips.appendChild(makeChip(q, () => {
+      document.getElementById('query').value = q;
+      send();
+    }));
   });
 }
 async function clearChat() {
@@ -762,33 +1203,54 @@ async function clearChat() {
   }
 }
 
-function copyToClipboard(button) {
+function copyCard(button) {
   if (!button) return;
-  const card = button.parentElement;
+  const card = button.closest('.card') || button.parentElement;
   if (!card) return;
   const arabicDiv = card.querySelector('.arabic');
   const translationDiv = card.querySelector('.translation');
   let text = '';
-  if (arabicDiv) {
-    text = arabicDiv.textContent.trim();
-  }
+  if (arabicDiv) text = arabicDiv.textContent.trim();
   if (translationDiv) {
     if (text) text += String.fromCharCode(10);
     text += translationDiv.textContent.trim();
   }
   if (!text) return;
-  
-  navigator.clipboard.writeText(text).then(() => {
-    // Show temporary success message
-    const originalText = button.textContent;
-    button.textContent = 'Copied!';
-    setTimeout(() => {
-      button.textContent = originalText;
-    }, 1500);
-  }).catch(err => {
-    console.error('Failed to copy: ', err);
-  });
+
+  const originalText = button.textContent;
+  const done = (ok) => {
+    button.textContent = ok ? 'Copied!' : 'Copy failed';
+    setTimeout(() => { button.textContent = originalText; }, 1500);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => done(true)).catch(() => {
+      // Clipboard API needs a secure context; fall back to a temp textarea.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      done(ok);
+    });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    done(ok);
+  }
 }
+function copyToClipboard(button) { return copyCard(button); }
 function toggleTheme() {
   const html = document.documentElement;
   const currentTheme = html.getAttribute('data-theme');
@@ -807,6 +1269,9 @@ function toggleTheme() {
 document.addEventListener('DOMContentLoaded', () => {
   const savedTheme = localStorage.getItem('theme') || 'light';
   document.documentElement.setAttribute('data-theme', savedTheme);
+  document.body.classList.toggle('glossing-off', !glossingEnabled);
+  const gt = document.getElementById('gloss-toggle');
+  if (gt) gt.textContent = 'Glossing: ' + (glossingEnabled ? 'on' : 'off');
   
   // Set initial icon
   const icon = document.getElementById('theme-toggle-icon');
@@ -817,9 +1282,28 @@ document.addEventListener('DOMContentLoaded', () => {
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (activeGloss) { closeGloss(); return; }
       clearChat();
     }
   });
+
+  // Delegated handler so terms highlighted in any panel work without
+  // re-binding after each render.
+  document.addEventListener('click', (e) => {
+    const term = e.target.closest ? e.target.closest('g-term') : null;
+    if (term) { if (glossingEnabled) showGloss(term); return; }
+    if (activeGloss && !e.target.closest('.gloss-pop')) closeGloss();
+  });
+  document.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.tagName === 'G-TERM') {
+      if (!glossingEnabled) return;
+      e.preventDefault();
+      showGloss(e.target);
+    }
+  });
+
+  // Prefetch so the first highlighted verse renders without delay.
+  loadGlossary();
 });
 
 init();
@@ -837,11 +1321,19 @@ def home():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     body = request.get_json(force=True)
-    query = body.get("query", "")
-    user_id = body.get("user_id", "web-default")
-    
-    response = ilm_app.get_ai_response(query, user_id=user_id)
-    
+    query = (body.get("query") or "").strip()
+    user_id = body.get("user_id") or "web-default"
+
+    if not query:
+        return jsonify({"error": "Query is required", "query": "", "results": [],
+                        "hadiths": [], "insights": [], "suggestions": []}), 400
+
+    try:
+        response = ilm_app.get_ai_response(query, user_id=user_id)
+    except Exception as e:
+        app.logger.exception("chat failed")
+        return jsonify({"error": f"Search failed: {e}"}), 502
+
     results = []
     for r in response.get("results", []):
         results.append({
@@ -854,7 +1346,7 @@ def chat():
             "match_type": r.match_type,
             "context_snippet": r.context_snippet
         })
-    
+
     insights = []
     for ins in response.get("insights", []):
         insights.append({
@@ -863,7 +1355,7 @@ def chat():
             "topic": ins.get("topic"),
             "concepts": ins.get("concepts")
         })
-    
+
     return jsonify({
         "query": response.get("query") or query,
         "expanded_query": response.get("expanded_query"),
@@ -910,9 +1402,15 @@ def register():
 
 @app.route("/api/search")
 def search():
-    query = request.args.get("q", "")
+    query = (request.args.get("q") or "").strip()
     language = request.args.get("lang", "en")
-    data = ilm_app.search_verses(query, language=language)
+    if not query:
+        return jsonify({"error": "Query parameter 'q' is required", "query": "", "results": []}), 400
+    try:
+        data = ilm_app.search_verses(query, language=language)
+    except Exception as e:
+        app.logger.exception("search failed")
+        return jsonify({"error": f"Search failed: {e}", "query": query, "results": []}), 502
     results = []
     for r in data.get("results", []):
         results.append({
@@ -946,10 +1444,12 @@ def get_verse(verse_key):
 
 @app.route("/api/surah/<int:chapter>")
 def get_surah(chapter):
+    if not 1 <= chapter <= 114:
+        return jsonify({"error": "Chapter must be between 1 and 114"}), 400
     language = request.args.get("lang", "en")
     verses = ilm_app.get_quran_surah(chapter, language=language)
     return jsonify([{
-        "id": v.id,
+        "id": v.verse_key or f"{chapter}:{v.verse_number}",
         "verse_number": v.verse_number,
         "text": v.text,
         "translation": v.translation,
@@ -992,10 +1492,98 @@ def chapters():
 @app.route("/api/reading-plan")
 def reading_plan():
     user_id = request.args.get("user_id", "web-default")
-    days = int(request.args.get("days", 7))
+    try:
+        days = int(request.args.get("days", 7))
+    except ValueError:
+        return jsonify({"error": "days must be a number"}), 400
+    days = max(1, min(days, 30))
     plan = ilm_app.get_reading_plan(user_id=user_id, days=days)
     return jsonify(plan)
 
 
+# Warm caches on import so the first request is fast under gunicorn too.
+# Set ILM_SKIP_WARMUP=1 to disable (useful in tests).
+if os.environ.get("ILM_SKIP_WARMUP") != "1":
+    threading.Thread(target=ilm_app.warm_up, daemon=True).start()
+
+
+@app.route("/api/glossary")
+def glossary_list():
+    """Return glossary entries, optionally filtered by search or category.
+
+    The payload is fetched once by the browser and cached locally, so
+    highlighting translations costs no extra round trips.
+    """
+    query = (request.args.get("q") or "").strip()
+    category = (request.args.get("category") or "").strip()
+    entries = GLOSSARY.search(query)
+    if category:
+        entries = [e for e in entries if e.get("category") == category]
+    return jsonify({
+        "count": len(entries),
+        "total": len(GLOSSARY.entries),
+        "categories": GLOSSARY.categories,
+        "entries": [{
+            "term": e["term"],
+            "variants": e.get("variants", []),
+            "translit": e.get("translit", ""),
+            "arabic": e.get("arabic", ""),
+            "short": e.get("short", ""),
+            "detail": e.get("detail", ""),
+            "category": e.get("category", ""),
+            "refs": e.get("refs", []),
+        } for e in entries]
+    })
+
+
+@app.route("/api/glossary/<term>")
+def glossary_entry(term):
+    entry = GLOSSARY.get(term)
+    if not entry:
+        return jsonify({"error": "Term not found", "term": term}), 404
+    return jsonify({
+        "term": entry["term"],
+        "variants": entry.get("variants", []),
+        "translit": entry.get("translit", ""),
+        "arabic": entry.get("arabic", ""),
+        "short": entry.get("short", ""),
+        "detail": entry.get("detail", ""),
+        "category": entry.get("category", ""),
+        "refs": entry.get("refs", []),
+    })
+
+
+@app.route("/api/gloss", methods=["POST"])
+def gloss_text():
+    """Annotate arbitrary translated text with glossary markers.
+
+    Accepts {"text": "..."} and returns the annotated HTML plus the terms
+    that were found, for clients that prefer server-side matching.
+    """
+    body = request.get_json(silent=True) or {}
+    text = body.get("text") or ""
+    if not isinstance(text, str) or not text.strip():
+        return jsonify({"error": "Provide a non-empty 'text' string"}), 400
+    if len(text) > 20000:
+        return jsonify({"error": "text too long (limit 20000 characters)"}), 413
+    terms = GLOSSARY.find_terms(text)
+    return jsonify({
+        "terms": terms,
+        "annotated": GLOSSARY.annotate(text),
+    })
+
+
+@app.route("/api/verse-gloss/<verse_key>")
+def verse_gloss(verse_key):
+    """List the glossary terms present in one verse, with its references."""
+    verse = ilm_app.get_quran_text(verse_key, language="en")
+    if not verse:
+        return jsonify({"error": "Verse not found", "verse_key": verse_key}), 404
+    return jsonify({
+        "verse_key": verse_key,
+        "terms": GLOSSARY.find_terms(verse.translation or ""),
+    })
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=False, threaded=True)

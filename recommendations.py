@@ -136,18 +136,20 @@ class RecommendationEngine:
             vk = verse_keys[day % len(verse_keys)]
             
             verse = self.data_service.get_quran_verse(vk, "en")
-            if verse:
-                plan.append(Recommendation(
-                    id=f"plan_{day}_{vk}",
-                    type="verse",
-                    title=f"Day {day+1}: Reflection on {topic.title()}",
-                    description=f"Today's reading for your personalized plan",
-                    content=verse.to_dict() if hasattr(verse, 'to_dict') else vars(verse),
-                    reason=f"Part of your {duration_days}-day reading plan focusing on {topic}",
-                    priority=0.9,
-                    tags=["reading_plan", topic],
-                    source="quran"
-                ))
+            if not verse:
+                # One unusable reference should not break the whole plan.
+                continue
+            plan.append(Recommendation(
+                id=f"plan_{day}_{vk}",
+                type="verse",
+                title=f"Day {day+1}: Reflection on {topic.title()}",
+                description=f"Today's reading for your personalized plan",
+                content=verse.to_dict() if hasattr(verse, 'to_dict') else vars(verse),
+                reason=f"Part of your {duration_days}-day reading plan focusing on {topic}",
+                priority=0.9,
+                tags=["reading_plan", topic],
+                source="quran"
+            ))
         
         return plan
     

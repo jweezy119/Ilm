@@ -68,6 +68,30 @@ class QuraanApp:
         # For now, mark as ready
         print("Quran index initialized (connect to API to populate).")
     
+    def warm_up(self):
+        """Preload data and build the search index.
+
+        Safe to call in a background thread: failures are logged and never
+        propagate, and the search engine falls back to live lookups if the
+        index is unavailable.
+        """
+        import threading
+
+        def run():
+            try:
+                print("Warming Quran data cache...")
+                self.data_service._get_full_quran("en")
+                print("Warming search index...")
+                self.search_engine._ensure_indexed()
+                print(
+                    f"Warm-up complete: {self.search_engine.inverted_index.document_count} "
+                    "verses indexed."
+                )
+            except Exception as e:
+                print(f"Warm-up skipped: {e}")
+
+        threading.Thread(target=run, daemon=True).start()
+
     def get_quran_text(self, verse_key=None, language="en"):
         """Retrieve Quran text for a specific verse."""
         if not verse_key:

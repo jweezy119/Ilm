@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime Quran/hadith cache. Rebuilt automatically on first run.
+data/

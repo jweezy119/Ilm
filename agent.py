@@ -227,20 +227,39 @@ class ReferenceResolver:
             "he", "she", "his", "her", "its"
         }
         self.continuation_phrases = [
-            "tell me more", "more", "explain", "expand", "elaborate",
-            "why", "how", "what about", "and", "also", "further",
-            "what is", "what are"
+            "tell me more", "what about", "what is", "what are",
+            "expand on", "elaborate on", "go deeper"
         ]
+        # Single-word follow-up markers, matched on whole words only.
+        self.continuation_words = {
+            "more", "explain", "expand", "elaborate", "why", "how", "also", "further"
+        }
     
     def is_follow_up(self, text: str) -> bool:
+        """Detect a follow-up using WHOLE-WORD matching.
+
+        Substring matching was used before, which misfired constantly:
+        "charity" contains "it", "the Quran" contains "he", "understand"
+        contains "and". That made ordinary new queries look like follow-ups
+        and caused the previous topic to be prepended to them, so a fresh
+        search returned the previous search's results.
+        """
         text_lower = text.lower()
-        return any(p in text_lower for p in self.pronouns) or any(p in text_lower for p in self.continuation_phrases)
-    
+        words = set(re.findall(r"[a-z']+", text_lower))
+        if words & self.pronouns:
+            return True
+        # Whole-phrase match only: substring matching made "understand"
+        # ("...and...") and "among" ("...ong") look like follow-ups.
+        return any(p in text_lower for p in self.continuation_phrases if " " in p) or any(
+            w in self.continuation_words for w in words
+        )
+
     def expand_with_context(self, text: str, context: Dict[str, Any]) -> str:
         if not self.is_follow_up(text):
             return text
-        
+
         text_lower = text.lower()
+        words = set(re.findall(r"[a-z']+", text_lower))
         expanded = text
         
         # Update situational context for follow-ups
@@ -249,36 +268,29 @@ class ReferenceResolver:
         context["situational_context"] = situational_context
         
         # Enhanced pronoun resolution with situational awareness
-        if any(p in text_lower for p in self.pronouns):
-            # Determine consistency level based on previous queries
-            recent_queries = context.get("recent_queries", [])
-            if len(recent_queries) >= 3:
-                # More consistent, focus on active topic
-                if context.get("active_topic"):
-                    expanded = f"{context['active_topic']} {text}"
-                elif context.get("active_entities"):
-                    expanded = f"{context['active_entities'][-1]} {text}"
-                else:
-                    expanded = f"the topic of {text}"
+        if any(p in words for p in self.pronouns):
+            # Subject for expansion is the previous real query, not the
+            # coarse one-word topic slug (which produced nonsense searches
+            # like "prayer charity" when the user asked about charity).
+            subject = self._expansion_subject(context)
+            if subject:
+                expanded = f"{subject} {text}"
             else:
-                # Exploratory phase, be more flexible
-                if context.get("active_topic"):
-                    expanded = f"{context['active_topic']} {text}"
-                elif context.get("active_entities"):
-                    expanded = f"{context['active_entities'][-1]} {text}"
-                elif context.get("recent_queries"):
-                    expanded = f"{context['recent_queries'][-1]} {text}"
-        
+                expanded = f"the topic of {text}"
+
         # Enhanced continuation phrase resolution
-        if any(p in text_lower for p in self.continuation_phrases) and context.get("active_topic"):
-            # Adjust based on emotional state and confidence
-            emotional_state = context.get("emotional_state", "neutral")
-            if emotional_state == "curious":
-                expanded = f"Let's explore {context['active_topic']} {text}"
-            elif emotional_state == "uncertain":
-                expanded = f"Looking into {context['active_topic']} {text}"
-            else:
-                expanded = f"{context['active_topic']} {text}"
+        if any(p in text_lower for p in self.continuation_phrases) or (
+            words & self.continuation_words
+        ):
+            subject = self._expansion_subject(context)
+            if subject:
+                emotional_state = context.get("emotional_state", "neutral")
+                if emotional_state == "curious":
+                    expanded = f"Let's explore {subject} {text}"
+                elif emotional_state == "uncertain":
+                    expanded = f"Looking into {subject} {text}"
+                else:
+                    expanded = f"{subject} {text}"
         
         # Track user consistency pattern
         if situational_context.get("consecutive_followups", 0) > 2:
@@ -287,6 +299,33 @@ class ReferenceResolver:
                 context["confidence_level"] = max(0.3, context.get("confidence_level", 1.0) - 0.2)
         
         return expanded
+
+    @staticmethod
+    def _expansion_subject(context: Dict[str, Any]) -> str:
+        """Pick the text to stand in for a pronoun in a follow-up.
+
+        Prefers the most recent user query, since that is what "tell me
+        more about it" actually refers to. Falls back to the active topic
+        only when there is no usable history. Common stop-words are dropped
+        so the expansion stays a search query rather than a sentence.
+        """
+        recent = [q for q in context.get("recent_queries", []) if q and q.strip()]
+        candidates = [recent[-1]] if recent else []
+
+        topic = (context.get("active_topic") or "").strip()
+        if topic and topic.lower() not in {c.lower() for c in candidates}:
+            candidates.append(topic)
+
+        for candidate in candidates:
+            cleaned = re.sub(
+                r"^(what|who|how|why|when|where|tell me|show me|give me|verses? about|"
+                r"verses? on|verses? regarding|about|on|regarding|the)\s+",
+                "",
+                candidate.lower(),
+            ).strip()
+            if len(cleaned) >= 3:
+                return cleaned
+        return ""
 
 
 class DialogueRouter:
@@ -607,7 +646,7 @@ class AgenticChatEngine:
                 "topics": getattr(intent, 'topics', []),
                 "confidence": getattr(intent, 'confidence', 0.0)
             },
-            "results": quran_results[:5],
+            "results": quran_results[:8],
             "hadiths": turn.hadiths[:3],
             "insights": [{"type": "answer", "message": summary}] if summary else [],
             "suggestions": turn.suggestions,
