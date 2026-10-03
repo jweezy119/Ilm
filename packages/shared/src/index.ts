@@ -421,6 +421,123 @@ export type LibraryEntry = z.infer<typeof LibraryEntrySchema>;
  * tag, and every theme in the app is currently that. Ranking them in one column
  * without the label would let the first lend its authority to the third.
  */
+
+/* ============================================================================
+   Journeys — a reader's own path through the corpora
+   ============================================================================ */
+
+/** Which detected relation an edge on the graph came from. */
+export const JourneyEdgeKindSchema = z.enum([
+  'quotation',
+  'allusion',
+  'alignment',
+  'shared-theme',
+]);
+export type JourneyEdgeKind = z.infer<typeof JourneyEdgeKindSchema>;
+
+export const JourneyNodeSchema = z.object({
+  id: z.string(),
+  passageKey: z.string(),
+  position: z.number().int(),
+  note: z.string().nullable(),
+  /** Null when the passage has since left the corpus; the node is kept anyway. */
+  missing: z.boolean().default(false),
+});
+export type JourneyNode = z.infer<typeof JourneyNodeSchema>;
+
+/**
+ * An edge, and the relation it was read from.
+ *
+ * `from`/`to` are passage keys and `provenance` is who detected the relation.
+ * They cannot share a name: an edge has two endpoints and one detector, and
+ * collapsing them is how a graph ends up showing a reader's own assertion in
+ * the same style as a quotation somebody found in the text.
+ */
+export const JourneyEdgeSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  kind: JourneyEdgeKindSchema,
+  /** 0–1, taken from the underlying relation. */
+  strength: z.number().min(0).max(1),
+  /**
+   * Read from the stored relation rather than asserted here, because this app's
+   * whole claim is that a reader can tell a claim from a quote. `derived` is
+   * local scoring, `jev` the judge, `manual` a human.
+   */
+  provenance: z.enum(['jev', 'derived', 'manual']),
+  /** Which theme, when kind is shared-theme. */
+  theme: z.string().optional(),
+});
+export type JourneyEdge = z.infer<typeof JourneyEdgeSchema>;
+
+export const JourneySummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  nodeCount: z.number().int(),
+  corpora: z.array(TextIdSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type JourneySummary = z.infer<typeof JourneySummarySchema>;
+
+/** One node of the graph with the passage it points at. */
+export const JourneyGraphNodeSchema = z.object({
+  passageKey: z.string(),
+  textId: TextIdSchema,
+  book: z.string(),
+  chapter: z.number().int(),
+  verse: z.number().int(),
+  position: z.number().int(),
+  note: z.string().nullable(),
+  preview: z.string(),
+  originalText: z.string(),
+  language: z.string(),
+  missing: z.boolean(),
+});
+export type JourneyGraphNode = z.infer<typeof JourneyGraphNodeSchema>;
+
+/**
+ * A relation between two of the reader's own passages that they have not drawn.
+ *
+ * Offered rather than drawn. A graph built only from what is already in it is as
+ * sparse as the reader's first few choices, and drawing a diagram of six nodes
+ * with four edges tells them nothing about what they have not chosen. Naming the
+ * missing links is the useful half.
+ */
+export const JourneySuggestionSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  kind: JourneyEdgeKindSchema,
+  strength: z.number().min(0).max(1),
+  provenance: z.enum(['jev', 'derived', 'manual']),
+  theme: z.string().optional(),
+  /** The quoted words, for a quotation or an allusion. */
+  sharedText: z.string().optional(),
+});
+export type JourneySuggestion = z.infer<typeof JourneySuggestionSchema>;
+
+export const JourneyGraphSchema = z.object({
+  journey: JourneySummarySchema,
+  nodes: z.array(JourneyGraphNodeSchema),
+  edges: z.array(JourneyEdgeSchema),
+  /**
+   * Pairs the reader can reach but has not included. The graph is otherwise
+   * only as connected as their taste in the first few verses, and saying so is
+   * more useful than drawing a sparse diagram.
+   */
+  suggested: z.array(JourneySuggestionSchema).default([]),
+});
+export type JourneyGraph = z.infer<typeof JourneyGraphSchema>;
+
+/** Nothing in the journey surface is unbounded; these are the service's own limits. */
+export const JOURNEY_LIMITS = {
+  maxJourneys: 40,
+  maxNodes: 200,
+  nameLength: 80,
+  noteLength: 2000,
+} as const;
+
 export const RelatedPassageSchema = z.object({
   passageKey: z.string(),
   textId: TextIdSchema,

@@ -437,6 +437,51 @@ model SavedPassage {
   @@map("saved_passages")
 }
 
+// A journey: a reader's own path through the corpora, as a set of passages they
+// chose and the order they put them in.
+//
+// Node set and ordering only. The edges are read at query time from
+// cross_references, alignments and passage_themes, so every edge already carries
+// the provenance that detected it. There is deliberately no journey_edges table:
+// a user-authored edge would be the reader's assertion wearing the same weight as
+// a detected quotation, and the UI could not tell them apart afterwards. A
+// reader's own connection between two passages is a note on the node.
+model Journey {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  nodes JourneyNode[]
+
+  @@unique([userId, name])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@map("journeys")
+}
+
+model JourneyNode {
+  id         String @id @default(cuid())
+  journeyId  String @map("journey_id")
+  passageKey String @map("passage_key")
+
+  // The reader's ordering, not the corpus order: the order they put the passages
+  // in is the argument they are making, and it is the one thing not derivable.
+  position Int @default(0)
+  note     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  journey Journey @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  // One node per passage per journey. The same passage may sit in several
+  // journeys: two readings of one verse are two journeys.
+  @@unique([journeyId, passageKey])
+  @@index([journeyId, position])
+  @@map("journey_nodes")
+}
+
 // A named group of saved passages. Unused by the first version of the library,
 // which saves without filing; the table exists so that adding collections is a
 // change to the UI and not a second migration.

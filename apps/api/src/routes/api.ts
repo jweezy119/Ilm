@@ -47,6 +47,18 @@ import { getTopics } from '../services/topics';
 import { getCitationsForPassage } from '../services/citations';
 import { getRelatedPassages } from '../services/related';
 import { resolveIdentity, cookieOptions, getLibrary, getSavedKeys, savePassage, removePassage, LIBRARY_COOKIE } from '../services/library';
+import {
+  listJourneys,
+  createJourney,
+  renameJourney,
+  deleteJourney,
+  addJourneyNode,
+  removeJourneyNode,
+  setJourneyNodeNote,
+  reorderJourney,
+  getJourneyGraph,
+  JourneyError,
+} from '../services/journey-graph';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
@@ -505,6 +517,132 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     // Deleting something that is not there is the state the caller wanted, so
     // this is a success rather than a 404.
     return ok({ removed });
+  });
+
+  /* ==========================================================================
+     Journeys
+     ========================================================================== */
+
+  /**
+   * One error shape for the whole journey surface.
+   *
+   * The service already distinguishes "not yours" from "that passage is not in
+   * the corpus" from "you have too many", and those are genuinely different
+   * answers. What they share is a code the client can branch on, which is why
+   * this exists rather than a bare catch.
+   */
+  const journeyFail = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof JourneyError) {
+      const code =
+        error.status === 404 ? 'NOT_FOUND' : error.status === 409 ? 'CONFLICT' : 'INVALID_INPUT';
+      return fail(reply, error.status, code, error.message);
+    }
+    // Anything else is ours, and the global handler already masks its message in
+    // production — so rethrowing rather than reporting it as a bad request.
+    throw error;
+  };
+
+  app.get('/api/journeys', async (request: FastifyRequest, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    return ok({ journeys: await listJourneys(userId) });
+  });
+
+  app.post('/api/journeys', async (request: FastifyRequest<{ Body: { name?: string; description?: string } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    const body = request.body ?? {};
+    if (typeof body.name !== 'string') {
+      return fail(reply, 400, 'INVALID_INPUT', 'name is required');
+    }
+    try {
+      return ok({ journey: await createJourney(userId, { name: body.name, description: body.description }) });
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
+  });
+
+  app.get('/api/journeys/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    try {
+      return ok({ graph: await getJourneyGraph(userId, request.params.id) });
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
+  });
+
+  app.patch('/api/journeys/:id', async (request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; description?: string | null } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    try {
+      return ok({ journey: await renameJourney(userId, request.params.id, request.body ?? {}) });
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
+  });
+
+  app.delete('/api/journeys/:id', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    try {
+      await deleteJourney(userId, request.params.id);
+      return ok({ removed: true });
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
+  });
+
+  app.post('/api/journeys/:id/nodes', async (request: FastifyRequest<{ Params: { id: string }; Body: { passageKey?: string } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    const passageKey = (request.body?.passageKey ?? '').trim();
+    if (!passageKey) return fail(reply, 400, 'INVALID_INPUT', 'passageKey is required');
+    try {
+      return ok(await addJourneyNode(userId, request.params.id, passageKey));
+    } catch (error) {
+      // A key that parses but names no passage is the same client bug as the
+      // library's 404: a stale link, or a fabricated key.
+      if (error instanceof z.ZodError) {
+        return fail(reply, 400, 'INVALID_INPUT', 'That does not look like a passage reference.');
+      }
+      return journeyFail(reply, error);
+    }
+  });
+
+  app.delete('/api/journeys/:id/nodes/:passageKey', async (request: FastifyRequest<{ Params: { id: string; passageKey: string } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    try {
+      return ok(await removeJourneyNode(userId, request.params.id, decodeURIComponent(request.params.passageKey)));
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
+  });
+
+  app.put('/api/journeys/:id/nodes/:passageKey/note', async (request: FastifyRequest<{ Params: { id: string; passageKey: string }; Body: { note?: string | null } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    try {
+      return ok(await setJourneyNodeNote(userId, request.params.id, decodeURIComponent(request.params.passageKey), request.body?.note ?? null));
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
+  });
+
+  /**
+   * The order the reader wants, as passage keys.
+   *
+   * Deliberately not a list of positions. What the client has after the reader
+   * dragged something is an order of rows, and translating it server-side is
+   * where two nodes end up claiming one slot.
+   */
+  app.put('/api/journeys/:id/order', async (request: FastifyRequest<{ Params: { id: string }; Body: { keys?: unknown } }>, reply: FastifyReply) => {
+    const userId = identityOf(request, reply);
+    const keys = request.body?.keys;
+    if (!Array.isArray(keys)) {
+      return fail(reply, 400, 'INVALID_INPUT', 'keys must be an array of passage keys');
+    }
+    if (keys.length > 500) {
+      return fail(reply, 400, 'INVALID_INPUT', 'Send at most 500 keys in one reorder');
+    }
+    try {
+      return ok(await reorderJourney(userId, request.params.id, keys.filter((k): k is string => typeof k === 'string')));
+    } catch (error) {
+      return journeyFail(reply, error);
+    }
   });
 
   app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys?: unknown } }>, reply: FastifyReply) => {

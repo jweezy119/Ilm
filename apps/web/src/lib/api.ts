@@ -20,6 +20,8 @@ import type {
   ResolvedCitation,
   LibraryEntry,
   RelatedPassages,
+  JourneySummary,
+  JourneyGraph,
 } from '@ilm/shared';
 
 /** The comparison options the API accepts, as the client sends them. */
@@ -52,7 +54,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { 'content-type': 'application/json', ...init?.headers },
+      // Only when there is a body to describe. Sending
+      // `content-type: application/json` with no body — which every GET and
+      // every DELETE here did — makes Fastify reject the request outright with
+      // FST_ERR_CTP_EMPTY_JSON_BODY, so removing a saved passage failed with a
+      // 400 that looked like a server fault rather than a header problem.
+      ...(init?.body === undefined ? {} : { headers: { 'content-type': 'application/json', ...init?.headers } }),
     });
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', `Could not reach the Ilm API at ${path}. Is it running?`);
@@ -72,6 +79,7 @@ const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 const put = <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
+const patch = <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
 // ============================================================================
 // Types mirrored from the API's own responses
@@ -325,6 +333,46 @@ export const api = {
    * Identity is an anonymous cookie the API mints on first contact — there is no
    * account — so this works with no arguments and no prior setup.
    */
+  /* Journeys: the reader's own path through the corpora. */
+
+  journeys: () => get<{ journeys: JourneySummary[] }>('/api/journeys'),
+
+  journeyGraph: (id: string) => get<{ graph: JourneyGraph }>(`/api/journeys/${encodeURIComponent(id)}`),
+
+  createJourney: (name: string, description?: string) =>
+    post<{ journey: JourneySummary }>('/api/journeys', { name, ...(description ? { description } : {}) }),
+
+  // The second argument is named changes rather than patch so it does not shadow
+  // the PATCH helper above it.
+  renameJourney: (id: string, changes: { name?: string; description?: string | null }) =>
+    patch<{ journey: JourneySummary }>(`/api/journeys/${encodeURIComponent(id)}`, changes),
+
+  deleteJourney: (id: string) => del<{ removed: boolean }>(`/api/journeys/${encodeURIComponent(id)}`),
+
+  addJourneyNode: (id: string, passageKey: string) =>
+    post<{ added: boolean; position: number }>(`/api/journeys/${encodeURIComponent(id)}/nodes`, { passageKey }),
+
+  removeJourneyNode: (id: string, passageKey: string) =>
+    del<{ removed: boolean }>(
+      `/api/journeys/${encodeURIComponent(id)}/nodes/${encodeURIComponent(passageKey)}`
+    ),
+
+  saveJourneyNote: (id: string, passageKey: string, note: string | null) =>
+    put<{ note: string | null }>(
+      `/api/journeys/${encodeURIComponent(id)}/nodes/${encodeURIComponent(passageKey)}/note`,
+      { note }
+    ),
+
+  /**
+   * The order as passage keys rather than positions: what the client has after
+   * the reader dragged a row is a sequence of rows.
+   */
+  reorderJourney: (id: string, keys: string[]) =>
+    put<{ positions: Array<{ passageKey: string; position: number }> }>(
+      `/api/journeys/${encodeURIComponent(id)}/order`,
+      { keys }
+    ),
+
   library: () => get<{ entries: LibraryEntry[] }>('/api/library'),
 
   /** Just the keys, for the save buttons. Much smaller than the hydrated list. */
