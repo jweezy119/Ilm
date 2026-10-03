@@ -6,7 +6,22 @@ import nextTypescript from 'eslint-config-next/typescript';
  * so linting is eslint's own CLI against this file.
  */
 const config = [
-  { ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts'] },
+  {
+    /*
+     * The generated fallback-voice engine is excluded along with the usual
+     * machinery. It is a 1.8 MB minified bundle produced by
+     * apps/api/scripts/build-robotic-voice.mjs, and linting it produced four
+     * thousand warnings about code nobody wrote and cannot change. It is also
+     * already covered where it matters — the artifact is asserted on by
+     * robotic-voice.test.ts, and its behaviour is verified in a real browser.
+     */
+    ignores: [
+      '.next/**',
+      'node_modules/**',
+      'next-env.d.ts',
+      'public/vendor/**',
+    ],
+  },
   ...nextCoreWebVitals,
   ...nextTypescript,
   {

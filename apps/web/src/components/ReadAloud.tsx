@@ -14,6 +14,7 @@ import {
 } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 import { voiceProblem } from '@/lib/voice-help';
+import { createRoboticVoice, roboticVoicePossible, type RoboticVoice } from '@/lib/robotic-voice';
 
 /**
  * The voice list, waiting briefly for it to arrive if it has not.
@@ -112,6 +113,16 @@ export function ReadAloud({
   const queueIndex = useRef(0);
   const cancelled = useRef(false);
 
+  /**
+   * Which engine is speaking, and the fallback once it is loaded.
+   *
+   * A device voice is always preferred — it is the better voice for free — so the
+   * fallback is only built when there is genuinely nothing to use.
+   */
+  const roboticRef = useRef<RoboticVoice | null>(null);
+  const [engine, setEngine] = useState<'device' | 'robotic' | null>(null);
+  const [preparing, setPreparing] = useState(false);
+
   /*
    * Voices are read when the button is pressed, not on mount.
    *
@@ -134,6 +145,76 @@ export function ReadAloud({
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
     };
   }, [textId, text]);
+
+
+  /**
+   * The queue, built once per text.
+   *
+   * One passage is one piece; a chapter is a piece per verse. Announcing the
+   * reference before each one is what makes a chapter usable by ear — a voice
+   * reading four hundred words with no signpost is a recording, not a reading, and
+   * the reader cannot find their place in the text they are following.
+   *
+   * Held here rather than inside speak() because two engines drain the same
+   * queue and only one of them is chosen at the moment of speaking.
+   */
+  const verseCount = segments?.length ?? (text?.trim() ? 1 : 0);
+  const pieces = useMemo<Array<{ label: string; text: string }>>(
+    () =>
+      segments?.length
+        ? segments.flatMap((seg) =>
+            splitForSpeech(seg.text).map((chunk) => ({ label: seg.label, text: chunk }))
+          )
+        : splitForSpeech(text ?? '').map((chunk) => ({ label: '', text: chunk })),
+    [segments, text]
+  );
+
+  /**
+   * Speak the prepared queue one piece at a time, with the engine already chosen.
+   *
+   * Shared by both engines because the queue, the announcements and the stopping
+   * rules are the same; only the thing that makes a noise differs. Written as a
+   * callback so it can be called from before its own definition.
+   */
+  const speakChunks = useCallback(
+    async (makeNoise: (text: string) => Promise<void>) => {
+      /*
+       * Announced up front whatever the shape of the queue. A single passage has
+       * no per-verse labels, so without this the live region stayed silent for
+       * the whole reading and a screen-reader user heard nothing happen at all.
+       *
+       * The count is of *verses given*, not of speech chunks. A long passage is
+       * split for synthesis into several pieces, and announcing "3 passages" for
+       * one verse because it needed three chunks is simply untrue — and the
+       * previous wording also read "Reading aloud in English., 3 passages", the
+       * sentence's full stop landing mid-clause.
+       */
+      setAnnouncement(
+        verseCount > 1 ? t('readingMany', { language: language.label, count: verseCount }) : t('readingAloud', { language: language.label })
+      );
+
+      for (let i = 0; i < pieces.length; i += 1) {
+        if (cancelled.current) return;
+        const piece = pieces[i];
+        // Only where a reference exists to announce; a single passage needs none.
+        if (piece.label) setAnnouncement(`${piece.label}: ${t('readingNow')}`);
+        try {
+          await makeNoise(piece.text);
+        } catch {
+          if (!cancelled.current) {
+            setSpeaking(false);
+            setNotice(t('failed'));
+            setAnnouncement(t('failed'));
+          }
+          return;
+        }
+      }
+      if (cancelled.current) return;
+      setSpeaking(false);
+      setAnnouncement(t('finishedReading'));
+    },
+    [pieces, verseCount, language.label, t]
+  );
 
   const stop = useCallback(() => {
     cancelled.current = true;
@@ -192,6 +273,38 @@ export function ReadAloud({
         helpLabel: t('voiceHelpLabel'),
         privateNote: t('voicePrivateNote'),
       };
+      /*
+       * No voice from the operating system. Before telling the reader nothing can
+       * be done, try the fallback: eSpeak compiled to WebAssembly, which needs no
+       * voice installed and no network beyond its own chunk. It sounds robotic
+       * and that is stated plainly, but a reader who cannot hear anything at all
+       * has been offered nothing.
+       */
+      if (roboticVoicePossible()) {
+        setPreparing(true);
+        setAnnouncement(t('voicePreparing'));
+        try {
+          const voice = await createRoboticVoice();
+          if (cancelled.current) return;
+          roboticRef.current = voice;
+          setPreparing(false);
+          setEngine('robotic');
+          setVoiceProblemState(null);
+          // No notice here: the engine line below already says which voice is
+          // speaking and that it is synthetic. Setting both said the same thing
+          // twice, stacked.
+          setNotice(null);
+          setSpeaking(true);
+          void speakChunks((line) => voice.speak(line, { rate }));
+          return;
+        } catch {
+          setPreparing(false);
+          // Falls through to the guidance below, which is the honest answer:
+          // the fallback exists but did not work here.
+          guidance.message = t('voiceFallbackUnavailable');
+        }
+      }
+
       setVoiceProblemState(guidance);
       setNotice(t('voiceUnavailable'));
       setAnnouncement(t('voiceUnavailable'));
@@ -200,6 +313,7 @@ export function ReadAloud({
     }
 
     setVoiceProblemState(null);
+    setEngine('device');
     if (voice && !voiceMatchesLanguage(voice, language.tag)) {
       // Said out loud rather than done quietly: being read in the wrong language
       // is a small problem, being read in the wrong language without being told
@@ -208,18 +322,6 @@ export function ReadAloud({
     } else {
       setNotice(null);
     }
-
-    /*
-     * One passage is one piece; a chapter is a piece per verse.
-     *
-     * Announcing the reference before each one is what makes a chapter usable
-     * by ear — a voice reading four hundred words with no signpost is a recording,
-     * not a reading, and the reader cannot find their place in the text they are
-     * following.
-     */
-    const pieces: Array<{ label: string; text: string }> = segments?.length
-      ? segments.flatMap((seg) => splitForSpeech(seg.text).map((chunk) => ({ label: seg.label, text: chunk })))
-      : splitForSpeech(text ?? '').map((chunk) => ({ label: '', text: chunk }));
 
     if (pieces.length === 0) {
       setNotice(t('nothingToRead'));
@@ -287,7 +389,7 @@ export function ReadAloud({
     };
 
     next();
-  }, [language, rate, text, segments, t]);
+  }, [language, rate, pieces, speakChunks, t]);
 
   return (
     <div className={cn('inline-flex flex-col gap-1', className)} onClick={(e) => e.stopPropagation()}>
@@ -303,11 +405,20 @@ export function ReadAloud({
       </button>
 
       {/*
-        Named plainly next to the control, because a synthetic voice offered
-        where a recitation is the point of the page is a different thing and a
-        reader deserves to know which one they are hearing.
+        Which voice is speaking, and the fact that a synthetic one is involved at
+        all. Both states existed and neither was shown: the engine choice and the
+        wait for the fallback to load were tracked but invisible, so a reader who
+        pressed play during an 1.8 MB download had no idea anything was happening.
       */}
-      <p className="text-[11px] text-fg-faint">{t('syntheticNote')}</p>
+      {preparing ? (
+        <p className="text-[11px] text-fg-muted" role="status">
+          {t('voicePreparing')}
+        </p>
+      ) : engine === 'robotic' ? (
+        <p className="text-[11px] text-fg-muted">{t('engineRobotic')}</p>
+      ) : engine === 'device' ? (
+        <p className="text-[11px] text-fg-faint">{t('engineDevice')}</p>
+      ) : null}
 
       {/*
         Speed, because a reading pace that is wrong for the reader makes the

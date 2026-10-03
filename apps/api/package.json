@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "mespeak": "^2.0.2",
     "pino-pretty": "^11.0.0",
     "prisma": "^5.10.0",
     "typescript": "^5.4.0",

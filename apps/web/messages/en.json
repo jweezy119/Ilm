@@ -492,6 +492,11 @@
     "voiceLinux": "On Linux, no voice is installed by default. Installing speech-dispatcher and espeak-ng gives Chrome and Firefox one; otherwise a device with a voice will work.",
     "voiceGeneric": "No speech voice is installed. Most browsers use one from the operating system, so installing an English voice there is usually all it takes.",
     "voicePrivateNote": "If you are in a private or incognito window, try an ordinary one — browsers withhold voices from private windows.",
-    "voiceRecitationInstead": "The recitation above is a recording and plays regardless, so you can still listen to this passage."
+    "voiceRecitationInstead": "The recitation above is a recording and plays regardless, so you can still listen to this passage.",
+    "voicePreparing": "Getting a voice ready…",
+    "voiceFallbackUnavailable": "This browser has no speech voice, and the built-in one could not be loaded.",
+    "engineDevice": "Using your device's voice.",
+    "engineRobotic": "Using a built-in robotic voice — your browser has no voice installed.",
+    "readingMany": "Reading aloud in {language}, {count} passages."
   }
 }
