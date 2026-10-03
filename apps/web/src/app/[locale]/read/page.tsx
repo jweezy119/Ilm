@@ -571,7 +571,7 @@ function ReadingPane({
         */}
         {speechSegments.length ? (
           <div className="mt-3 rounded-xl border border-line bg-panel/50 p-3">
-            <h2 className="mb-1.5 text-xs uppercase tracking-wide text-fg-muted">{speechT('readAloudHeading')}</h2>
+            <h2 className="mb-1.5 text-xs uppercase tracking-wide text-fg-muted">{speechT('listenHeading')}</h2>
             <ReadAloud segments={speechSegments} textId={textId} />
           </div>
         ) : null}

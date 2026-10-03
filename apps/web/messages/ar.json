@@ -482,6 +482,7 @@
     "failed": "توقفت القراءة الصوتية.",
     "rate": "سرعة القراءة",
     "passages": "مقاطع",
-    "readingNow": "يُقرأ الآن"
+    "readingNow": "يُقرأ الآن",
+    "listenHeading": "استمع"
   }
 }

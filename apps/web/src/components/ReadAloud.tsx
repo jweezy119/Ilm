@@ -14,6 +14,37 @@ import {
 } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 
+/**
+ * The voice list, waiting briefly for it to arrive if it has not.
+ *
+ * Bounded so a device genuinely without voices is told so promptly rather than
+ * leaving the button apparently dead, and so it never outlasts the press.
+ */
+export async function voicesWhenReady(synth: SpeechSynthesis, timeoutMs = 1500): Promise<SpeechVoice[]> {
+  const immediate = synth.getVoices() as SpeechVoice[];
+  if (immediate.length > 0) return immediate;
+
+  // Some engines populate without ever firing the event, so the list is read
+  // again on the timer as well as on the event.
+  return new Promise<SpeechVoice[]>((resolve) => {
+    let settled = false;
+    const finish = (voices: SpeechVoice[]) => {
+      if (settled) return;
+      settled = true;
+      synth.removeEventListener('voiceschanged', onChanged);
+      clearTimeout(timer);
+      resolve(voices);
+    };
+    const onChanged = () => finish(synth.getVoices() as SpeechVoice[]);
+    const timer = setTimeout(() => finish(synth.getVoices() as SpeechVoice[]), timeoutMs);
+    try {
+      synth.addEventListener('voiceschanged', onChanged);
+    } catch {
+      // An engine without the event still gets polled by the timer.
+    }
+  });
+}
+
 export interface SpeechSegment {
   /** What a screen reader hears before the text, e.g. "3:16". */
   label: string;
@@ -89,7 +120,7 @@ export function ReadAloud({
     setSpeaking(false);
   }, []);
 
-  const speak = useCallback(() => {
+  const speak = useCallback(async () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setNotice(t('unsupported'));
       setAnnouncement(t('unsupported'));
@@ -100,11 +131,26 @@ export function ReadAloud({
     synth.cancel();
     cancelled.current = false;
 
-    const available = synth.getVoices() as SpeechVoice[];
+    /*
+     * Wait for the voice list before concluding there is none.
+     *
+     * `getVoices()` returns an empty array until the browser has finished
+     * loading the system's voice list, and signals it with `voiceschanged`
+     * shortly afterwards — Chrome does exactly this on a cold page, and Firefox
+     * does it on some platforms. Reading the list once at press time and calling
+     * an empty one "no speech voice installed" therefore told a reader with
+     * perfectly good voices that they had none, because they pressed within the
+     * second the page opened. That is the whole feature refusing to work for
+     * someone who could hear it.
+     *
+     * So: if the list is empty, wait for the event, briefly. Only after it has
+     * stayed empty is it really a device without a voice engine.
+     */
+    const available = await voicesWhenReady(synth);
     const voice = pickVoice(available, language.tag);
 
     if (available.length === 0) {
-      // Real and common: a browser with no speech engine installed.
+      // Still real and still common: a browser with no speech engine installed.
       setNotice(t('noVoices'));
       setAnnouncement(t('noVoices'));
       setSpeaking(false);
@@ -204,7 +250,7 @@ export function ReadAloud({
     <div className={cn('inline-flex flex-col gap-1', className)} onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
-        onClick={speaking ? stop : speak}
+        onClick={speaking ? stop : () => void speak()}
         aria-pressed={speaking}
         className={cn('btn btn-secondary', compact && 'px-2.5 py-1 text-xs')}
         data-testid="read-aloud"

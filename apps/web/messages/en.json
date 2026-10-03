@@ -482,6 +482,7 @@
     "failed": "Reading aloud stopped.",
     "rate": "Reading speed",
     "passages": "passages",
-    "readingNow": "reading"
+    "readingNow": "reading",
+    "listenHeading": "Listen"
   }
 }
