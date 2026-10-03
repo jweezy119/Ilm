@@ -114,6 +114,25 @@
     "noPassageTitle": "A journey needs a passage",
     "noPassageBody": "It groups the other texts that share a theme with the one you started from. Open any passage and its journey is on that page."
   },
+  "recitation": {
+    "region": "Quran recitation",
+    "play": "Play",
+    "pause": "Pause",
+    "previous": "Previous verse",
+    "next": "Next verse",
+    "reciter": "Reciter",
+    "speed": "Playback speed",
+    "repeatOff": "Repeat off",
+    "repeatOne": "Repeat this verse",
+    "repeatAll": "Repeat the passage",
+    "nowPlaying": "Now playing {label}",
+    "paused": "Paused",
+    "repeating": "Repeating {label}",
+    "finished": "Recitation finished",
+    "blocked": "Your browser blocked playback. Press play again, or allow audio for this site.",
+    "unavailable": "This recitation could not be loaded.",
+    "listen": "Listen"
+  },
   "topics": {
     "title": "Topics",
     "description": "Twelve subjects, each measured against the corpus. Open one to see which texts actually say something about it.",

@@ -13,6 +13,7 @@ import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
 import { GlossableText } from '@/components/GlossableText';
+import { RecitationPlayer, useRecitationVerse } from '@/components/RecitationPlayer';
 import { GLOSSARY_TEXTS } from '@/lib/glossary';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
@@ -80,6 +81,7 @@ export default function PassagePage() {
   const translation = useTranslationChoice(passage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const recitationVerse = useRecitationVerse(passage?.passageKey ?? '');
 
   useEffect(() => {
     if (!passageKey) return;
@@ -212,6 +214,12 @@ export default function PassagePage() {
                 className="mt-2"
               />
             </section>
+
+            {/* Recitation is Quran-only: no other corpus here has a free
+                per-verse recording, and an empty player would be worse than
+                none. The component declines to render at all when there is no
+                audio for the passage. */}
+            <RecitationPlayer verses={recitationVerse} className="mt-5 border-t border-ink-200 pt-4 dark:border-ink-800" />
           </article>
 
           {/* Take it with you. On a passage page this is the most likely next

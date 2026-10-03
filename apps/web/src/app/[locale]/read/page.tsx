@@ -18,6 +18,8 @@ import { getTextLabel, getLanguageDirection, getScriptFont, TEXT_IDS, cn } from 
 import { useTextBooks } from '@/lib/useTextBooks';
 import { useInBookSearch } from '@/lib/useInBookSearch';
 import { Page } from '@/components/Shell';
+import { RecitationPlayer } from '@/components/RecitationPlayer';
+import { ayahAudioUrl, verseLabel, DEFAULT_RECITER } from '@/lib/reciters';
 import type { BookMetadata, TextId } from '@ilm/shared';
 
 /**
@@ -413,6 +415,19 @@ function ReadingPane({
   const [data, setData] = useState<Awaited<ReturnType<typeof import('@/lib/api').api.readBook>> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * Only verses with audio behind them. ayahAudioUrl returns null for anything
+   * that is not a Quran ayah, so this empties itself for every other corpus
+   * rather than offering a player that would only fail when pressed.
+   */
+  const recitationVerses = useMemo(
+    () =>
+      (data?.verses ?? [])
+        .filter((v) => ayahAudioUrl(v.passageKey, DEFAULT_RECITER.id) !== null)
+        .map((v) => ({ passageKey: v.passageKey, label: verseLabel(v.passageKey) ?? `${v.chapter}:${v.verse}` })),
+    [data]
+  );
+
   useEffect(() => {
     let cancelled = false;
     setData(null);
@@ -518,6 +533,19 @@ function ReadingPane({
             </button>
           </span>
         </div>
+
+        {/*
+          Recitation, when this corpus has any. One player for the whole
+          chapter rather than a button per verse: a surah is hundreds of
+          verses, and a reader who wants to listen is reading along rather than
+          hunting for the right row. Declines to render where there is no audio.
+        */}
+        {recitationVerses.length ? (
+          <RecitationPlayer
+            verses={recitationVerses}
+            className="mt-4 rounded-xl border border-line bg-panel/50 p-3"
+          />
+        ) : null}
       </header>
 
       {/* Chapter jump, when a book has enough of them to be worth listing. */}
