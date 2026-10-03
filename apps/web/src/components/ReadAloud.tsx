@@ -14,6 +14,12 @@ import {
 } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 
+export interface SpeechSegment {
+  /** What a screen reader hears before the text, e.g. "3:16". */
+  label: string;
+  text: string;
+}
+
 /**
  * Read the translation aloud with a voice the reader's own device has.
  *
@@ -28,11 +34,15 @@ import { cn } from '@/lib/utils';
  */
 export function ReadAloud({
   text,
+  segments,
   textId,
   className,
   compact = false,
 }: {
-  text: string;
+  /** A single passage's text. Ignored when `segments` is given. */
+  text?: string;
+  /** A chapter, read in order with each piece announced. */
+  segments?: SpeechSegment[];
   textId: TextId;
   className?: string;
   compact?: boolean;
@@ -110,7 +120,18 @@ export function ReadAloud({
       setNotice(null);
     }
 
-    const pieces = splitForSpeech(text);
+    /*
+     * One passage is one piece; a chapter is a piece per verse.
+     *
+     * Announcing the reference before each one is what makes a chapter usable
+     * by ear — a voice reading four hundred words with no signpost is a recording,
+     * not a reading, and the reader cannot find their place in the text they are
+     * following.
+     */
+    const pieces: Array<{ label: string; text: string }> = segments?.length
+      ? segments.flatMap((seg) => splitForSpeech(seg.text).map((chunk) => ({ label: seg.label, text: chunk })))
+      : splitForSpeech(text ?? '').map((chunk) => ({ label: '', text: chunk }));
+
     if (pieces.length === 0) {
       setNotice(t('nothingToRead'));
       return;
@@ -118,7 +139,9 @@ export function ReadAloud({
 
     queueIndex.current = 0;
     setSpeaking(true);
-    setAnnouncement(t('readingAloud', { language: language.label }));
+    setAnnouncement(
+      t('readingAloud', { language: language.label }) + (pieces.length > 1 ? ` ${pieces.length} ${t('passages')}` : '')
+    );
 
     const next = () => {
       if (cancelled.current) return;
@@ -128,9 +151,12 @@ export function ReadAloud({
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance(pieces[queueIndex.current]);
+      const piece = pieces[queueIndex.current];
+      const utterance = new SpeechSynthesisUtterance(piece.text);
       utterance.lang = language.tag;
       utterance.rate = rate;
+
+      if (piece.label) setAnnouncement(`${piece.label}: ${t('readingNow')}`);
 
       /*
        * Assigning the voice is guarded, and that is not paranoia.
@@ -172,7 +198,7 @@ export function ReadAloud({
     };
 
     next();
-  }, [language, rate, text, t]);
+  }, [language, rate, text, segments, t]);
 
   return (
     <div className={cn('inline-flex flex-col gap-1', className)} onClick={(e) => e.stopPropagation()}>

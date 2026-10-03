@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useSearchParams } from 'next/navigation';
@@ -19,6 +20,7 @@ import { useTextBooks } from '@/lib/useTextBooks';
 import { useInBookSearch } from '@/lib/useInBookSearch';
 import { Page } from '@/components/Shell';
 import { RecitationPlayer } from '@/components/RecitationPlayer';
+import { ReadAloud } from '@/components/ReadAloud';
 import { ayahAudioUrl, verseLabel, DEFAULT_RECITER } from '@/lib/reciters';
 import type { BookMetadata, TextId } from '@ilm/shared';
 
@@ -420,6 +422,16 @@ function ReadingPane({
    * that is not a Quran ayah, so this empties itself for every other corpus
    * rather than offering a player that would only fail when pressed.
    */
+  const speechT = useTranslations('speech');
+
+  const speechSegments = useMemo(
+    () =>
+      (data?.verses ?? [])
+        .filter((v) => (v.text ?? '').trim().length > 0)
+        .map((v) => ({ label: `${v.chapter}:${v.verse}`, text: v.text })),
+    [data]
+  );
+
   const recitationVerses = useMemo(
     () =>
       (data?.verses ?? [])
@@ -545,6 +557,23 @@ function ReadingPane({
             verses={recitationVerses}
             className="mt-4 rounded-xl border border-line bg-panel/50 p-3"
           />
+        ) : null}
+
+        {/*
+          Read aloud for every corpus, including the ones with no human
+          recitation. A reader part-way through Genesis had no audio at all
+          before this, because the player above is Quran-only by design and
+          nothing replaced it.
+
+          The whole chapter rather than a button per verse: three hundred
+          controls is not a reading surface, and a reader who is listening is
+          following the text rather than hunting for the right row.
+        */}
+        {speechSegments.length ? (
+          <div className="mt-3 rounded-xl border border-line bg-panel/50 p-3">
+            <h2 className="mb-1.5 text-xs uppercase tracking-wide text-fg-muted">{speechT('readAloudHeading')}</h2>
+            <ReadAloud segments={speechSegments} textId={textId} />
+          </div>
         ) : null}
       </header>
 

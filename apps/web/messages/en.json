@@ -480,6 +480,8 @@
     "readingAloud": "Reading aloud in {language}.",
     "finishedReading": "Finished reading aloud.",
     "failed": "Reading aloud stopped.",
-    "rate": "Reading speed"
+    "rate": "Reading speed",
+    "passages": "passages",
+    "readingNow": "reading"
   }
 }

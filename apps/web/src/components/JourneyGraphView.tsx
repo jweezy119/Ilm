@@ -7,6 +7,7 @@ import type { JourneyGraph } from '@ilm/shared';
 import { layoutJourney, neighbourKeys, describeEdge } from '@/lib/journey-layout';
 import { getTextLabel } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { ReadAloud } from '@/components/ReadAloud';
 
 /**
  * The journey, drawn.
@@ -223,6 +224,17 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
               </p>
             ) : null}
             {activeNode.preview ? <p className="mt-2 text-sm leading-relaxed">{activeNode.preview}</p> : null}
+            {/*
+              Reading the passage a reader has selected on their own journey.
+              Same control as the passage page and the reader, so hearing it is
+              one click from anywhere it appears — which is the point of a
+              feature that exists to be used, not to be found.
+            */}
+            {activeNode.preview ? (
+              <div className="mt-3">
+                <ReadAloud text={activeNode.preview} textId={activeNode.textId} compact />
+              </div>
+            ) : null}
             {activeNode.note ? <p className="mt-2 border-s-2 border-accent ps-2 text-sm italic text-fg-muted">{activeNode.note}</p> : null}
             {activeNode.missing ? (
               <p className="mt-2 text-xs text-red-700 dark:text-red-300">{t('missingBody')}</p>

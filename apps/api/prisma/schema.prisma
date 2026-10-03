@@ -150,6 +150,11 @@ model PassageTranslation {
   translationId String      @map("translation_id")
   translation   Translation @relation(fields: [translationId], references: [id], onDelete: Cascade)
   text          String      @db.Text
+  // When this row was last compared with Sefaria's own text. Null means "not yet
+  // checked", which is every row written before the repair existed. Only the
+  // self-repair reads it; see migrations/13_translation_verified_at.
+  verifiedAt DateTime? @map("verified_at")
+
   createdAt     DateTime    @default(now()) @map("created_at")
 
   @@unique([passageId, translationId])
