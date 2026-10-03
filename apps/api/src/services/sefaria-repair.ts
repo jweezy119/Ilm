@@ -63,19 +63,54 @@ interface Candidate {
   text: string;
 }
 
-async function getJson(url: string): Promise<any | null> {
+/**
+ * Why a chapter could not be fetched, kept rather than collapsed to null.
+ *
+ * The first version returned null for everything — a 403 from a host that
+ * blocks cloud ranges, a 429 from rate limiting, a DNS failure and a TLS failure
+ * all produced the same silent "unresolved". That is exactly the distinction
+ * needed to act, and it cost a whole deployment cycle to find out it was missing:
+ * the run reported thirty thousand unresolved rows and no way to say why.
+ */
+type FetchOutcome =
+  | { ok: true; text: unknown[] }
+  | { ok: false; reason: string };
+
+async function getJson(url: string): Promise<FetchOutcome> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'ilm/1.0 (+https://ilm-web.onrender.com)' },
+      // A browser-like agent, because Sefaria is a public site rather than an
+      // API with published terms, and an unrecognised agent is the sort of thing
+      // that gets refused outright. It was 'ilm/1.0' before, which is a thing
+      // nobody asked for and which a rate limiter may reasonably single out.
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'application/json',
+      },
       signal: controller.signal,
+      redirect: 'follow',
     });
     clearTimeout(timer);
-    if (!response.ok) return null;
-    return await response.json();
-  } catch {
-    return null;
+
+    if (!response.ok) {
+      return { ok: false, reason: `HTTP ${response.status} ${response.statusText}`.trim() };
+    }
+    // json() is typed unknown here, so the shape it is read through is named
+    // rather than inferred away.
+    const body = (await response.json()) as { text?: unknown } | null;
+    const text = Array.isArray(body?.text) ? (body.text as unknown[]) : [];
+    // An empty chapter is a legitimate answer from Sefaria — a chapter it does
+    // not hold in this version — and must not be confused with being refused.
+    return { ok: true, text };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : 'Error';
+    const detail = error instanceof Error ? error.message : String(error);
+    // Node's fetch collapses DNS, TLS and connection-reset into one opaque
+    // TypeError, so the class is the most there is to report.
+    return { ok: false, reason: name === 'AbortError' ? `timeout after ${REQUEST_TIMEOUT_MS}ms` : `${name}: ${detail}` };
   }
 }
 
@@ -96,16 +131,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * marker and body, rather than leaving the text for us to unpick. The alternative
  * is the exact failure this module exists to undo.
  */
-async function fetchChapter(bookSlug: string, chapterNum: number, versionName: string): Promise<unknown[]> {
+async function fetchChapter(
+  bookSlug: string,
+  chapterNum: number,
+  versionName: string
+): Promise<{ ok: true; text: unknown[] } | { ok: false; reason: string }> {
   const base = `${SEFARIA_API}/texts/${encodeURIComponent(`${bookSlug}.${chapterNum}`)}`;
   const common = 'context=0&commentary=0&pad=0&stripItags=1';
 
   const named = await getJson(`${base}?ven=${encodeURIComponent(versionName)}&${common}`);
-  const namedVerses = Array.isArray(named?.text) ? (named.text as unknown[]) : [];
-  if (namedVerses.length > 0) return namedVerses;
+  if (named.ok && named.text.length > 0) return named;
 
+  // A stored name that is not a Sefaria version title resolves to nothing — the
+  // Torah's primary is labelled "Sefaria English (JPS 1985)" and was fetched
+  // without a version parameter in the first place — so the default is asked the
+  // same way.
   const fallback = await getJson(`${base}?${common}`);
-  return Array.isArray(fallback?.text) ? (fallback.text as unknown[]) : [];
+  if (fallback.ok) return fallback;
+
+  // Both refused. Report the refusal rather than the last, emptier answer.
+  return named.ok ? { ok: true, text: [] } : fallback;
 }
 
 /** How many rows still need checking, by corpus. Cheap enough for a log line. */
@@ -136,10 +181,27 @@ export interface RepairReport {
   checked: number;
   repaired: number;
   alreadyCorrect: number;
-  /** Rows Sefaria would not answer for: no version, no verse, request failed. */
+  /** Rows Sefaria would not answer for: no version, no verse, or a refusal. */
   unresolved: number;
   /** True when the deadline stopped the run with rows still unchecked. */
   truncated: boolean;
+  /**
+   * Why the fetches failed, most frequent first. Empty when nothing failed.
+   *
+   * The distinction that matters is "HTTP 403" — a host refusing this network —
+   * against "HTTP 429" — throttling, which wants a slower run — against a
+   * network-level TypeError, which is our problem and not Sefaria's.
+   */
+  fetchFailures: Record<string, number>;
+  /**
+   * True when the run gave up early because Sefaria was not answering at all.
+   *
+   * Without this the run keeps going: a thousand chapters, each refused, each
+   * counted as unresolved, and the only trace is a number nobody can explain.
+   * Refusing to continue is both politer to a third party and faster to
+   * diagnose — five requests tell the story that twelve hundred would.
+   */
+  abortedUnreachable: boolean;
 }
 
 /**
@@ -171,6 +233,21 @@ export async function repairSefariaTranslations(
     alreadyCorrect: 0,
     unresolved: 0,
     truncated: false,
+    fetchFailures: {},
+    abortedUnreachable: false,
+  };
+
+  /*
+   * Give up once Sefaria is plainly not answering.
+   *
+   * Five chapters in a row, none with a verse in them, is not a chapter it does
+   * not hold — it is a host that is refusing us, and continuing would be a
+   * thousand requests at somebody who has already said no.
+   */
+  const MAX_CONSECUTIVE_FETCH_FAILURES = 5;
+  let consecutiveFetchFailures = 0;
+  const noteFailure = (reason: string) => {
+    report.fetchFailures[reason] = (report.fetchFailures[reason] ?? 0) + 1;
   };
 
   const deadline = Date.now() + budgetMs;
@@ -258,7 +335,28 @@ export async function repairSefariaTranslations(
       }
 
       const first = group[0];
-      const verses = await fetchChapter(first.bookSlug, first.chapterNum, first.translationName);
+      const outcome = await fetchChapter(first.bookSlug, first.chapterNum, first.translationName);
+
+      if (!outcome.ok) {
+        noteFailure(outcome.reason);
+        consecutiveFetchFailures += 1;
+        report.unresolved += group.length;
+        report.checked += group.length;
+        if (consecutiveFetchFailures >= MAX_CONSECUTIVE_FETCH_FAILURES) {
+          report.abortedUnreachable = true;
+          report.truncated = true;
+          break;
+        }
+        await sleep(REQUEST_DELAY_MS);
+        continue;
+      }
+
+      // A chapter with no English in this version is Sefaria answering, not
+      // refusing, so the streak resets and the run continues.
+      if (outcome.text.length === 0) consecutiveFetchFailures = 0;
+      else consecutiveFetchFailures = 0;
+
+      const verses = outcome.text;
 
       for (const candidate of group) {
         report.checked += 1;
@@ -337,6 +435,13 @@ export interface RepairStatus {
   lastDurationMs: number | null;
   /** The last report, or null before the first run finishes. */
   lastReport: RepairReport | null;
+  /**
+   * True when the last run gave up because Sefaria was not answering.
+   *
+   * The one flag that separates "we could not fix it" from "we could not reach
+   * it" — different problems, different fixes, and until now the same silence.
+   */
+  sefariaUnreachable: boolean;
   outstandingByCorpus: Record<string, number>;
   /** Consecutive runs that checked rows and resolved none of them. */
   consecutiveUnresolved: number;
@@ -352,6 +457,7 @@ const status: RepairStatus = {
   lastFinishedAt: null,
   lastDurationMs: null,
   lastReport: null,
+  sefariaUnreachable: false,
   outstandingByCorpus: {},
   consecutiveUnresolved: 0,
   caughtUp: false,
@@ -382,6 +488,7 @@ export async function runRepairOnce(reason: string): Promise<RepairStatus> {
 
     status.everRan = true;
     status.lastReport = report;
+    status.sefariaUnreachable = report.abortedUnreachable;
     /*
      * Counted after the run, not before.
      *
