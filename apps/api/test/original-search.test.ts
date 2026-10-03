@@ -29,12 +29,28 @@ describe('original-language search', () => {
     expect(code(postgres)).toContain('p.search_vector_original');
     /*
      * The original-language query carries the surface form *and* the stem, because
-     * the index does. `||` is the disjunction: a query for θεοῦ has to find θεός and
-     * a query for θεός has to find θεοῦ, and ANDing them would require every passage
-     * to contain both.
+     * the index does. The disjunction is SQL's || between two tsquery values.
      */
-    expect(code(postgres)).toContain("to_tsquery('simple', ${origLexemes})");
-    expect(code(postgres)).toContain("`${origSurface} | ${origStemmed}`");
+    expect(code(postgres)).toContain("plainto_tsquery('simple', ${origSurface})");
+    expect(code(postgres)).toContain("|| plainto_tsquery('simple', ${origStemmed})");
+  });
+
+  it('never interpolates text into to_tsquery, which would parse it as tsquery syntax', () => {
+    /*
+     * to_tsquery treats its argument as tsquery *syntax*: OR, AND, NOT and EXCEPT are
+     * operators and punctuation is not literal. The recommendation path builds a
+     * query out of words sampled from a passage's own translation, so real prose
+     * reached the database and came back 42601 — a 500 on the passage page rather
+     * than an empty sidebar. plainto_tsquery treats its input as plain text, so it
+     * cannot fail on any input, which is the property this guards.
+     *
+     * Matched on the interpolation rather than the bare word, because the comments
+     * explaining the hazard name to_tsquery on purpose. The (?<![\w]) keeps it from
+     * matching the tail of plainto_tsquery and websearch_to_tsquery, which end in
+     * the same letters.
+     */
+    expect(code(postgres)).not.toMatch(/(?<![\w])to_tsquery\(\s*'[^']*',\s*\$\{/);
+    expect(code(postgres)).toContain("plainto_tsquery('simple', ${origSurface})");
   });
 
   it('normalises the query with the same function the index used', () => {

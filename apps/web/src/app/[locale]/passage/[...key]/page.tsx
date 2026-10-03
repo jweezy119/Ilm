@@ -12,6 +12,8 @@ import type { CrossRef, Passage } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
+import { GlossableText } from '@/components/GlossableText';
+import { GLOSSARY_TEXTS } from '@/lib/glossary';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
 import { useSettingsStore } from '@/store';
@@ -189,7 +191,20 @@ export default function PassagePage() {
               <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">Translation</h2>
               {/* Driven by the reader's choice, so the text under the heading is
                   always the one the switcher has selected. */}
-              <p className="text-lg leading-relaxed text-ink-800 dark:text-ink-200">{translation.active.text}</p>
+              {/* Quranic terms in the translation are tappable, the way the
+                  original text above is tappable for Hebrew and Aramaic words. The
+                  two are separate sources: one is a bundled curated glossary, the
+                  other the published Sefaria dictionaries. */}
+              <GlossableText
+                text={translation.active.text}
+                textId={passage.textId}
+                className="text-lg leading-relaxed text-ink-800 dark:text-ink-200"
+              />
+              {GLOSSARY_TEXTS.has(passage.textId) ? (
+                <p className="mt-1.5 text-[11px] text-ink-500">
+                  Dotted terms open a short definition and the verses behind it.
+                </p>
+              ) : null}
               <TranslationSwitcher
                 options={translation.options}
                 activeName={translation.active.name}

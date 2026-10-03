@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
@@ -159,10 +159,26 @@ function SearchInner() {
     }
   }, [activeTexts, toggleText]);
 
+  /*
+   * Searches can be started from four places: submit, the ?q= deep link, the text
+   * pills, and the suggested/recent chips. Two can therefore be in flight at once.
+   *
+   * Without a guard the slower earlier one lands last and overwrites the newer
+   * search's results, its header, and the shareable URL — so the reader sees the
+   * previous query's answer under a link that disagrees with what they typed. It
+   * is the same shape as the store persisting that stale response to disk.
+   *
+   * This is the cancelled-flag pattern already used by fetchCoverage below.
+   */
+  const searchSeq = useRef(0);
+
   const runSearch = useCallback(
     async (term: string, texts: TextId[], useSemantic = semantic) => {
       const trimmed = term.trim();
       if (!trimmed) return;
+
+      const seq = ++searchSeq.current;
+      const isStale = () => seq !== searchSeq.current;
 
       setLoading(true);
       setError(null);
@@ -174,6 +190,7 @@ function SearchInner() {
           semantic: useSemantic,
           filters: texts.length < TEXT_IDS.length ? { texts } : undefined,
         });
+        if (isStale()) return;
         // The store's query drives the result header and both empty states, so it
         // has to follow the search that just ran.
         setQuery(trimmed);
@@ -181,10 +198,13 @@ function SearchInner() {
         remember(trimmed);
         router.replace(`/?q=${encodeURIComponent(trimmed)}${useSemantic ? '' : '&literal=1'}`, { scroll: false });
       } catch (caught) {
+        if (isStale()) return;
         setError(caught instanceof ApiError ? caught.message : 'Search failed.');
         setResponse(null);
       } finally {
-        setLoading(false);
+        // Only the newest search owns the loading state, or the skeleton clears
+        // while the search the reader is actually waiting on is still running.
+        if (!isStale()) setLoading(false);
       }
     },
     [setQuery, setResponse, remember, router, semantic]

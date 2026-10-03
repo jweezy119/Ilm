@@ -189,10 +189,20 @@ export function initializeOramaIndex(): Promise<IndexDB> {
       index = db;
       await persistOramaIndex();
       return db;
-    })().catch((error) => {
-      throw error;
-    });
+    })();
     initPromise = pending;
+    /*
+     * Clear the memo when the build fails.
+     *
+     * Without this, `index` stays null so the fast path above never
+     * short-circuits, and every later caller is handed this same rejected
+     * promise for the life of the process — search stays broken until a restart,
+     * even though the failure (an unwritable data dir, a transient database
+     * error) may not recur. Clearing it lets the next search try again.
+     */
+    pending.catch(() => {
+      if (initPromise === pending) initPromise = null;
+    });
   }
   return initPromise;
 }

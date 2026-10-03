@@ -217,14 +217,25 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
    *
    * Only Greek is stemmed. Arabic and Hebrew keep surface forms alone because their
    * prefixes carry the meaning, and both already measure 100% reachable.
+   *
+   * plainto_tsquery, not to_tsquery. to_tsquery parses its argument as tsquery
+   * *syntax*, so ordinary English breaks it: the words OR, AND, NOT and EXCEPT are
+   * operators, and any punctuation is too. This is not only a reader-typed query
+   * either — the recommendation path builds one from words sampled out of a
+   * passage's own translation, so "except whatever heavens" reached the database and
+   * came back 42601, which surfaced as a 500 on the passage page rather than as an
+   * empty sidebar. plainto_tsquery treats its argument as plain text and ANDs the
+   * tokens, so it cannot fail on any input.
    */
   const origSurface = query ? normalizeForSearch(query) : '';
   const origStemmed = query ? stemGreekTokens(origSurface) : '';
-  const origLexemes =
-    origStemmed && origStemmed !== origSurface ? `${origSurface} | ${origStemmed}` : origSurface;
+  // The disjunction is now expressed by SQL's || between two tsquery values, so
+  // there is no single tsquery string to mis-parse.
   const origQ = query
-    ? Prisma.sql`to_tsquery('simple', ${origLexemes})`
-    : Prisma.sql`to_tsquery('simple', '')`;
+    ? origStemmed && origStemmed !== origSurface
+      ? Prisma.sql`(plainto_tsquery('simple', ${origSurface}) || plainto_tsquery('simple', ${origStemmed}))`
+      : Prisma.sql`plainto_tsquery('simple', ${origSurface})`
+    : Prisma.sql`plainto_tsquery('simple', '')`;
 
   /*
    * Two passes, strictest first, the second run only if the first found nothing.

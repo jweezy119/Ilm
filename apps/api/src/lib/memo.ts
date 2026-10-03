@@ -28,6 +28,24 @@ export function createBoundedMemo<T>(maxEntries: number): (key: string, compute:
     }
 
     const value = compute();
+
+    /*
+     * When T is a promise, a rejection must not be cached.
+     *
+     * Intent classification and theme expansion both memoize a Promise, and both
+     * can fail transiently - a malformed judge response, a timeout surfacing as
+     * a throw. A rejected promise that stayed in the map would be handed to every
+     * later identical query for as long as it survived eviction, so one bad
+     * moment would turn one search term into a permanently broken one. The value
+     * is still returned to the caller that asked for it; only the cache forgets it,
+     * so the next identical query recomputes.
+     */
+    if (isThenable(value)) {
+      (value as PromiseLike<unknown>).then(undefined, () => {
+        if (store.get(key) === value) store.delete(key);
+      });
+    }
+
     store.set(key, value);
 
     // Map preserves insertion order, so the first key is the coldest.
@@ -39,4 +57,12 @@ export function createBoundedMemo<T>(maxEntries: number): (key: string, compute:
 
     return value;
   };
+}
+
+function isThenable(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
 }
