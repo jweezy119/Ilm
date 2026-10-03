@@ -1,0 +1,149 @@
+/**
+ * Build the list of translations the old markup stripper damaged.
+ *
+ * ## Why this exists
+ *
+ * The API cannot fix these itself. Sefaria answers Render's egress with
+ * `403 Forbidden` — a network-level refusal, not something a user agent or a
+ * slower retry changes — so a self-repair that fetches at runtime can only ever
+ * report that it is blocked. It now does exactly that, in ten requests and nine
+ * seconds, instead of a thousand refusals.
+ *
+ * So the corrections travel as data instead. This produces it, from a network
+ * that is not blocked.
+ *
+ * ## How the damage is identified
+ *
+ * Reproduced rather than looked up: the same chapter is put through the stripper
+ * that shipped and the one that fixed it, and a verse is in the output exactly
+ * when the two disagree. That needs no access to the deployed database and does
+ * not depend on what is currently stored — which matters, because the point is to
+ * repair rows written before either fix existed.
+ *
+ * The old behaviour is the current one with footnote removal left out: tags
+ * untagged rather than their contents removed, which is precisely the bug. It is
+ * rebuilt here from that definition rather than copied from history, so the two
+ * cannot drift apart unnoticed.
+ *
+ * Fetched exactly as `ingest.ts` fetched it — no version parameter, no
+ * stripItags — because that is the request whose output the damaged rows were
+ * built from. Fetching differently would compare the wrong two things.
+ */
+
+import { writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { stripSefariaHtml, decodeEntities } from '../src/services/sefaria';
+
+const SEFARIA_API = 'https://www.sefaria.org/api';
+const REQUEST_DELAY_MS = 250;
+const TIMEOUT_MS = 30_000;
+
+/** The books `ingest.ts` ingests from Sefaria, in its order. */
+const BOOKS = ['Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy'];
+
+/**
+ * The stripper as it was: tags removed, their contents kept.
+ *
+ * A footnote arrives as `<sup class="footnote-marker">a</sup>` followed by
+ * `<i class="footnote">…</i>`, and untagging those leaves the note's prose in the
+ * middle of the verse. This is the whole bug, in four lines.
+ */
+function oldStrip(value: string): string {
+  return decodeEntities(value.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function getJson(url: string): Promise<any | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function main(): Promise<void> {
+  const out: Record<string, string> = {};
+  let checked = 0;
+  let chapters = 0;
+  let unavailable = 0;
+
+  for (const book of BOOKS) {
+    // How many chapters the book has, from its own first section.
+    const probe = await getJson(
+      `${SEFARIA_API}/texts/${encodeURIComponent(book)}.1?context=0&commentary=0&wrap_per_vertex=0`
+    );
+    const length = Number(probe?.length ?? 0);
+    if (!Number.isFinite(length) || length <= 0) {
+      console.log(`${book}: Sefaria reported no chapters; skipped`);
+      unavailable += 1;
+      continue;
+    }
+
+    for (let chapter = 1; chapter <= length; chapter += 1) {
+      // The same request ingest.ts makes, so the comparison is like for like.
+      const data = await getJson(
+        `${SEFARIA_API}/texts/${encodeURIComponent(`${book}.${chapter}`)}` +
+          `?context=0&commentary=0&wrap_per_vertex=0`
+      );
+      chapters += 1;
+
+      const english = Array.isArray(data?.text) ? (data.text as unknown[]) : [];
+      if (english.length === 0) {
+        await sleep(REQUEST_DELAY_MS);
+        continue;
+      }
+
+      for (let i = 0; i < english.length; i += 1) {
+        const raw = english[i];
+        if (typeof raw !== 'string') continue;
+        const before = oldStrip(raw);
+        const after = stripSefariaHtml(raw);
+        checked += 1;
+        if (before && after && before !== after) {
+          out[`torah:${book}:${chapter}:${i + 1}`] = after;
+        }
+      }
+
+      await sleep(REQUEST_DELAY_MS);
+    }
+    console.log(`${book}: ${Object.keys(out).length} damaged so far`);
+  }
+
+  const entries = Object.entries(out).sort(([a], [b]) => (a < b ? -1 : 1));
+  const payload = {
+    _comment:
+      'Translations the previous markup stripper damaged: a footnote untagged rather than removed, leaving a translator note spliced into the verse. Generated by scripts/build-sefaria-patch.ts; run it when Sefaria changes its text. Applied by the API at boot, comparing before writing, so a row that is already right is left alone.',
+    generatedFrom: 'Sefaria default English version, fetched as ingest.ts fetches it',
+    count: entries.length,
+    verses: Object.fromEntries(entries),
+  };
+
+  // ESM: __dirname is not defined, and this script runs under tsx.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const target = resolve(here, '../data/sefaria-translation-fixes.json');
+  writeFileSync(target, `${JSON.stringify(payload, null, 0)}\n`, 'utf8');
+
+  console.log(`\nchapters fetched: ${chapters} (${unavailable} books unavailable)`);
+  console.log(`verses examined:  ${checked}`);
+  console.log(`damaged:          ${entries.length}`);
+  console.log(`written:          ${target}`);
+}
+
+main().catch((error) => {
+  console.error('❌', error);
+  process.exit(1);
+});

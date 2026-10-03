@@ -47,9 +47,17 @@ Thumbs.db
 logs/
 *.log
 
-# Local runtime data: the search index is generated and can reach ~100 MB
-apps/api/data/
-data/
+# Local runtime data: the search index is generated and can reach ~100 MB.
+#
+# The contents are excluded rather than the directory itself, because git cannot
+# re-include a file whose parent directory is excluded — and one file in here has
+# to ship. This host is refused by Sefaria (403), so the corrections below are
+# the only thing that can repair the corpus; excluding them would ship a build
+# that reports "available: false" and quietly fixes nothing.
+apps/api/data/*
+!apps/api/data/sefaria-translation-fixes.json
+# Anchored to the repository root: unanchored, this matched apps/api/data too.
+/data/
 apps/api/.env.local
 
 # Android release signing.
