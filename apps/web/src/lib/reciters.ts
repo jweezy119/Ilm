@@ -67,16 +67,8 @@ export function ayahAudioUrl(verseKey: string, reciterId: string): string | null
 export const RECITATION_SPEEDS = [0.75, 1, 1.25, 1.5] as const;
 
 /**
- * How a passage is named in speech, read off the key rather than the chapter.
- *
- * A Quran passage key is `quran:surah:1:ayah` — chapter is pinned to 1 — so the
- * surah lives in the *book* segment. Reading `chapter` announced "1:255" for the
- * second surah, which is not a reference any reader could look up.
+ * Kept as a name of its own because the recitation player reads it aloud, but the
+ * rule is shared: see passageReference, which every surface naming a passage
+ * goes through so they cannot each get it slightly differently.
  */
-export function verseLabel(passageKey: string): string | null {
-  const parts = (passageKey ?? '').split(':');
-  if (parts.length !== 4) return null;
-  const [, book, , verse] = parts;
-  if (!/^\d+$/.test(book) || !/^\d+$/.test(verse)) return null;
-  return `${Number(book)}:${Number(verse)}`;
-}
+export { passageReference as verseLabel } from '@/lib/passage-ref';

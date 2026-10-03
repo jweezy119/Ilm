@@ -73,9 +73,12 @@ describe('verseLabel', () => {
     expect(verseLabel('quran:002:1:255')).toBe('2:255');
   });
 
-  it('refuses a key that is not four segments', () => {
-    expect(verseLabel('2:255')).toBeNull();
-    expect(verseLabel('')).toBeNull();
+  it('hands back a key that is not a passage key rather than inventing a reference', () => {
+    // It now shares passageReference's contract: a raw key is better than a
+    // wrong reference, because a wrong one looks like something to look up.
+    // passage-ref.test.ts covers this in full.
+    expect(verseLabel('2:255')).toBe('2:255');
+    expect(verseLabel('')).toBe('');
   });
 });
 

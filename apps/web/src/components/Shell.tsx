@@ -16,6 +16,7 @@ import {
   Plus,
   Languages,
   Bookmark,
+  Route,
 } from 'lucide-react';
 import { routing, LOCALE_NAMES } from '@/i18n/routing';
 import { useMediaQuery, DESKTOP_QUERY } from '@/lib/useMediaQuery';
@@ -57,6 +58,7 @@ const NAV = [
   { href: '/', key: 'search', icon: Search },
   { href: '/read', key: 'read', icon: BookOpen },
   { href: '/library', key: 'library', icon: Bookmark },
+  { href: '/journeys', key: 'journeys', icon: Route },
 ] as const;
 
 /**

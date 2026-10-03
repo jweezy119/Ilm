@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { FigureNotice, RelatedPanel } from '@/components/RelatedPanel';
 import { SaveButton } from '@/components/SaveButton';
+import { AddToJourney } from '@/components/AddToJourney';
 import { CopyCitation } from '@/components/CopyCitation';
 import { useParams } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, ArrowRight, Compass, Loader2, Scale, Sparkles } from 'lucide-react';
@@ -152,6 +153,9 @@ export default function PassagePage() {
               Journey
             </Link>
             <SaveButton passageKey={passage.passageKey} variant="full" />
+            {/* Beside Save rather than inside it: keeping a passage is a bookmark,
+                putting it in a journey is a decision about a sequence. */}
+            <AddToJourney passageKey={passage.passageKey} />
           </div>
         }
       />
