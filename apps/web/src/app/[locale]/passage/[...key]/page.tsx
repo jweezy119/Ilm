@@ -15,6 +15,7 @@ import { Page, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
 import { GlossableText } from '@/components/GlossableText';
 import { RecitationPlayer, useRecitationVerse } from '@/components/RecitationPlayer';
+import { ReadAloud } from '@/components/ReadAloud';
 import { GLOSSARY_TEXTS } from '@/lib/glossary';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
@@ -79,6 +80,7 @@ export default function PassagePage() {
 
   const [passage, setPassage] = useState<Passage | null>(null);
   const copyLabel = useTranslations('library')('takeWithYou');
+  const speechT = useTranslations('speech');
   const translation = useTranslationChoice(passage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -219,11 +221,29 @@ export default function PassagePage() {
               />
             </section>
 
-            {/* Recitation is Quran-only: no other corpus here has a free
-                per-verse recording, and an empty player would be worse than
-                none. The component declines to render at all when there is no
-                audio for the passage. */}
-            <RecitationPlayer verses={recitationVerse} className="mt-5 border-t border-ink-200 pt-4 dark:border-ink-800" />
+            {/*
+              Two different things, labelled as two different things.
+
+              The recitation player is a human voice and only the Quran has one
+              here, so it renders for Quran passages and nothing else. The read
+              aloud control is a voice the reader's device already has, and it
+              works for every corpus. Putting them under one heading called
+              "Audio" would let a synthetic voice pass for a recitation, which is
+              the one claim this library must not blur.
+            */}
+            <div className="mt-5 flex flex-wrap items-start gap-6 border-t border-ink-200 pt-4 dark:border-ink-800">
+              <div>
+                <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('recitationHeading')}</h2>
+                <RecitationPlayer verses={recitationVerse} />
+                {recitationVerse.length === 0 ? (
+                  <p className="max-w-xs text-[11px] text-ink-500">{speechT('noRecitation')}</p>
+                ) : null}
+              </div>
+              <div>
+                <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('readAloudHeading')}</h2>
+                <ReadAloud text={translation.active.text} textId={passage.textId} compact />
+              </div>
+            </div>
           </article>
 
           {/* Take it with you. On a passage page this is the most likely next

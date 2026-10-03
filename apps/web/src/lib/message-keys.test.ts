@@ -22,8 +22,10 @@ const LOCALES = ['en', 'he', 'ar'] as const;
 const FILES = [
   'src/components/JourneyGraphView.tsx',
   'src/components/AddToJourney.tsx',
+  'src/components/ReadAloud.tsx',
   'src/app/[locale]/journeys/page.tsx',
   'src/app/[locale]/journeys/[journeyId]/page.tsx',
+  'src/app/[locale]/passage/[...key]/page.tsx',
 ];
 
 function flatKeys(obj: Record<string, unknown>, prefix = ''): Set<string> {
@@ -42,32 +44,60 @@ for (const locale of LOCALES) {
   catalogues[locale] = flatKeys(raw);
 }
 
-/** Every `t('x')` literal passed to a translator in a file. */
+/**
+ * Every string literal passed to a translator in a file.
+ *
+ * Not just `t(`: a file that reads two namespaces names the second one
+ * `speechT` or `tb`, and a matcher that only saw `t(` reported that file as
+ * having no keys at all — which is the self-check below catching it. The
+ * identifier has to end in a capital T or be exactly `t`, so `set(` and `get(`
+ * are not mistaken for one.
+ */
 function usedKeys(file: string): string[] {
   const src = readFileSync(join(webRoot, file), 'utf8');
   const keys: string[] = [];
-  // t('key') and t('key', {...}) — the namespace comes from useTranslations.
-  for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) keys.push(m[1]);
+  for (const m of src.matchAll(/\b(?:t|[a-z][a-zA-Z]*T)\(\s*'([a-zA-Z0-9_.]+)'/g)) keys.push(m[1]);
   return keys;
 }
 
 describe('journey and recitation messages', () => {
   for (const file of FILES) {
     it(`${file} uses only keys that exist in every catalogue`, () => {
-      // The namespace each file reads, so `t('title')` resolves to `journeys.title`.
+      /*
+       * Keys are bound to the translator that calls them, not to every namespace
+       * the file happens to declare. A page reading both `library` and `speech`
+       * would otherwise be checked for `library.recitationHeading` because it
+       * declares `library` at all, and report a key that exists under the right
+       * namespace as missing.
+       */
       const src = readFileSync(join(webRoot, file), 'utf8');
-      const namespaces = [...src.matchAll(/useTranslations\(\s*'([a-zA-Z0-9_]+)'/g)].map((m) => m[1]);
+
+      // const speechT = useTranslations('speech')  ->  speechT reads `speech`
+      const namespaceOf: Record<string, string> = {};
+      for (const m of src.matchAll(
+        /const\s+([a-zA-Z_$][\w$]*)\s*=\s*useTranslations\(\s*'([a-zA-Z0-9_]+)'/g
+      )) {
+        namespaceOf[m[1]] = m[2];
+      }
 
       const missing: string[] = [];
-      for (const namespace of namespaces) {
-        for (const key of usedKeys(file)) {
-          const path = `${namespace}.${key}`;
+      const checked = new Set<string>();
+
+      for (const [variable, namespace] of Object.entries(namespaceOf)) {
+        const pattern = new RegExp(`\\b${variable}\\(\\s*'([a-zA-Z0-9_.]+)'`, 'g');
+        for (const m of src.matchAll(pattern)) {
+          const path = `${namespace}.${m[1]}`;
+          checked.add(path);
           for (const locale of LOCALES) {
             if (!catalogues[locale].has(path)) missing.push(`${path} (${locale})`);
           }
         }
       }
+
       expect(missing, `missing keys in ${file}`).toEqual([]);
+      // A file that declares a translator but never calls it would otherwise
+      // pass with nothing checked.
+      expect(checked.size, `${file} declared a translator but checked no keys`).toBeGreaterThan(0);
     });
   }
 
@@ -94,7 +124,8 @@ describe('journey and recitation messages', () => {
     for (const file of FILES) {
       const src = readFileSync(join(webRoot, file), 'utf8');
       expect(/useTranslations\(\s*'[a-zA-Z0-9_]+'/.test(src), `${file} declares no namespace`).toBe(true);
-      expect(usedKeys(file).length, `${file} uses no t() keys`).toBeGreaterThan(0);
+      expect(usedKeys(file).length, `${file} uses no translation keys`).toBeGreaterThan(0);
+      expect(/const\s+[a-zA-Z_$][\w$]*\s*=\s*useTranslations\(/.test(src), `${file} binds no translator`).toBe(true);
     }
   });
 });

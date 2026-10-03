@@ -465,5 +465,21 @@
     "orNew": "Or start a new one",
     "addedTo": "Added to {name}.",
     "addFailed": "Could not add this passage."
+  },
+  "speech": {
+    "recitationHeading": "Recitation",
+    "readAloudHeading": "Read aloud",
+    "readAloud": "Read aloud",
+    "stop": "Stop",
+    "syntheticNote": "A synthetic voice from this device — not a recitation.",
+    "noRecitation": "No human recitation is available for this corpus. The Quran has one; the others do not, so read aloud is what hearing a passage here means.",
+    "noVoices": "This browser has no speech voice installed, so it cannot read anything aloud.",
+    "unsupported": "This browser cannot read text aloud.",
+    "wrongLanguage": "No voice for this language is installed; reading with {language} instead.",
+    "nothingToRead": "There is no translation to read.",
+    "readingAloud": "Reading aloud in {language}.",
+    "finishedReading": "Finished reading aloud.",
+    "failed": "Reading aloud stopped.",
+    "rate": "Reading speed"
   }
 }
