@@ -350,7 +350,15 @@ export async function getJourneyGraph(userId: string, journeyId: string): Promis
     };
   });
 
-  const { edges, suggestions } = await deriveEdges(keys);
+  const passageIdsFor = new Map(
+    (
+      await prisma.passage.findMany({
+        where: { passageKey: { in: keys } },
+        select: { id: true, passageKey: true },
+      })
+    ).map((p) => [p.id, p.passageKey] as const)
+  );
+  const { edges, suggestions } = await deriveEdges(keys, passageIdsFor);
   const corpora = [...new Set(graphNodes.filter((n) => !n.missing).map((n) => n.textId))];
 
   return {
@@ -384,7 +392,10 @@ export async function getJourneyGraph(userId: string, journeyId: string): Promis
  * directional reading lives in citations, where the claim is about one text
  * quoting another.
  */
-async function deriveEdges(keys: string[]): Promise<{ edges: JourneyEdge[]; suggestions: JourneySuggestion[] }> {
+async function deriveEdges(
+  keys: string[],
+  passageIdsFor: Map<string, string>
+): Promise<{ edges: JourneyEdge[]; suggestions: JourneySuggestion[] }> {
   if (keys.length < 2) return { edges: [], suggestions: [] };
 
   const keySet = new Set(keys);
@@ -400,27 +411,26 @@ async function deriveEdges(keys: string[]): Promise<{ edges: JourneyEdge[]; sugg
     theme?: string,
     sharedText?: string
   ) => {
-    if (!keySet.has(from) || !keySet.has(to) || from === to) return;
+if (!keySet.has(from) || !keySet.has(to) || from === to) return;
     if (strength < (kind === 'shared-theme' ? MIN_THEME_SCORE : MIN_EDGE_STRENGTH)) return;
-    const pairKey = [from, to].sort().join(' ');
+    const pairKey = [from, to].sort().join(' ');
     if (seen.has(pairKey)) return;
     seen.add(pairKey);
     edges.push({ from, to, kind, strength, provenance, ...(theme ? { theme } : {}) });
 
-    if (suggestions.length < MAX_SUGGESTIONS && sharedText) {
-      suggestions.push({ from, to, kind, strength, provenance, ...(theme ? { theme } : {}), sharedText });
-    }
+    /*
+     * No suggestion for a pair that just got an edge.
+     *
+     * The suggestion list is headed "relations between passages you have not
+     * included", so repeating a line already on the graph tells the reader
+     * something false: it looks like a connection they have missed, when they
+     * can already see it. Only the quoted words make a suggestion worth acting
+     * on, which is why the shared text is the gate.
+     */
   };
 
-  const passageIds = (await prisma.passage.findMany({
-    where: { passageKey: { in: keys } },
-    select: { id: true, passageKey: true },
-  })).map((p) => ({ id: p.id, passageKey: p.passageKey }));
-
-  const idToKey = new Map(passageIds.map((p) => [p.id, p.passageKey]));
-  const ids = passageIds.map((p) => p.id);
-  const suggestions: JourneySuggestion[] = [];
-
+  const idToKey = passageIdsFor;
+  const ids = [...idToKey.keys()];
   // Quotations and allusions. The strongest edges on the graph, and the only
   // ones where the two texts are known to be talking about each other.
   const crossRefs = await prisma.crossReference.findMany({
@@ -501,7 +511,71 @@ async function deriveEdges(keys: string[]): Promise<{ edges: JourneyEdge[]; sugg
   }
 
   edges.sort((a, b) => b.strength - a.strength);
-  return { edges: edges.slice(0, MAX_EDGES), suggestions: suggestions.slice(0, MAX_SUGGESTIONS) };
+  const drawn = new Set(edges.map((e) => [e.from, e.to].sort().join(' ')));
+  const reach = await deriveSuggestions(ids, idToKey, drawn);
+  return { edges: edges.slice(0, MAX_EDGES), suggestions: reach.slice(0, MAX_SUGGESTIONS) };
+}
+
+/**
+ * What the journey's passages connect to that it does not contain.
+ *
+ * The section is headed "relations between passages you have not included", so
+ * this has to be relations leading *out*. Listing a pair already drawn there —
+ * which is what the first version did — reads as a connection the reader has
+ * missed when they can see it on the graph beside them.
+ *
+ * Cross-references only. A shared theme with a passage outside the journey is
+ * almost always noise, because nearly every passage shares a theme with
+ * something; a quotation or an allusion is worth acting on.
+ */
+async function deriveSuggestions(
+  ids: string[],
+  idToKey: Map<string, string>,
+  drawnPairs: Set<string>
+): Promise<JourneySuggestion[]> {
+  if (ids.length === 0) return [];
+
+  const candidates = await prisma.crossReference.findMany({
+    where: {
+      sourcePassageId: { in: ids },
+      strength: { gte: MIN_EDGE_STRENGTH },
+    },
+    select: {
+      sourcePassageId: true,
+      targetPassageId: true,
+      type: true,
+      strength: true,
+      detectedBy: true,
+      notes: true,
+      targetPassage: { select: { passageKey: true } },
+    },
+    orderBy: { strength: 'desc' },
+    take: 60,
+  });
+
+  const out: JourneySuggestion[] = [];
+  const seenPairs = new Set<string>();
+
+  for (const ref of candidates) {
+    const from = idToKey.get(ref.sourcePassageId);
+    const to = ref.targetPassage.passageKey;
+    if (!from || !to || from === to) continue;
+
+    const pairKey = [from, to].sort().join(' ');
+    if (drawnPairs.has(pairKey) || seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    out.push({
+      from,
+      to,
+      kind: ref.type === 'quote' ? 'quotation' : 'allusion',
+      strength: ref.strength,
+      provenance: ref.detectedBy === 'manual' ? 'manual' : ref.detectedBy === 'jev' ? 'jev' : 'derived',
+      ...(ref.notes ? { sharedText: ref.notes } : {}),
+    });
+  }
+
+  return out.sort((a, b) => b.strength - a.strength);
 }
 
 /* ============================================================================

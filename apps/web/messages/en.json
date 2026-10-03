@@ -441,7 +441,7 @@
     "edgeTheme": "both carry the theme {theme}",
     "edgeShared": "shared theme",
     "suggestedHeading": "Between passages you have not included",
-    "suggestedBody": "Relations this app found, listed rather than drawn, since both ends are already in your journey.",
+    "suggestedBody": "Relations this app found, leading out of your journey to a passage it does not contain yet.",
     "corporaNote": "This journey spans {count} corpora. A relation within one corpus is that book agreeing with itself; across corpora is the more interesting claim.",
     "back": "All journeys",
     "defaultDescription": "A path you assembled.",
