@@ -148,43 +148,30 @@ async function main(): Promise<void> {
    * what was missing. Re-running that script needs a database URL and therefore a
    * shell, and this plan does not have one, so the app checks itself.
    *
-   * Each row records whether it has been compared, so the first boot walks the
-   * Sefaria corpora once and later boots find nothing to do. Per row rather than
+   * Each row records whether it has been compared, so the first pass walks the
+   * Sefaria corpora once and later passes find nothing to do. Per row rather than
    * per translation, so an interrupted run resumes where it stopped.
    *
-   * Deliberately after listen() and deliberately not awaited: it makes network
-   * calls to a third party and must never sit between a deploy and its first
-   * request. Bounded by a deadline, so a boot cannot become an outage.
+   * Deliberately after listen() and never awaited: it makes network calls to a
+   * third party and must never sit between a deploy and its first request.
+   * Bounded by a deadline, so it cannot become an outage.
    *
-   * Set SKIP_SEFARIA_REPAIR=1 to turn it off entirely.
+   * On an interval as well as at boot, because a boot-only repair is one that
+   * waits for the next deploy to be any use at all — and a deploy can be missed.
+   * That is not hypothetical: this sat undeployed for hours while the corpus
+   * stayed broken. Re-running is nearly free once caught up, and the status
+   * endpoint exists so the question can be answered without a shell.
    */
-  if (process.env.SKIP_SEFARIA_REPAIR !== '1') {
-    void (async () => {
-      try {
-        const { repairSefariaTranslations, unverifiedCount } = await import('./services/sefaria-repair');
-
-        const outstanding = await unverifiedCount();
-        const total = Object.values(outstanding).reduce((a, b) => a + b, 0);
-        if (total > 0) {
-          app.log.info({ outstanding }, 'checking Sefaria translations against Sefaria');
-        }
-
-        const report = await repairSefariaTranslations();
-        if (report.checked > 0) {
-          app.log.warn(
-            { ...report },
-            `Sefaria check: ${report.repaired} rewritten, ${report.alreadyCorrect} already correct, ` +
-              `${report.unresolved} Sefaria could not answer` +
-              (report.truncated ? ', stopped at the time budget with more to do' : '')
-          );
-        }
-      } catch (error) {
-        // Swallowed on purpose. A check that fails is something to notice in the
-        // logs; it is never a reason to take a working service down.
-        app.log.error({ err: error }, 'Sefaria translation check failed');
-      }
-    })();
-  }
+  void (async () => {
+    try {
+      const { startSefariaMaintenance } = await import('./services/sefaria-repair');
+      startSefariaMaintenance();
+    } catch (error) {
+      // Swallowed on purpose. A check that fails to start is something to notice
+      // in the logs; it is never a reason to take a working service down.
+      app.log.error({ err: error }, 'Sefaria translation check failed to start');
+    }
+  })();
 
   const shutdown = async (signal: string) => {
     app.log.info(`${signal} received, shutting down`);

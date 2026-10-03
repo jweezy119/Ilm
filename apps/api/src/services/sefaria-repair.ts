@@ -313,3 +313,147 @@ export async function repairSefariaTranslations(
 
   return report;
 }
+
+/* ============================================================================
+   Running it more than once, and being able to see whether it worked
+   ============================================================================ */
+
+/**
+ * What the last run did, so this can be answered without a shell.
+ *
+ * Every question about this feature turned out to be the same question — did it
+ * run, and could it reach Sefaria — and the only way to answer it was a log,
+ * which is the one thing an operator without a shell does not have. Two numbers
+ * distinguish the failure modes that look identical from the outside: a
+ * deployment that never happened reports no run at all, while a deployment that
+ * ran but could not reach Sefaria reports `unresolved` equal to `checked`.
+ */
+export interface RepairStatus {
+  /** Whether a run has ever completed on this process. */
+  everRan: boolean;
+  inFlight: boolean;
+  lastStartedAt: string | null;
+  lastFinishedAt: string | null;
+  lastDurationMs: number | null;
+  /** The last report, or null before the first run finishes. */
+  lastReport: RepairReport | null;
+  outstandingByCorpus: Record<string, number>;
+  /** Consecutive runs that checked rows and resolved none of them. */
+  consecutiveUnresolved: number;
+  /** True when the last run checked nothing at all, i.e. the corpus is clean. */
+  caughtUp: boolean;
+  intervalMs: number | null;
+}
+
+const status: RepairStatus = {
+  everRan: false,
+  inFlight: false,
+  lastStartedAt: null,
+  lastFinishedAt: null,
+  lastDurationMs: null,
+  lastReport: null,
+  outstandingByCorpus: {},
+  consecutiveUnresolved: 0,
+  caughtUp: false,
+  intervalMs: null,
+};
+
+export function repairStatus(): RepairStatus {
+  return { ...status, lastReport: status.lastReport ? { ...status.lastReport } : null };
+}
+
+/**
+ * Run the check once, recording what happened.
+ *
+ * Guarded against overlap rather than merely scheduled: a boot run on a slow
+ * connection can still be going when the first interval fires, and two passes
+ * over the same rows would double the requests to somebody else's free API for
+ * no benefit. A run that arrives while one is in flight is skipped, not queued.
+ */
+export async function runRepairOnce(reason: string): Promise<RepairStatus> {
+  if (status.inFlight) return repairStatus();
+
+  status.inFlight = true;
+  status.lastStartedAt = new Date().toISOString();
+  const startedAt = Date.now();
+
+  try {
+    const report = await repairSefariaTranslations();
+
+    status.everRan = true;
+    status.lastReport = report;
+    /*
+     * Counted after the run, not before.
+     *
+     * Read before, it reports what was waiting rather than what is: a run that
+     * cleared six thousand rows would still show six thousand outstanding, and
+     * the number would be wrong in exactly the case somebody is watching it to
+     * find out whether the repair worked. It costs one query, which is nothing
+     * next to the run itself.
+     */
+    try {
+      status.outstandingByCorpus = await unverifiedCount();
+    } catch {
+      // Leave the previous value rather than reporting a failure as zero.
+    }
+    status.consecutiveUnresolved = report.checked > 0 && report.repaired === 0 && report.alreadyCorrect === 0
+      ? status.consecutiveUnresolved + 1
+      : 0;
+    status.caughtUp = report.checked === 0 && !report.truncated;
+
+    return repairStatus();
+  } catch {
+    // Recorded as an attempt that resolved nothing, which is what it is.
+    status.consecutiveUnresolved += 1;
+    return repairStatus();
+  } finally {
+    status.inFlight = false;
+    status.lastFinishedAt = new Date().toISOString();
+    status.lastDurationMs = Date.now() - startedAt;
+    void reason;
+  }
+}
+
+let timer: NodeJS.Timeout | null = null;
+
+/**
+ * Check once at boot, then on an interval.
+ *
+ * The interval exists because the boot run is not enough on its own. A deploy
+ * can be missed — this service had one sitting undeployed for hours while the
+ * corpus stayed broken and nothing but a log could have said so — and a repair
+ * that only runs when the process starts is a repair that waits for the next
+ * deploy to be useful. Re-running is nearly free once the corpus is caught up:
+ * one query finds nothing unchecked and the pass ends.
+ *
+ * The timer is unref'd so it never holds the process open on shutdown, and the
+ * whole thing is skipped by SKIP_SEFARIA_REPAIR=1 like the boot run before it.
+ */
+export function startSefariaMaintenance(intervalMs?: number): void {
+  if (process.env.SKIP_SEFARIA_REPAIR === '1') return;
+
+  const every = intervalMs ?? Number(process.env.SEFARIA_REPAIR_INTERVAL_MS ?? 30 * 60_000);
+  if (!Number.isFinite(every) || every < 60_000) {
+    // Below a minute this becomes a load generator against somebody else's free
+    // API rather than a repair, so the floor is enforced rather than trusted.
+    status.intervalMs = null;
+    return;
+  }
+  status.intervalMs = every;
+
+  // Detached, like the boot run before it: the service is already listening and
+  // must not sit behind a third party's API.
+  void runRepairOnce('boot');
+
+  timer = setInterval(() => {
+    void runRepairOnce('interval');
+  }, every);
+  timer.unref?.();
+}
+
+export function stopSefariaMaintenance(): void {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+}

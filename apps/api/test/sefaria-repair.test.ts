@@ -79,14 +79,17 @@ describe('bounded, because it runs on a live service', () => {
     // Before listen it would sit between the deploy and the first request; awaited
     // it would do the same by a different route.
     const listenIndex = boot.indexOf('await app.listen');
-    const hookIndex = boot.indexOf('repairSefariaTranslations');
+    const hookIndex = boot.indexOf('startSefariaMaintenance');
     expect(listenIndex).toBeGreaterThan(-1);
     expect(hookIndex).toBeGreaterThan(listenIndex);
     expect(boot).toContain('void (async () => {');
   });
 
   it('can be turned off without a code change', () => {
-    expect(boot).toContain("process.env.SKIP_SEFARIA_REPAIR !== '1'");
+    // The switch now lives in the service that owns the schedule, so there is
+    // one place to look rather than a flag in the entry point and a check in
+    // the worker.
+    expect(service).toContain("process.env.SKIP_SEFARIA_REPAIR === '1'");
   });
 
   it('cannot take the service down', () => {

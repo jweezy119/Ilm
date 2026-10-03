@@ -47,6 +47,7 @@ import { getTopics } from '../services/topics';
 import { getCitationsForPassage } from '../services/citations';
 import { getRelatedPassages } from '../services/related';
 import { resolveIdentity, cookieOptions, getLibrary, getSavedKeys, savePassage, removePassage, LIBRARY_COOKIE } from '../services/library';
+import { repairStatus } from '../services/sefaria-repair';
 import {
   listJourneys,
   createJourney,
@@ -644,6 +645,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return journeyFail(reply, error);
     }
   });
+
+  /*
+   * Whether the Sefaria check is working, without a shell.
+   *
+   * Two failures look identical from outside and need opposite responses: a
+   * deploy that never happened, where the corpus stays broken and the fix is to
+   * deploy; and a deploy that ran but cannot reach Sefaria, where the corpus
+   * stays broken and the fix is to stop asking Sefaria. `everRan` separates
+   * them, and `lastReport` says which happened.
+   *
+   * Nothing secret is in here — corpus counts and timings. It is on the public
+   * API, so it reports the shape of the work rather than any of it.
+   */
+  app.get('/api/maintenance/sefaria', async () => ok(repairStatus()));
 
   app.post('/api/passages/batch', async (request: FastifyRequest<{ Body: { keys?: unknown } }>, reply: FastifyReply) => {
     const keys = request.body?.keys;
