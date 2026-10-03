@@ -42,6 +42,9 @@ const SEFARIA_API = 'https://www.sefaria.org/api';
 
 /** Be polite: this is somebody else's free API and a repair is not urgent. */
 const REQUEST_DELAY_MS = 350;
+
+/** Rows held in memory at once. Flat, so the heap does not scale with the corpus. */
+const BATCH_ROWS = 150;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Corpora whose English comes from Sefaria, and so can be checked against it. */
@@ -170,106 +173,142 @@ export async function repairSefariaTranslations(
     truncated: false,
   };
 
-  let rows: any[];
-  try {
-    rows = await prisma.passageTranslation.findMany({
-      where: { verifiedAt: null, translation: { textId: { in: [...SEFARIA_CORPORA] } } },
-      select: {
-        id: true,
-        text: true,
-        translation: { select: { id: true, name: true, textId: true } },
-        passage: { select: { id: true, bookSlug: true, chapterNum: true, verseNum: true } },
-      },
-      take: limit,
-    });
-  } catch {
-    // A repair that cannot even read must never take the service down.
-    return report;
-  }
-
-  if (rows.length === 0) return report;
-
-  const candidates: Candidate[] = rows.map((r) => ({
-    rowId: r.id,
-    passageId: r.passage.id,
-    textId: r.translation.textId,
-    bookSlug: r.passage.bookSlug,
-    chapterNum: r.passage.chapterNum,
-    verseNum: r.passage.verseNum,
-    translationId: r.translation.id,
-    translationName: r.translation.name,
-    text: r.text,
-  }));
-
-  // One request per chapter rather than per verse: a chapter's text travels
-  // together, so one fetch settles every unchecked row in it.
-  const byChapter = new Map<string, Candidate[]>();
-  for (const c of candidates) {
-    const key = `${c.textId}|${c.bookSlug}|${c.chapterNum}|${c.translationId}`;
-    const list = byChapter.get(key);
-    if (list) list.push(c);
-    else byChapter.set(key, [c]);
-  }
-
   const deadline = Date.now() + budgetMs;
 
-  for (const [, group] of byChapter) {
+  /*
+   * Streamed in batches, not read in one go.
+   *
+   * The first version took the whole unchecked set at once — thirty thousand
+   * rows with a nested translation and passage each — and the API is started
+   * with a capped heap (`--max-old-space-size=${API_HEAP_MB:-320}`). That is a
+   * large allocation on a small budget, and the symptom is not a crash in the
+   * repair but the *process* being killed: Render restarts the API, the web's
+   * proxy sees ECONNRESET and logs "socket hang up", and the repair starts over
+   * from the beginning on the next boot. It never finishes, and it takes the
+   * service down repeatedly on the way.
+   *
+   * So the set is walked with a cursor, a batch at a time, and nothing larger
+   * than one batch is ever resident. Memory is flat whether the corpus is a
+   * thousand rows or a million, and the deadline still cuts the run short.
+   */
+  let cursor: string | undefined;
+  let seen = 0;
+
+  while (seen < limit) {
     if (Date.now() >= deadline) {
       report.truncated = true;
       break;
     }
 
-    const first = group[0];
-    const verses = await fetchChapter(first.bookSlug, first.chapterNum, first.translationName);
+    const batchSize = Math.min(BATCH_ROWS, limit - seen);
+    let rows: any[];
+    try {
+      rows = await prisma.passageTranslation.findMany({
+        where: {
+          verifiedAt: null,
+          translation: { textId: { in: [...SEFARIA_CORPORA] } },
+          ...(cursor ? { id: { gt: cursor } } : {}),
+        },
+        select: {
+          id: true,
+          text: true,
+          translation: { select: { id: true, name: true, textId: true } },
+          passage: { select: { id: true, bookSlug: true, chapterNum: true, verseNum: true } },
+        },
+        orderBy: { id: 'asc' },
+        take: batchSize,
+      });
+    } catch {
+      // A repair that cannot even read must never take the service down.
+      return report;
+    }
+
+    if (rows.length === 0) break;
+    seen += rows.length;
+    cursor = rows[rows.length - 1].id;
+
+    const candidates: Candidate[] = rows.map((r) => ({
+      rowId: r.id,
+      passageId: r.passage.id,
+      textId: r.translation.textId,
+      bookSlug: r.passage.bookSlug,
+      chapterNum: r.passage.chapterNum,
+      verseNum: r.passage.verseNum,
+      translationId: r.translation.id,
+      translationName: r.translation.name,
+      text: r.text,
+    }));
+
+    // One request per chapter rather than per verse: a chapter's text travels
+    // together, so one fetch settles every unchecked row in it.
+    const byChapter = new Map<string, Candidate[]>();
+    for (const c of candidates) {
+      const key = `${c.textId}|${c.bookSlug}|${c.chapterNum}|${c.translationId}`;
+      const list = byChapter.get(key);
+      if (list) list.push(c);
+      else byChapter.set(key, [c]);
+    }
 
     const now = new Date();
 
-    for (const candidate of group) {
-      report.checked += 1;
-      const raw = verses[candidate.verseNum - 1];
-
-      if (typeof raw !== 'string') {
-        // Sefaria has no text for this verse in this version. Left unchecked, so
-        // a later run can pick it up if the row is ever corrected by hand —
-        // marking it verified would silently accept whatever is stored.
-        report.unresolved += 1;
-        continue;
+    for (const [, group] of byChapter) {
+      if (Date.now() >= deadline) {
+        report.truncated = true;
+        break;
       }
 
-      const clean = stripSefariaHtml(raw);
-      if (!clean) {
-        report.unresolved += 1;
-        continue;
-      }
+      const first = group[0];
+      const verses = await fetchChapter(first.bookSlug, first.chapterNum, first.translationName);
 
-      try {
-        if (clean !== candidate.text) {
-          await prisma.passageTranslation.update({
-            where: { id: candidate.rowId },
-            data: { text: clean, verifiedAt: now },
-          });
-          // The passage's own primary column can be the damaged one, so it is
-          // rewritten in step; leaving it would swap one broken surface for
-          // another. Only where it currently matches the damaged text, so a
-          // primary set from a different source is never overwritten.
-          await prisma.passage.updateMany({
-            where: { id: candidate.passageId, primaryTranslation: candidate.text },
-            data: { primaryTranslation: clean },
-          });
-          report.repaired += 1;
-        } else {
-          await prisma.passageTranslation.update({
-            where: { id: candidate.rowId },
-            data: { verifiedAt: now },
-          });
-          report.alreadyCorrect += 1;
+      for (const candidate of group) {
+        report.checked += 1;
+        const raw = verses[candidate.verseNum - 1];
+
+        if (typeof raw !== 'string') {
+          // Sefaria has no text for this verse in this version. Left unchecked,
+          // so a later run can pick it up — marking it verified would silently
+          // accept whatever happens to be stored.
+          report.unresolved += 1;
+          continue;
         }
-      } catch {
-        report.unresolved += 1;
+
+        const clean = stripSefariaHtml(raw);
+        if (!clean) {
+          report.unresolved += 1;
+          continue;
+        }
+
+        try {
+          if (clean !== candidate.text) {
+            await prisma.passageTranslation.update({
+              where: { id: candidate.rowId },
+              data: { text: clean, verifiedAt: now },
+            });
+            // The passage's own primary column can be the damaged one, so it is
+            // rewritten in step; leaving it would swap one broken surface for
+            // another. Only where it currently matches the damaged text, so a
+            // primary set from a different source is never overwritten.
+            await prisma.passage.updateMany({
+              where: { id: candidate.passageId, primaryTranslation: candidate.text },
+              data: { primaryTranslation: clean },
+            });
+            report.repaired += 1;
+          } else {
+            await prisma.passageTranslation.update({
+              where: { id: candidate.rowId },
+              data: { verifiedAt: now },
+            });
+            report.alreadyCorrect += 1;
+          }
+        } catch {
+          report.unresolved += 1;
+        }
       }
+
+      await sleep(REQUEST_DELAY_MS);
     }
 
-    await sleep(REQUEST_DELAY_MS);
+    if (report.truncated) break;
   }
 
   return report;
