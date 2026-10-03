@@ -5,6 +5,7 @@ import { BookOpen, Loader2, X } from 'lucide-react';
 import type { LexiconLookup } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useDisclosurePanel } from '@/lib/useDisclosurePanel';
 
 /**
  * Scripts a lexicon in this library covers. The Sefaria dictionaries are Hebrew
@@ -21,7 +22,10 @@ export const LEXICON_LANGUAGES = new Set(['hebrew', 'aramaic']);
  * than given a button that always comes back empty.
  */
 export function LookupableText({ text, className, dir }: { text: string; className?: string; dir?: 'rtl' | 'ltr' }) {
-  const [word, setWord] = useState<string | null>(null);
+  // Escape closes and focus returns to the word that opened it, which this
+  // never did: a keyboard reader could reach the panel and had no way out of it
+  // except the close button, and focus was left stranded in the document.
+  const { panel: word, panelId, open: setWord, close, isOpen } = useDisclosurePanel<string>();
 
   const words = text.split(/(\s+)/);
 
@@ -37,7 +41,9 @@ export function LookupableText({ text, className, dir }: { text: string; classNa
             <button
               key={i}
               type="button"
-              onClick={() => setWord(chunk)}
+              onClick={(e) => (isOpen(chunk) ? close() : setWord(chunk, e.currentTarget))}
+              aria-expanded={isOpen(chunk)}
+              aria-controls={isOpen(chunk) ? panelId : undefined}
               className="rounded px-0.5 text-left underline decoration-dotted underline-offset-4 hover:bg-ink-100 focus:bg-ink-100 dark:hover:bg-ink-800 dark:focus:bg-ink-800"
               title={`Look up ${chunk}`}
             >
@@ -47,12 +53,12 @@ export function LookupableText({ text, className, dir }: { text: string; classNa
         )}
       </p>
 
-      {word ? <LexiconPanel word={word} onClose={() => setWord(null)} /> : null}
+      {word ? <LexiconPanel id={panelId} word={word} onClose={close} /> : null}
     </>
   );
 }
 
-function LexiconPanel({ word, onClose }: { word: string; onClose: () => void }) {
+function LexiconPanel({ id, word, onClose }: { id: string; word: string; onClose: () => void }) {
   const [state, setState] = useState<{ status: 'loading' | 'ready' | 'error'; message?: string; data?: LexiconLookup }>({
     status: 'loading',
   });
@@ -78,7 +84,7 @@ function LexiconPanel({ word, onClose }: { word: string; onClose: () => void }) 
   }, [word]);
 
   return (
-    <aside className="mt-4 rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
+    <aside id={id} className="mt-4 rounded-xl border border-ink-200 bg-white p-4 dark:border-ink-800 dark:bg-ink-900">
       <header className="mb-3 flex items-start gap-2">
         <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-ink-400" />
         <div className="min-w-0 flex-1">

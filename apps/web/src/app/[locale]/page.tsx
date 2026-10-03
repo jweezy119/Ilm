@@ -433,9 +433,14 @@ function SearchInner() {
         ) : (
           <>
             {/* The question, as a bubble on the right, so the page reads as a
-                question and an answer rather than as a report. */}
+                question and an answer rather than as a report.
+
+                h1 rather than p, because this state replaced the landing page's
+                h1 rather than adding to it: without it a screen reader arriving
+                here meets an h2 with no h1 above it, and the page has no name
+                in the document outline. The styling is unchanged. */}
             <div className="flex items-start gap-3 pt-8">
-              <p className="bubble">{query}</p>
+              <h1 className="bubble text-[15px] font-normal">{query}</h1>
               <button
                 type="button"
                 onClick={() => {

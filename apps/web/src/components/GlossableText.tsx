@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { BookOpen, X } from 'lucide-react';
 import { useRouter } from '@/i18n/navigation';
 import type { TextId } from '@ilm/shared';
 import { segmentForGlossary, GLOSSARY_TEXTS, type GlossaryEntry } from '@/lib/glossary';
+import { useDisclosurePanel } from '@/lib/useDisclosurePanel';
 
 /**
  * An English translation with its Quranic terms tappable.
@@ -27,7 +27,7 @@ export function GlossableText({
   textId: TextId;
   className?: string;
 }) {
-  const [open, setOpen] = useState<GlossaryEntry | null>(null);
+  const { panel: open, panelId, open: showEntry, close, isOpen } = useDisclosurePanel<GlossaryEntry>();
 
   if (!GLOSSARY_TEXTS.has(textId)) {
     return <p className={className}>{text}</p>;
@@ -45,8 +45,9 @@ export function GlossableText({
             <button
               key={i}
               type="button"
-              onClick={() => setOpen(segment.entry)}
-              aria-expanded={open?.term === segment.entry.term}
+              onClick={(e) => (isOpen(segment.entry) ? close() : showEntry(segment.entry, e.currentTarget))}
+              aria-expanded={isOpen(segment.entry)}
+              aria-controls={isOpen(segment.entry) ? panelId : undefined}
               className="rounded px-0.5 text-left underline decoration-dotted decoration-fg-faint underline-offset-4 transition-colors hover:bg-accent-soft/50 focus:bg-accent-soft/50"
               title={`${segment.entry.term} — ${segment.entry.short}`}
             >
@@ -56,16 +57,16 @@ export function GlossableText({
         )}
       </p>
 
-      {open ? <GlossaryPanel entry={open} onClose={() => setOpen(null)} /> : null}
+      {open ? <GlossaryPanel id={panelId} entry={open} onClose={close} /> : null}
     </>
   );
 }
 
-function GlossaryPanel({ entry, onClose }: { entry: GlossaryEntry; onClose: () => void }) {
+function GlossaryPanel({ id, entry, onClose }: { id: string; entry: GlossaryEntry; onClose: () => void }) {
   const router = useRouter();
 
   return (
-    <aside className="mt-4 rounded-xl border border-accent/40 bg-panel p-4">
+    <aside id={id} className="mt-4 rounded-xl border border-accent/40 bg-panel p-4">
       <header className="mb-3 flex items-start gap-2">
         <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-fg-faint" />
         <div className="min-w-0 flex-1">

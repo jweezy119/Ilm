@@ -35,6 +35,27 @@ export function CitationJump({ value, onDismiss }: { value: string; onDismiss: (
   const parsed = parseCitation(value);
   const key = parsed.map((m) => m.passageKey).join('|');
 
+  /*
+   * Escape dismisses the suggestion.
+   *
+   * It appears as the reader types a reference, unprompted, and the only way to
+   * remove it was the dismiss button — so a keyboard user who did not want it had
+   * to reach for a mouse, and the panel stayed over the results. Keystrokes are
+   * not swallowed: the input keeps every character, only Escape is claimed.
+   */
+  useEffect(() => {
+    if (parsed.length === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target as HTMLElement | null;
+      if (target && target.tagName === 'INPUT') {
+        onDismiss();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onDismiss, parsed.length]);
+
   useEffect(() => {
     if (parsed.length === 0) {
       setMatches(null);

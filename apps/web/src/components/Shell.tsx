@@ -18,7 +18,8 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { routing, LOCALE_NAMES } from '@/i18n/routing';
-import { useEffect, useState } from 'react';
+import { useMediaQuery, DESKTOP_QUERY } from '@/lib/useMediaQuery';
+import { useEffect, useRef, useState } from 'react';
 import { useTheme } from './ThemeProvider';
 import { useUiStore, useComparisonStore, useSearchStore } from '@/store';
 
@@ -142,6 +143,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const collapsed = useUiStore((s) => s.railCollapsed);
   const toggleCollapsed = useUiStore((s) => s.toggleRail);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Above lg the rail is the visible navigation, so it must stay reachable even
+  // while the mobile drawer reads as closed. Without this the desktop rail would be
+  // inert and the whole app unclickable.
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   useEffect(() => {
     if (stored !== 'system' && stored !== resolvedTheme) setTheme(stored);
@@ -152,11 +157,53 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // pathname: an effect that calls setState synchronously re-renders the whole
   // shell on every navigation, and the links already know when they are used.
 
+  /*
+   * Escape closes it, and focus goes back to the button that opened it.
+   *
+   * The scrim was the only way out that worked, and a scrim is a pointer: it
+   * has no keyboard equivalent, so on a phone with a keyboard attached there was
+   * no way to close the drawer once it was open. `inert` above handles the closed
+   * case; this handles the open one.
+   */
+  const hamburgerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMobileOpen(false);
+      const button = hamburgerRef.current;
+      if (button) {
+        requestAnimationFrame(() => {
+          if (button.isConnected) button.focus();
+        });
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [mobileOpen]);
+
   return (
     <div className="flex min-h-screen bg-bg">
+      {/*
+          First focusable element on the page. Without it a keyboard user tabs
+          through the whole rail — navigation, language, settings — before
+          reaching the passage they came for.
+      */}
+      <a href="#ilm-content" className="skip-link">
+        {t('skipToContent')}
+      </a>
       {/* The rail. Fixed rather than sticky so the column beside it can scroll
           independently, which is what makes the app feel like an app. */}
       <aside
+        // Closed and off-screen, but still full of links. Without this the
+        // Search, Read and Library links, the language select and the settings
+        // link all stayed in the tab order on a phone, so tabbing walked a menu
+        // nobody could see. inert removes them and is supported wherever the app
+        // already relies on :focus-visible and the backdrop-filter styles.
+        inert={!isDesktop && !mobileOpen ? true : undefined}
+        id="ilm-mobile-drawer"
+        data-mobile-drawer={mobileOpen ? 'open' : 'closed'}
         className={[
           'fixed inset-y-0 start-0 z-50 flex shrink-0 flex-col border-e border-line bg-bg transition-[width,transform] duration-200',
           collapsed ? 'w-[68px]' : 'w-[264px]',
@@ -345,9 +392,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
         >
           <button
             type="button"
+            ref={hamburgerRef}
             onClick={() => setMobileOpen(true)}
             className="icon-btn me-auto lg:hidden"
             aria-label={t('openNavigation')}
+            aria-expanded={mobileOpen}
+            aria-controls="ilm-mobile-drawer"
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>
@@ -390,7 +440,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        {/* The skip link targets this, so it needs an id of its own: the rail is
+            before it in the DOM and holds the first focusable elements. */}
+        <main id="ilm-content" tabIndex={-1} className="min-w-0 flex-1">
+          {children}
+        </main>
       </div>
     </div>
   );

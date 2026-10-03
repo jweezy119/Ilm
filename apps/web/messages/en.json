@@ -4,6 +4,7 @@
     "description": "Search the Quran, Torah, Talmud, Old and New Testaments together, in Hebrew, Greek, Aramaic and Arabic. Ilm shows source text, citations and evidence — and says when these texts do not address a question."
   },
   "nav": {
+    "skipToContent": "Skip to content",
     "search": "Search",
     "read": "Read",
     "explore": "Explore",
@@ -369,7 +370,7 @@
       "title": "Privacy",
       "intro": "Ilm has no accounts, asks for no email, and sets no advertising or analytics cookies. This page says exactly what leaves your device, because the honest version is short.",
       "readTitle": "What stays on your device",
-      "readBody": "Your saved passages, collections, reading history and settings are stored in your browser's local storage. They are never sent to our servers, and clearing your browser data deletes them. They do not follow you to another device or another browser.",
+      "readBody": "Saved passages are stored on our server, not in your browser. They are kept against an anonymous cookie identifier that is set on your device the first time you use Ilm — there is no account and no email. Clearing your browser data deletes that cookie, and the passages saved under it become unreachable. Search history and settings stay on your device.",
       "searchTitle": "What is sent to our servers",
       "searchBody": "Every search you run is sent to our server, because the search runs there. The query text, which texts you had filtered to, how many results came back and how long it took are written to a log kept on our server. That log is not shown to you and is not used to build a profile of you. It is kept so we can see which searches fail.",
       "thirdPartyTitle": "What is sent to a third party",

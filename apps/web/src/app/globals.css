@@ -341,3 +341,34 @@ mark {
 *:focus-visible {
   @apply outline-none ring-2 ring-ilm-500 ring-offset-2 ring-offset-white dark:ring-offset-ilm-950;
 }
+/*
+ * Skip link.
+ *
+ * The first focusable element in the DOM is the "New search" link in the rail, so
+ * a keyboard user landing on any page had to tab through the whole navigation
+ * before reaching the content. This is the first thing on the page instead, and
+ * it stays visible while focused rather than hiding itself.
+ */
+.skip-link {
+  @apply absolute start-3 top-3 z-[200] -translate-y-24 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-transform focus:translate-y-0 focus-visible:translate-y-0;
+}
+
+/*
+ * Reduced motion.
+ *
+ * The app animates panels sliding in, skeletons pulsing, spinners turning and
+ * the page scrolling smoothly. None of it carries information, and for someone
+ * who has asked the operating system to reduce motion, all of it is motion they
+ * did not ask for. Gating on the media query costs one block and keeps every
+ * component unchanged.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
