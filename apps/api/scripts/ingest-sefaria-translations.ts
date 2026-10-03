@@ -262,18 +262,49 @@ async function attach(textId: string, name: string, license: string | null, rows
     update: { license },
   });
 
+  /*
+   * Rewrites rows whose text has changed, rather than skipping them.
+   *
+   * This used to insert only what was missing, which meant a correction to the
+   * markup stripper could never reach the rows it had already written. The
+   * footnote fix in services/sefaria.ts is exactly that case: it landed in code,
+   * was tested, and never reached the database, so the Hebrew Bible was still
+   * being served with a translator's note spliced into the middle of the verse —
+   * "When God began to createaWhen God began to create In contrast to others
+   * "In the beginning God created." heaven and earth—". An insert-only script
+   * cannot be used to repair its own past output.
+   *
+   * So: write what is new, update what differs, and leave the rest alone. Only a
+   * genuine change is reported, which is also how anyone can tell whether a re-run
+   * actually did anything.
+   */
   const existing = await prisma.passageTranslation.findMany({
     where: { translationId: translation.id, passageId: { in: rows.map((r) => r.id) } },
-    select: { passageId: true },
+    select: { passageId: true, text: true },
   });
-  const have = new Set(existing.map((e) => e.passageId));
-  const fresh = rows.filter((r) => !have.has(r.id));
-  if (fresh.length === 0) return 0;
 
-  await prisma.passageTranslation.createMany({
-    data: fresh.map((r) => ({ passageId: r.id, translationId: translation.id, text: r.text })),
-    skipDuplicates: true,
-  });
+  const have = new Map(existing.map((e) => [e.passageId, e.text] as const));
+
+  const fresh = rows.filter((r) => !have.has(r.id));
+  if (fresh.length > 0) {
+    await prisma.passageTranslation.createMany({
+      data: fresh.map((r) => ({ passageId: r.id, translationId: translation.id, text: r.text })),
+      skipDuplicates: true,
+    });
+  }
+
+  let changed = 0;
+  for (const r of rows) {
+    const before = have.get(r.id);
+    if (before === undefined || before === r.text) continue;
+    await prisma.passageTranslation.updateMany({
+      where: { translationId: translation.id, passageId: r.id },
+      data: { text: r.text },
+    });
+    changed += 1;
+  }
+
+  if (changed > 0) console.log(`   ${changed} of ${rows.length} rewritten (text changed)`);
   return fresh.length;
 }
 
