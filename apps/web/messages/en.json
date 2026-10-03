@@ -483,6 +483,15 @@
     "rate": "Reading speed",
     "passages": "passages",
     "readingNow": "reading",
-    "listenHeading": "Listen"
+    "listenHeading": "Listen",
+    "voiceUnavailable": "Your browser has no speech voice available, so it cannot read aloud.",
+    "voiceHelpLabel": "How to add a voice",
+    "voiceWindows": "On Windows: Settings → Time & language → Speech → Manage voices, then install an English voice. Chrome and Edge pick it up straight away.",
+    "voiceApple": "On Mac or iPhone: System Settings → Accessibility → Spoken Content → System Voice, and download a voice such as Daniel. On iPhone it is under Accessibility → Spoken Content.",
+    "voiceAndroid": "On Android: Settings → Accessibility → Text-to-speech, then install Google Speech Services and an English voice from it.",
+    "voiceLinux": "On Linux, no voice is installed by default. Installing speech-dispatcher and espeak-ng gives Chrome and Firefox one; otherwise a device with a voice will work.",
+    "voiceGeneric": "No speech voice is installed. Most browsers use one from the operating system, so installing an English voice there is usually all it takes.",
+    "voicePrivateNote": "If you are in a private or incognito window, try an ordinary one — browsers withhold voices from private windows.",
+    "voiceRecitationInstead": "The recitation above is a recording and plays regardless, so you can still listen to this passage."
   }
 }

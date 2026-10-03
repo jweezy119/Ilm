@@ -13,6 +13,7 @@ import {
   type SpeechVoice,
 } from '@/lib/speech';
 import { cn } from '@/lib/utils';
+import { voiceProblem } from '@/lib/voice-help';
 
 /**
  * The voice list, waiting briefly for it to arrive if it has not.
@@ -67,6 +68,7 @@ export function ReadAloud({
   text,
   segments,
   textId,
+  fallbackNote,
   className,
   compact = false,
 }: {
@@ -75,6 +77,13 @@ export function ReadAloud({
   /** A chapter, read in order with each piece announced. */
   segments?: SpeechSegment[];
   textId: TextId;
+  /**
+   * Shown when this browser cannot speak at all, where another way to hear the
+   * passage exists. The Quran has a human recitation that plays whatever this
+   * device can synthesise, and saying the passage cannot be heard would be
+   * wrong exactly when someone has just been told they cannot hear anything.
+   */
+  fallbackNote?: string;
   className?: string;
   compact?: boolean;
 }) {
@@ -84,6 +93,18 @@ export function ReadAloud({
   const [speaking, setSpeaking] = useState(false);
   const [rate, setRate] = useState<number>(1);
   const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * Where to send someone whose browser has no voice, and what to tell them.
+   *
+   * Held as state rather than read during render because it is only needed once
+   * someone has actually pressed the button and been refused.
+   */
+  const [voiceProblemState, setVoiceProblemState] = useState<{
+    message: string;
+    helpUrl: string;
+    helpLabel: string;
+    privateNote: string;
+  } | null>(null);
   // Politely: a reader who did not press the button does not need to be told
   // about it while reading.
   const [announcement, setAnnouncement] = useState('');
@@ -150,13 +171,35 @@ export function ReadAloud({
     const voice = pickVoice(available, language.tag);
 
     if (available.length === 0) {
-      // Still real and still common: a browser with no speech engine installed.
-      setNotice(t('noVoices'));
-      setAnnouncement(t('noVoices'));
+      /*
+       * Refused, and now say something that can be acted on.
+       *
+       * "This browser has no speech voice installed" was accurate and useless:
+       * the steps differ entirely between Windows, macOS, Android and Linux, and
+       * a reader has no way to know which one applies to them. So the message
+       * names their platform's own menu, and a private window is mentioned as a
+       * thing to try rather than asserted — see voice-help for why it is not
+       * detected.
+       */
+      const problem = voiceProblem({
+        userAgent: navigator.userAgent ?? '',
+        platformHint: (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform,
+        maxTouchPoints: navigator.maxTouchPoints ?? 0,
+      });
+      const guidance = {
+        message: t(problem.messageKey),
+        helpUrl: problem.helpUrl,
+        helpLabel: t('voiceHelpLabel'),
+        privateNote: t('voicePrivateNote'),
+      };
+      setVoiceProblemState(guidance);
+      setNotice(t('voiceUnavailable'));
+      setAnnouncement(t('voiceUnavailable'));
       setSpeaking(false);
       return;
     }
 
+    setVoiceProblemState(null);
     if (voice && !voiceMatchesLanguage(voice, language.tag)) {
       // Said out loud rather than done quietly: being read in the wrong language
       // is a small problem, being read in the wrong language without being told
@@ -287,6 +330,28 @@ export function ReadAloud({
       </label>
 
       {notice ? <p className="text-[11px] text-fg-muted">{notice}</p> : null}
+
+      {/*
+        The steps, a link to the full instructions, and — where one exists — a
+        way to hear the passage anyway. On a Quran passage the recitation above is
+        a recording that plays regardless of what this browser can synthesise, so
+        "you cannot read anything aloud" would be true and misleading at once.
+      */}
+      {voiceProblemState ? (
+        <div className="mt-1 max-w-sm rounded-lg border border-line bg-panel/60 p-2.5 text-[11px] leading-relaxed text-fg-muted">
+          <p>{voiceProblemState.message}</p>
+          {fallbackNote ? <p className="mt-1.5 text-fg">{fallbackNote}</p> : null}
+          <p className="mt-1.5">{voiceProblemState.privateNote}</p>
+          <a
+            href={voiceProblemState.helpUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-1.5 inline-block font-medium text-accent underline underline-offset-2"
+          >
+            {voiceProblemState.helpLabel}
+          </a>
+        </div>
+      ) : null}
 
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {announcement}

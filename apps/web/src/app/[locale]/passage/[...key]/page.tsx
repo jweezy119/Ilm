@@ -241,7 +241,15 @@ export default function PassagePage() {
               </div>
               <div>
                 <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('readAloudHeading')}</h2>
-                <ReadAloud text={translation.active.text} textId={passage.textId} compact />
+                <ReadAloud
+                  text={translation.active.text}
+                  textId={passage.textId}
+                  compact
+                  // Where a human recitation exists it plays whatever this device
+                  // can synthesise, so "you cannot hear this passage" would be
+                  // true of the read-aloud button and false of the page.
+                  {...(recitationVerse.length > 0 ? { fallbackNote: speechT('voiceRecitationInstead') } : {})}
+                />
               </div>
             </div>
           </article>
