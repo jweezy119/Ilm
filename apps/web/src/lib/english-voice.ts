@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { englishAudioUrl } from './reciters';
 import { createSpeechEngine, toSpeechPieces, type SpeechEngine } from './speech-engine';
 
@@ -122,7 +122,18 @@ export function useEnglishVoice(): EnglishVoice {
     [speakWithDevice]
   );
 
-  return { speak, stop, source };
+  /*
+   * Stable identity, deliberately.
+   *
+   * A fresh object literal here changes on every render, and a caller that stops
+   * this hook in an effect cleanup — which both players do on unmount and whenever
+   * the passage changes — then runs that cleanup after every render too. The stop
+   * it invokes cancels the very playback that just started, so the English half
+   * was cut off the moment the Arabic finished and nothing was ever spoken.
+   *
+   * Nothing here is recreated, so the object only changes when the source does.
+   */
+  return useMemo(() => ({ speak, stop, source }), [speak, stop, source]);
 }
 
 /**

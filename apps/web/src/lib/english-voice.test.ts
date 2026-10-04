@@ -103,4 +103,22 @@ describe('the hook', () => {
   it('stops on unmount', () => {
     expect(voice).toContain('useEffect(() => stop, [stop])');
   });
+
+  it('has a stable identity, because callers stop it from an effect', () => {
+    /*
+     * Found by running it, not by reading it.
+     *
+     * This hook returned a fresh object literal on every render. Both players stop
+     * it in an effect cleanup — on unmount, and whenever the passage changes — so
+     * that cleanup also ran after every render, and the stop it invoked cancelled
+     * the playback that had just begun. The result was that the English half was
+     * cut off the moment the Arabic finished, and nothing was ever spoken: the
+     * recorded URL was never even requested.
+     *
+     * A test cannot observe that without a DOM, so it is pinned here as what it
+     * is: the object is memoised, and therefore only changes when the source does.
+     */
+    expect(voice).toMatch(/return useMemo\(\(\) => \(\{ speak, stop, source \}\), \[speak, stop, source\]\)/);
+    expect(voice).toContain('useMemo');
+  });
 });
