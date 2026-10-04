@@ -23,6 +23,7 @@ const FILES = [
   'src/components/JourneyGraphView.tsx',
   'src/components/AddToJourney.tsx',
   'src/components/ReadAloud.tsx',
+  'src/components/RecitationPlayer.tsx',
   'src/app/[locale]/journeys/page.tsx',
   'src/app/[locale]/journeys/[journeyId]/page.tsx',
   'src/app/[locale]/passage/[...key]/page.tsx',

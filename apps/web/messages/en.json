@@ -497,6 +497,12 @@
     "voiceFallbackUnavailable": "This browser has no speech voice, and the built-in one could not be loaded.",
     "engineDevice": "Using your device's voice.",
     "engineRobotic": "Using a built-in robotic voice — your browser has no voice installed.",
-    "readingMany": "Reading aloud in {language}, {count} passages."
+    "readingMany": "Reading aloud in {language}, {count} passages.",
+    "sequenceNote": "Each verse is played in Arabic, then its English meaning is read aloud.",
+    "phaseArabic": "Arabic",
+    "phaseEnglish": "English meaning",
+    "englishUnavailable": "No speech voice is available, so only the Arabic recitation will play.",
+    "englishFailed": "The English reading stopped. The Arabic recitation is unaffected.",
+    "arabicFailed": "That recitation could not be loaded; going to the English meaning."
   }
 }

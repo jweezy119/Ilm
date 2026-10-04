@@ -1,0 +1,105 @@
+/**
+ * Arabic, then the English meaning — and the decisions that are easy to get wrong.
+ *
+ * The sequence itself is verified in a real browser, because it depends on an
+ * audio element ending and a speech engine taking over. What is pinned here is
+ * what a test can pin: that a translation is optional, that a failure to speak it
+ * is not a failure of the passage, and that the reasons for saying something are
+ * the ones that exist.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const player = readFileSync(resolve(__dirname, '../components/RecitationPlayer.tsx'), 'utf8')
+  // Comments stripped so documenting a removed thing is not the same as calling it.
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
+describe('the translation rides with the verse', () => {
+  it('is optional, so the player still works for recitation alone', () => {
+    expect(player).toMatch(/translation\?: string;/);
+    expect(player).toContain('if (!verse?.translation || !engine) return false;');
+  });
+
+  it('is spoken after the recording ends, not on a second press', () => {
+    // The handoff is the whole point. A reader who cannot read Arabic is played the
+    // verse and then told what it means.
+    expect(player).toContain('const onEnded = useCallback');
+    expect(player).toMatch(/onEnded[\s\S]{0,400}speakTranslation\(index\)/);
+    expect(player).toContain('<audio');
+  });
+
+  it('resolves a voice before the recording starts, so the halves do not race', () => {
+    expect(player).toMatch(/if \(current\?\.translation && !engineRef\.current\)/);
+    // ...and after the await, in case the reader stopped meanwhile.
+    expect(player).toContain('if (stopped.current) return;');
+  });
+});
+
+describe('when it goes wrong', () => {
+  it('keeps playing the passage when the translation cannot be spoken', () => {
+    /*
+     * The recording is a human voice and needs no synthesis at all. A reader with
+     * no speech engine still gets the Arabic, so the explanation is a courtesy —
+     * losing it must not drop them out of the passage they asked for.
+     */
+    expect(player).toContain('if (!spoke && verses[index]?.translation)');
+    expect(player).not.toMatch(/setPlaying\(false\)[\s\S]{0,120}englishUnavailable/);
+  });
+
+  it('reports a missing voice once, and says the Arabic is unaffected', () => {
+    expect(player).toContain("s('englishUnavailable')");
+    expect(player).toContain("s('englishFailed')");
+  });
+
+  it('repeats the Arabic alone when asked to repeat one verse', () => {
+    // Someone who asks for the verse again wants the verse, not the explanation.
+    const tail = player.slice(player.indexOf("if (repeat === 'one')"));
+    expect(tail.slice(0, 400)).toContain('el.play()');
+    expect(tail.slice(0, 400)).not.toContain('speakTranslation');
+  });
+});
+
+describe('the transport stays one control', () => {
+  it('stops the English when skipping', () => {
+    // Otherwise the two halves talk over each other.
+    expect(player).toMatch(/const go = useCallback\([\s\S]{0,200}engineRef\.current\?\.stop\(\)/);
+  });
+
+  it('stops the English on unmount and on a verse change', () => {
+    expect(player).toMatch(/return \(\) => \{[\s\S]{0,220}engineRef\.current\?\.stop\(\)/);
+  });
+
+  it('tells the listener which half is sounding', () => {
+    // A reader needs to know why there is silence after the Arabic and before the
+    // English, and the phase is otherwise invisible.
+    expect(player).toContain("phase === 'english'");
+    expect(player).toContain("phase === 'arabic'");
+  });
+
+  it('explains the sequence only where there is a translation', () => {
+    // Otherwise the explanation appears on passages that never had one.
+    expect(player).toContain('hasTranslation && !phase && !englishNotice');
+  });
+});
+describe('a voice that has gone stale', () => {
+  const engine = readFileSync(resolve(__dirname, './speech-engine.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  it('is not allowed to stop the queue in silence', () => {
+    /*
+     * Found in a browser, not by reading: the utterance's `voice` setter validates
+     * its argument and the voice list changes while a page is open. The throw
+     * escaped through the speech API's own promise chain, so a reader heard the
+     * Arabic and then nothing — no error, no notice.
+     */
+    expect(engine).toMatch(/try \{\s*utterance\.voice = voice/);
+  });
+
+  it('still names the language, so the browser reads the right text', () => {
+    expect(engine).toContain("utterance.lang = voice?.lang ?? 'en'");
+  });
+});

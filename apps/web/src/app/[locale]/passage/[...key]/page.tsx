@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { FigureNotice, RelatedPanel } from '@/components/RelatedPanel';
@@ -85,6 +85,14 @@ export default function PassagePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const recitationVerse = useRecitationVerse(passage?.passageKey ?? '');
+  // Attached once the translation is known, so the recitation can read the
+  // meaning after the Arabic rather than the reader assembling two players.
+  const recitationWithTranslation = useMemo(
+    // `active` is undefined until the passage has loaded, and this runs on the
+    // first render rather than inside the JSX that already guards for it.
+    () => recitationVerse.map((v) => ({ ...v, translation: translation.active?.text })),
+    [recitationVerse, translation.active?.text]
+  );
 
   useEffect(() => {
     if (!passageKey) return;
@@ -234,23 +242,20 @@ export default function PassagePage() {
             <div className="mt-5 flex flex-wrap items-start gap-6 border-t border-ink-200 pt-4 dark:border-ink-800">
               <div>
                 <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('recitationHeading')}</h2>
-                <RecitationPlayer verses={recitationVerse} />
+                {/* One control, and it does both: the recording, then the
+                    meaning. Two buttons would make a reader who cannot read Arabic
+                    put the two halves in the right order themselves. */}
+                <RecitationPlayer verses={recitationWithTranslation} />
                 {recitationVerse.length === 0 ? (
                   <p className="max-w-xs text-[11px] text-ink-500">{speechT('noRecitation')}</p>
                 ) : null}
               </div>
-              <div>
-                <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('readAloudHeading')}</h2>
-                <ReadAloud
-                  text={translation.active.text}
-                  textId={passage.textId}
-                  compact
-                  // Where a human recitation exists it plays whatever this device
-                  // can synthesise, so "you cannot hear this passage" would be
-                  // true of the read-aloud button and false of the page.
-                  {...(recitationVerse.length > 0 ? { fallbackNote: speechT('voiceRecitationInstead') } : {})}
-                />
-              </div>
+              {passage.textId === 'quran' ? null : (
+                <div>
+                  <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('readAloudHeading')}</h2>
+                  <ReadAloud text={translation.active.text} textId={passage.textId} compact />
+                </div>
+              )}
             </div>
           </article>
 

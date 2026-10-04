@@ -4,11 +4,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, SkipBack, SkipForward, Repeat, Volume2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { RECITERS, DEFAULT_RECITER, RECITATION_SPEEDS, ayahAudioUrl, verseLabel } from '@/lib/reciters';
+import { createSpeechEngine, toSpeechPieces, type SpeechEngine } from '@/lib/speech-engine';
 
 export interface RecitationVerse {
   passageKey: string;
   /** Shown to a screen reader and in the now-playing line, e.g. "2:255". */
   label: string;
+  /**
+   * The translation, read aloud after the Arabic.
+   *
+   * Optional, and the reason this is one player rather than two. A reader who
+   * cannot read Arabic is played a verse and then told what it means; offering
+   * them a recitation button and a separate read-aloud button, in either order,
+   * makes assembling that sequence their work — which is the whole thing being
+   * done for them.
+   */
+  translation?: string;
 }
 
 type RepeatMode = 'off' | 'one' | 'all';
@@ -38,6 +49,7 @@ export function RecitationPlayer({
   autoLabel?: boolean;
 }) {
   const t = useTranslations('recitation');
+  const s = useTranslations('speech');
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [index, setIndex] = useState(0);
@@ -51,12 +63,41 @@ export function RecitationPlayer({
   const [announcement, setAnnouncement] = useState('');
 
   const current = verses[index];
+
+  /**
+   * Which half is sounding: the recording, or the translation being read after it.
+   *
+   * Tracked rather than inferred, because a reader needs to know why there is
+   * silence after the Arabic stops and before the English begins.
+   */
+  const [phase, setPhase] = useState<'arabic' | 'english' | null>(null);
+  const [englishNotice, setEnglishNotice] = useState<string | null>(null);
+  const engineRef = useRef<SpeechEngine | null>(null);
+  const stopped = useRef(false);
   const src = current ? ayahAudioUrl(current.passageKey, reciterId) : null;
 
   useEffect(() => {
     const el = audioRef.current;
     if (el) el.playbackRate = speed;
   }, [speed]);
+
+  /*
+   * Stop the speech when the component goes away, or when the passage changes.
+   *
+   * There was no cleanup here at all, so navigating away mid-verse left the
+   * translation still being read on a page the reader had left.
+   *
+   * Only the engine is stopped. The audio element is removed with the component
+   * and the browser stops it by itself; reaching into a ref during cleanup is
+   * both unnecessary and the thing the hooks lint warns about, because the ref
+   * may already have been cleared.
+   */
+  useEffect(() => {
+    return () => {
+      stopped.current = true;
+      engineRef.current?.stop();
+    };
+  }, [verses]);
 
   // A new source has to be played deliberately; browsers reject it otherwise,
   // and a rejection here would be an unhandled promise rather than a message.
@@ -77,6 +118,10 @@ export function RecitationPlayer({
 
   const go = useCallback(
     (next: number) => {
+      // Skipping while the English is speaking would otherwise leave the two
+      // halves talking over each other.
+      engineRef.current?.stop();
+      setPhase(null);
       const clamped = Math.max(0, Math.min(verses.length - 1, next));
       setIndex(clamped);
       setAnnouncement(t('nowPlaying', { label: verses[clamped]?.label ?? '' }));
@@ -84,48 +129,123 @@ export function RecitationPlayer({
     [verses, t]
   );
 
-  const toggle = useCallback(() => {
+  const toggle = useCallback(async () => {
     const el = audioRef.current;
     if (!el || !src) return;
+
     if (playing) {
+      stopped.current = true;
       el.pause();
+      engineRef.current?.stop();
       setPlaying(false);
+      setPhase(null);
       setAnnouncement(t('paused'));
-    } else {
-      el.play()
-        .then(() => {
-          setPlaying(true);
-          setError(null);
-          setAnnouncement(t('nowPlaying', { label: current?.label ?? '' }));
-        })
-        .catch(() => {
-          setPlaying(false);
-          setError(t('blocked'));
-        });
+      return;
     }
-  }, [playing, src, current, t]);
+
+    setError(null);
+
+    /*
+     * The English half needs a voice, and building one can mean loading the
+     * built-in engine. Resolved before the Arabic starts so the two are not left
+     * racing each other, and so a failure is reported once rather than in the gap
+     * between the halves.
+     *
+     * Failure is not fatal: the recording is a human voice and needs no synthesis
+     * at all, so a reader with no speech engine still gets the Arabic. Saying so
+     * is better than a control that appears to do nothing.
+     */
+    if (current?.translation && !engineRef.current) {
+      try {
+        engineRef.current = await createSpeechEngine('en');
+        if (engineRef.current.wrongLanguage) {
+          setEnglishNotice(s('wrongLanguage', { language: engineRef.current.wrongLanguage }));
+        }
+      } catch {
+        setEnglishNotice(s('englishUnavailable'));
+      }
+    }
+
+    stopped.current = false;
+    setPhase('arabic');
+    el.currentTime = 0;
+    el.play()
+      .then(() => {
+        setPlaying(true);
+        setAnnouncement(t('nowPlaying', { label: current?.label ?? '' }));
+      })
+      .catch(() => {
+        setPlaying(false);
+        setPhase(null);
+        setError(t('blocked'));
+      });
+  }, [playing, src, current, t, s]);
+
+  /**
+   * Speak the translation, then carry on as the Arabic player always did.
+   *
+   * The handoff is the feature: the recording ends and the English begins with no
+   * second press, because a reader who cannot read Arabic is the one this is for
+   * and making them assemble the sequence themselves would be the work.
+   *
+   * Returns whether anything was actually spoken, so the caller can tell "no
+   * translation" from "the translation failed" — the first is not worth reporting
+   * and the second is.
+   */
+  const speakTranslation = useCallback(
+    async (from: number): Promise<boolean> => {
+      const verse = verses[from];
+      const engine = engineRef.current;
+      if (!verse?.translation || !engine) return false;
+
+      setPhase('english');
+      setAnnouncement(`${verse.label}: ${s('phaseEnglish')}`);
+      await engine.speakQueue(toSpeechPieces(undefined, verse.translation), { rate: speed });
+      return true;
+    },
+    [verses, speed, s]
+  );
 
   const onEnded = useCallback(() => {
-    if (repeat === 'one') {
-      const el = audioRef.current;
-      if (el) {
-        el.currentTime = 0;
-        el.play().catch(() => setPlaying(false));
+    void (async () => {
+      if (stopped.current) return;
+
+      const spoke = await speakTranslation(index);
+      if (stopped.current) return;
+
+      /*
+       * A translation that could not be spoken is not a reason to stop. The
+       * recording is the passage; the explanation is a courtesy, and skipping the
+       * courtesy keeps the reader inside the passage they asked for.
+       */
+      if (!spoke && verses[index]?.translation) {
+        setEnglishNotice(s('englishFailed'));
       }
-      setAnnouncement(t('repeating', { label: current?.label ?? '' }));
-      return;
-    }
-    if (index < verses.length - 1) {
-      go(index + 1);
-      return;
-    }
-    if (repeat === 'all') {
-      go(0);
-      return;
-    }
-    setPlaying(false);
-    setAnnouncement(t('finished'));
-  }, [repeat, index, verses.length, go, current, t]);
+
+      // Repeat-one replays the Arabic only: someone who asked for this verse again
+      // wants the verse, not the explanation again.
+      if (repeat === 'one') {
+        const el = audioRef.current;
+        if (el) {
+          el.currentTime = 0;
+          el.play().catch(() => setPlaying(false));
+        }
+        setAnnouncement(t('repeating', { label: current?.label ?? '' }));
+        return;
+      }
+      if (index < verses.length - 1) {
+        go(index + 1);
+        return;
+      }
+      if (repeat === 'all') {
+        go(0);
+        return;
+      }
+      setPlaying(false);
+      setPhase(null);
+      setAnnouncement(t('finished'));
+    })();
+  }, [repeat, index, verses, go, current, t, speakTranslation, s]);
 
   const cycleRepeat = useCallback(() => {
     setRepeat((mode) => (mode === 'off' ? 'one' : mode === 'one' ? 'all' : 'off'));
@@ -134,6 +254,8 @@ export function RecitationPlayer({
   if (!verses.length || !src) return null;
 
   const repeatLabel = repeat === 'off' ? t('repeatOff') : repeat === 'one' ? t('repeatOne') : t('repeatAll');
+  const phaseLabel = phase === 'english' ? s('phaseEnglish') : phase === 'arabic' ? s('phaseArabic') : null;
+  const hasTranslation = verses.some((v) => Boolean(v.translation?.trim()));
 
   return (
     <section
@@ -233,12 +355,23 @@ export function RecitationPlayer({
           <span className="text-sm text-fg-muted">
             <Volume2 className="me-1 inline h-3.5 w-3.5" aria-hidden />
             {current.label}
+            {phaseLabel ? <span className="ms-1.5 text-xs">{phaseLabel}</span> : null}
           </span>
         ) : null}
       </div>
 
       {error ? (
         <p className="mt-2 text-sm text-red-700 dark:text-red-300">{error}</p>
+      ) : null}
+
+      {englishNotice ? (
+        <p className="mt-1 text-[11px] text-fg-muted">{englishNotice}</p>
+      ) : null}
+
+      {/* Only worth saying where a translation is actually attached, or the
+          explanation appears on passages that never had one. */}
+      {hasTranslation && !phase && !englishNotice ? (
+        <p className="mt-1 text-[11px] text-fg-faint">{s('sequenceNote')}</p>
       ) : null}
 
       {/*
