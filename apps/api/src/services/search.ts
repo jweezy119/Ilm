@@ -32,13 +32,23 @@ const EXAMINATION_SLACK = 200;
 export async function searchPassages(query: SearchQuery): Promise<SearchResponse> {
   const startedAt = Date.now();
 
-  const intent = query.intent
-    ? { intent: query.intent as SearchIntent, confidence: 1, probabilities: {}, source: 'derived' as const }
-    : await classifySearchIntent(query.query);
+  /*
+   * The text search and the intent classification run together.
+   *
+   * They did not have to be sequential: the full-text pass takes filters and a
+   * limit, never the intent, so starting the judge call only after the database
+   * answered made every search wait for both to finish one after the other rather
+   * than for the slower of the two. The rerank further down still waits for the
+   * candidates, because it scores them.
+   */
+  const intentPromise = query.intent
+    ? Promise.resolve({ intent: query.intent as SearchIntent, confidence: 1, probabilities: {}, source: 'derived' as const })
+    : classifySearchIntent(query.query);
 
   // Widen the query when it names a theme the literal words miss. The full-text
   // pass runs first so we only pay for expansion when there is a reason to.
   const firstPass = await runFullText(query.query, query);
+  const intent = await intentPromise;
 
   /*
    * Two reasons to widen, and the second is the one that matters.

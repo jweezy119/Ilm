@@ -243,8 +243,22 @@ function buildChain(): JevJudge[] {
       new SdkJudge(
         new TypeSafeClient({
           apiKey,
-          timeout: Number(process.env.TYPESAFE_TIMEOUT_MS ?? 30000),
-          retry: { maxRetries: Number(process.env.TYPESAFE_MAX_RETRIES ?? 2) },
+          /*
+           * Four seconds, no retries.
+           *
+           * This was thirty seconds with two retries, per call, and a search makes
+           * up to three calls in sequence — a budget of three minutes for a reader
+           * waiting to type a word. It is also mostly wasted: every caller already
+           * handles a refusal by falling back to local scoring, and every score
+           * that comes back is labelled `derived` rather than `jev`, so a slower
+           * answer would be the reader's, honestly attributed, at their expense.
+           *
+           * A retry here does not rescue a slow judge, it only doubles the wait
+           * for one. Four seconds is long enough for a healthy call and short
+           * enough that a struggling one is abandoned rather than endured.
+           */
+          timeout: Number(process.env.TYPESAFE_TIMEOUT_MS ?? 4000),
+          retry: { maxRetries: Number(process.env.TYPESAFE_MAX_RETRIES ?? 0) },
         })
       )
     );

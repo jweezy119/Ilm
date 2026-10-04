@@ -10,11 +10,26 @@ import { prisma } from '../lib/db';
 import { Passage, TextId, BookMetadata, PassageKey, createPassageKey, TEXT_METADATA } from '@ilm/shared';
 import type { CrossReference } from '@prisma/client';
 
+/**
+ * What every passage read loads.
+ *
+ * No cross-references, and that is the single most expensive thing this file used
+ * to do on every read. Both directions were included with the *whole* referenced
+ * passage, so opening a 286-verse chapter joined every verse to every verse it
+ * points at and to all of their translations and themes — for data no reader of
+ * this data ever saw.
+ *
+ * Nothing uses it. The reader ignores cross-references entirely, and the one
+ * route that does want them (`GET /api/passages/by-key`) overwrites the field
+ * with a freshly computed value from `crossReferencesFor`, because the stored
+ * version may be stale. So the joins were being paid for on every passage on
+ * screen and then either ignored or thrown away.
+ *
+ * A caller that genuinely needs them asks for them by name.
+ */
 const passageInclude = {
   themes: { include: { theme: true } },
   passageTranslations: { include: { translation: true } },
-  crossRefsSource: { include: { targetPassage: true } },
-  crossRefsTarget: { include: { sourcePassage: true } },
 } satisfies Prisma.PassageInclude;
 
 type PassageRow = Prisma.PassageGetPayload<{ include: typeof passageInclude }>;
@@ -517,26 +532,15 @@ const WRITING_SYSTEM: Record<string, string> = {
 function toPassage(row: PassageRow): Passage {
   const stored = (row.metadata ?? {}) as Record<string, unknown>;
 
-  const crossReferences = [
-    ...row.crossRefsSource.map((ref) => ({
-      targetPassageId: ref.targetPassageId,
-      targetText: ref.targetPassage.textId as TextId,
-      type: ref.type as never,
-      strength: ref.strength,
-      direction: ref.direction as never,
-      notes: ref.notes ?? '',
-      detectedBy: (ref.detectedBy as 'jev' | 'manual') ?? 'jev',
-    })),
-    ...row.crossRefsTarget.map((ref) => ({
-      targetPassageId: ref.sourcePassageId,
-      targetText: ref.sourcePassage.textId as TextId,
-      type: ref.type as never,
-      strength: ref.strength,
-      direction: ref.direction as never,
-      notes: ref.notes ?? '',
-      detectedBy: (ref.detectedBy as 'jev' | 'manual') ?? 'jev',
-    })),
-  ].sort((a, b) => b.strength - a.strength);
+  /*
+   * Empty, because the include that used to fill it is gone.
+   *
+   * The field stays on the shape so nothing downstream has to change, and so the
+   * route that computes them on demand can fill it in as before. It is typed as
+   * possibly-undefined below rather than pretending to be a computed list, so a
+   * caller that forgets cannot mistake "not loaded" for "none exist".
+   */
+  const crossReferences: Passage['crossReferences'] = [];
 
   return {
     id: row.id,

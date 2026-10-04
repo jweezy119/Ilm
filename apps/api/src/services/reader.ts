@@ -87,6 +87,35 @@ export async function getReaderTranslations(textId: TextId): Promise<ReaderTrans
  * used comes back in the response, so the switcher can say so rather than the
  * reader assuming.
  */
+/**
+ * Per-chapter verse counts for a book, for the chapter picker.
+ *
+ * Memoised in process for a short window. The underlying `groupBy` is an
+ * aggregate over the whole book and its result is a navigation list, so it is the
+ * same work for every reader of every chapter.
+ */
+const CHAPTER_COUNT_TTL_MS = 10 * 60_000;
+const chapterCountCache = new Map<string, { at: number; chapters: ReaderChapterSummary[] }>();
+
+async function chapterSummaries(textId: TextId, bookSlug: string): Promise<ReaderChapterSummary[]> {
+  const key = `${textId}|${bookSlug}`;
+  const hit = chapterCountCache.get(key);
+  if (hit && Date.now() - hit.at < CHAPTER_COUNT_TTL_MS) return hit.chapters;
+
+  const counts = await prisma.passage.groupBy({
+    by: ['chapterNum'],
+    where: { textId, bookSlug },
+    _count: { _all: true },
+    orderBy: { chapterNum: 'asc' },
+  });
+  const chapters: ReaderChapterSummary[] = counts.map((c) => ({
+    chapter: c.chapterNum,
+    verseCount: c._count._all,
+  }));
+  chapterCountCache.set(key, { at: Date.now(), chapters });
+  return chapters;
+}
+
 export async function getBookReading(
   textId: TextId,
   bookId: string,
@@ -129,16 +158,19 @@ export async function getBookReading(
    */
   const passages = await getPassagesByChapter(textId, book.bookId, chapter);
 
-  const chapterCounts = await prisma.passage.groupBy({
-    by: ['chapterNum'],
-    where: { textId, bookSlug: book.bookId },
-    _count: { _all: true },
-    orderBy: { chapterNum: 'asc' },
-  });
-  const chapters: ReaderChapterSummary[] = chapterCounts.map((c) => ({
-    chapter: c.chapterNum,
-    verseCount: c._count._all,
-  }));
+  /*
+   * Chapter counts, memoised.
+   *
+   * This is a `groupBy` over every passage in the book, on every chapter request,
+   * to produce a navigation list that cannot change while anyone is reading. For
+   * the Quran it aggregates 6,236 rows to say how many verses Al-Baqarah has,
+   * every single time someone opens a different verse of it.
+   *
+   * A wrong count here is a wrong verse number, so it is not cached for long: the
+   * key includes the book, and the window is long enough to serve a reading
+   * session and short enough that a re-ingest shows up without a redeploy.
+   */
+  const chapters = await chapterSummaries(textId, book.bookId);
 
   /*
    * The chosen translation, per verse, falling back to the primary.
