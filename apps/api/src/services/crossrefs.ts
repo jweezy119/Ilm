@@ -10,6 +10,7 @@
  */
 
 import type { CrossRef, Passage, TextId } from '@ilm/shared';
+import { LruCache } from '../lib/corpus-cache';
 import { detectCrossReferences } from './typesafe';
 import { addCrossReference, getPassagesByKeys, hasStoredCrossReferences, prisma } from './passage';
 import { NotFoundError } from '../lib/errors';
@@ -37,12 +38,43 @@ export interface CrossReferenceResult {
  * Cross-references for a passage, computing and storing them on first request.
  * Pass `refresh` to recompute and overwrite.
  */
+/**
+ * Stored cross-references, per passage.
+ *
+ * Separate from the corpus cache and shorter-lived, because a reader can ask for
+ * these to be recomputed and because detection is the thing that changes them —
+ * unlike a verse's text, which nothing can change short of a re-ingest.
+ */
+const CROSS_REF_TTL_MS = 30 * 60_000;
+const crossReferenceCache = new LruCache<CrossRef[]>({
+  ttlMs: CROSS_REF_TTL_MS,
+  max: 1000,
+});
+
 export async function getCrossReferencesForPassage(passageId: string, options: { refresh?: boolean } = {}): Promise<CrossReferenceResult> {
   const source = await prisma.passage.findUnique({ where: { id: passageId }, select: { id: true, passageKey: true } });
   if (!source) throw new NotFoundError(`Passage not found: ${passageId}`);
 
-  if (!options.refresh && (await hasStoredCrossReferences(passageId))) {
-    return { references: await readStored(passageId), computed: false };
+  /*
+   * Stored references, cached.
+   *
+   * This runs on every passage-page open, and once a passage has been seen its
+   * references are read back from the database rather than recomputed — so they
+   * are exactly as stable as the verse text, which is already cached, and were
+   * being looked up anyway.
+   *
+   * `refresh: 1` deliberately bypasses this: that is the reader asking for them
+   * to be detected again, and answering from memory would ignore the request.
+   */
+  if (!options.refresh) {
+    const cachedRefs = crossReferenceCache.get(passageId);
+    if (cachedRefs) return { references: cachedRefs, computed: false };
+
+    if (await hasStoredCrossReferences(passageId)) {
+      const references = await readStored(passageId);
+      crossReferenceCache.set(passageId, references);
+      return { references, computed: false };
+    }
   }
 
   const hydrated = (await getPassagesByKeys([source.passageKey]))[0];
