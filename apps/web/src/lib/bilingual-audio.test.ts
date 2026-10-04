@@ -12,15 +12,24 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const player = readFileSync(resolve(__dirname, '../components/RecitationPlayer.tsx'), 'utf8')
-  // Comments stripped so documenting a removed thing is not the same as calling it.
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/^\s*\/\/.*$/gm, '');
+const read = (f: string) =>
+  readFileSync(resolve(__dirname, f), 'utf8')
+    // Comments stripped so documenting a removed thing is not the same as calling it.
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+const player = read('../components/RecitationPlayer.tsx');
+/*
+ * Recording-or-synthesis moved into one hook when recorded English arrived, and
+ * these assertions follow it there. They used to pin the player, which is what
+ * let them catch the move.
+ */
+const voice = read('./english-voice.ts');
 
 describe('the translation rides with the verse', () => {
   it('is optional, so the player still works for recitation alone', () => {
     expect(player).toMatch(/translation\?: string;/);
-    expect(player).toContain('if (!verse?.translation || !engine) return false;');
+    expect(player).toContain('if (!verse?.translation) return false;');
   });
 
   it('is spoken after the recording ends, not on a second press', () => {
@@ -31,10 +40,16 @@ describe('the translation rides with the verse', () => {
     expect(player).toContain('<audio');
   });
 
-  it('resolves a voice before the recording starts, so the halves do not race', () => {
-    expect(player).toMatch(/if \(current\?\.translation && !engineRef\.current\)/);
-    // ...and after the await, in case the reader stopped meanwhile.
-    expect(player).toContain('if (stopped.current) return;');
+  it('resolves a voice only once the Arabic has finished', () => {
+    /*
+     * Preparing a voice during the recitation is work that may never be needed —
+     * if the passage turns out to have a recording, no synthesiser is wanted at
+     * all, and on the first press that would mean loading 1.8 MB before the
+     * Arabic has even started.
+     */
+    expect(player).toContain('await speakTranslation(index)');
+    expect(player).not.toMatch(/createSpeechEngine/);
+    expect(voice).toContain('recordedFor');
   });
 });
 
@@ -50,8 +65,11 @@ describe('when it goes wrong', () => {
   });
 
   it('reports a missing voice once, and says the Arabic is unaffected', () => {
-    expect(player).toContain("s('englishUnavailable')");
     expect(player).toContain("s('englishFailed')");
+    // A passage with no recording yet is expected while the corpus is generated
+    // in stages, so it must not be reported as an error — only as a fallback.
+    expect(voice).toContain('isMissingAudio');
+    expect(voice).toMatch(/onError\?\.\(error\)/);
   });
 
   it('repeats the Arabic alone when asked to repeat one verse', () => {
@@ -65,11 +83,12 @@ describe('when it goes wrong', () => {
 describe('the transport stays one control', () => {
   it('stops the English when skipping', () => {
     // Otherwise the two halves talk over each other.
-    expect(player).toMatch(/const go = useCallback\([\s\S]{0,200}engineRef\.current\?\.stop\(\)/);
+    expect(player).toMatch(/const go = useCallback\([\s\S]{0,200}english\.stop\(\)/);
   });
 
   it('stops the English on unmount and on a verse change', () => {
-    expect(player).toMatch(/return \(\) => \{[\s\S]{0,220}engineRef\.current\?\.stop\(\)/);
+    expect(player).toMatch(/return \(\) => \{[\s\S]{0,220}english\.stop\(\)/);
+    expect(voice).toContain('useEffect(() => stop, [stop])');
   });
 
   it('tells the listener which half is sounding', () => {

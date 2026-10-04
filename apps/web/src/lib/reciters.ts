@@ -72,3 +72,41 @@ export const RECITATION_SPEEDS = [0.75, 1, 1.25, 1.5] as const;
  * goes through so they cannot each get it slightly differently.
  */
 export { passageReference as verseLabel } from '@/lib/passage-ref';
+
+/* ============================================================================
+   English audio
+   ============================================================================ */
+
+/**
+ * Where the pre-generated English readings live.
+ *
+ * Empty until a bucket is configured, and the feature is designed around that
+ * being a normal state: with no base there is simply no recorded English, and the
+ * reader hears the passage spoken by their own device instead. Nothing errors and
+ * nothing is hidden — the UI says which of the two is happening.
+ */
+export const EN_AUDIO_BASE = (process.env.NEXT_PUBLIC_EN_AUDIO_BASE ?? '').replace(/\/+$/, '');
+
+/**
+ * The recorded English reading of a passage, or null when there is not one.
+ *
+ * Works for every corpus, unlike the Arabic above: there is a human recitation of
+ * the Quran and nothing comparable for the Torah, the Talmud, the Old or the New
+ * Testament, so the English side is synthesised once and served from storage.
+ *
+ * The filename is the passage key with its colons replaced. Flat, reversible, and
+ * it cannot collide: `quran-2-1-255` and `torah-Genesis-1-1` differ in their
+ * prefix. The generator writes exactly this name, so the two halves of the system
+ * agree by construction rather than by a lookup table.
+ */
+export function englishAudioUrl(passageKey: string): string | null {
+  if (!EN_AUDIO_BASE || !passageKey) return null;
+  const parts = String(passageKey).split(':');
+  if (parts.length !== 4) return null;
+  return `${EN_AUDIO_BASE}/${parts.join('-')}.mp3`;
+}
+
+/** Whether the recorded English readings have been switched on at all. */
+export function englishAudioAvailable(): boolean {
+  return EN_AUDIO_BASE.length > 0;
+}

@@ -6,15 +6,13 @@ import { useTranslations } from 'next-intl';
 import type { TextId } from '@ilm/shared';
 import {
   speechLanguage,
-  pickVoice,
-  voiceMatchesLanguage,
   splitForSpeech,
   SPEECH_RATES,
   type SpeechVoice,
 } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 import { voiceProblem } from '@/lib/voice-help';
-import { createRoboticVoice, roboticVoicePossible, type RoboticVoice } from '@/lib/robotic-voice';
+import { useEnglishVoice, recordedFor } from '@/lib/english-voice';
 
 /**
  * The voice list, waiting briefly for it to arrive if it has not.
@@ -70,6 +68,7 @@ export function ReadAloud({
   segments,
   textId,
   fallbackNote,
+  passageKey,
   className,
   compact = false,
 }: {
@@ -85,6 +84,14 @@ export function ReadAloud({
    * wrong exactly when someone has just been told they cannot hear anything.
    */
   fallbackNote?: string;
+  /**
+   * The passage this is, when it belongs to one.
+   *
+   * Given, a recording is played if there is one. Not given, the text is simply
+   * read by the device — which is what the journey panel does, where what is
+   * shown is a passage's text rather than a passage being read.
+   */
+  passageKey?: string;
   className?: string;
   compact?: boolean;
 }) {
@@ -110,7 +117,6 @@ export function ReadAloud({
   // about it while reading.
   const [announcement, setAnnouncement] = useState('');
 
-  const queueIndex = useRef(0);
   const cancelled = useRef(false);
 
   /**
@@ -119,8 +125,7 @@ export function ReadAloud({
    * A device voice is always preferred — it is the better voice for free — so the
    * fallback is only built when there is genuinely nothing to use.
    */
-  const roboticRef = useRef<RoboticVoice | null>(null);
-  const [engine, setEngine] = useState<'device' | 'robotic' | null>(null);
+  const english = useEnglishVoice();
   const [preparing, setPreparing] = useState(false);
 
   /*
@@ -158,7 +163,6 @@ export function ReadAloud({
    * Held here rather than inside speak() because two engines drain the same
    * queue and only one of them is chosen at the moment of speaking.
    */
-  const verseCount = segments?.length ?? (text?.trim() ? 1 : 0);
   const pieces = useMemo<Array<{ label: string; text: string }>>(
     () =>
       segments?.length
@@ -176,151 +180,24 @@ export function ReadAloud({
    * rules are the same; only the thing that makes a noise differs. Written as a
    * callback so it can be called from before its own definition.
    */
-  const speakChunks = useCallback(
-    async (makeNoise: (text: string) => Promise<void>) => {
-      /*
-       * Announced up front whatever the shape of the queue. A single passage has
-       * no per-verse labels, so without this the live region stayed silent for
-       * the whole reading and a screen-reader user heard nothing happen at all.
-       *
-       * The count is of *verses given*, not of speech chunks. A long passage is
-       * split for synthesis into several pieces, and announcing "3 passages" for
-       * one verse because it needed three chunks is simply untrue — and the
-       * previous wording also read "Reading aloud in English., 3 passages", the
-       * sentence's full stop landing mid-clause.
-       */
-      setAnnouncement(
-        verseCount > 1 ? t('readingMany', { language: language.label, count: verseCount }) : t('readingAloud', { language: language.label })
-      );
-
-      for (let i = 0; i < pieces.length; i += 1) {
-        if (cancelled.current) return;
-        const piece = pieces[i];
-        // Only where a reference exists to announce; a single passage needs none.
-        if (piece.label) setAnnouncement(`${piece.label}: ${t('readingNow')}`);
-        try {
-          await makeNoise(piece.text);
-        } catch {
-          if (!cancelled.current) {
-            setSpeaking(false);
-            setNotice(t('failed'));
-            setAnnouncement(t('failed'));
-          }
-          return;
-        }
-      }
-      if (cancelled.current) return;
-      setSpeaking(false);
-      setAnnouncement(t('finishedReading'));
-    },
-    [pieces, verseCount, language.label, t]
-  );
 
   const stop = useCallback(() => {
     cancelled.current = true;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    english.stop();
     setSpeaking(false);
-  }, []);
+  }, [english]);
 
+  /*
+   * Read aloud: a recording for this passage if there is one, otherwise whatever
+   * voice the device can offer. The resolution of that — including the wait for
+   * the voice list to arrive, the language check, the built-in fallback and every
+   * failure path — lives in useEnglishVoice, because the bilingual Quran player
+   * needs exactly the same behaviour and two copies would drift.
+   */
   const speak = useCallback(async () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setNotice(t('unsupported'));
-      setAnnouncement(t('unsupported'));
       return;
-    }
-
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    cancelled.current = false;
-
-    /*
-     * Wait for the voice list before concluding there is none.
-     *
-     * `getVoices()` returns an empty array until the browser has finished
-     * loading the system's voice list, and signals it with `voiceschanged`
-     * shortly afterwards — Chrome does exactly this on a cold page, and Firefox
-     * does it on some platforms. Reading the list once at press time and calling
-     * an empty one "no speech voice installed" therefore told a reader with
-     * perfectly good voices that they had none, because they pressed within the
-     * second the page opened. That is the whole feature refusing to work for
-     * someone who could hear it.
-     *
-     * So: if the list is empty, wait for the event, briefly. Only after it has
-     * stayed empty is it really a device without a voice engine.
-     */
-    const available = await voicesWhenReady(synth);
-    const voice = pickVoice(available, language.tag);
-
-    if (available.length === 0) {
-      /*
-       * Refused, and now say something that can be acted on.
-       *
-       * "This browser has no speech voice installed" was accurate and useless:
-       * the steps differ entirely between Windows, macOS, Android and Linux, and
-       * a reader has no way to know which one applies to them. So the message
-       * names their platform's own menu, and a private window is mentioned as a
-       * thing to try rather than asserted — see voice-help for why it is not
-       * detected.
-       */
-      const problem = voiceProblem({
-        userAgent: navigator.userAgent ?? '',
-        platformHint: (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform,
-        maxTouchPoints: navigator.maxTouchPoints ?? 0,
-      });
-      const guidance = {
-        message: t(problem.messageKey),
-        helpUrl: problem.helpUrl,
-        helpLabel: t('voiceHelpLabel'),
-        privateNote: t('voicePrivateNote'),
-      };
-      /*
-       * No voice from the operating system. Before telling the reader nothing can
-       * be done, try the fallback: eSpeak compiled to WebAssembly, which needs no
-       * voice installed and no network beyond its own chunk. It sounds robotic
-       * and that is stated plainly, but a reader who cannot hear anything at all
-       * has been offered nothing.
-       */
-      if (roboticVoicePossible()) {
-        setPreparing(true);
-        setAnnouncement(t('voicePreparing'));
-        try {
-          const voice = await createRoboticVoice();
-          if (cancelled.current) return;
-          roboticRef.current = voice;
-          setPreparing(false);
-          setEngine('robotic');
-          setVoiceProblemState(null);
-          // No notice here: the engine line below already says which voice is
-          // speaking and that it is synthetic. Setting both said the same thing
-          // twice, stacked.
-          setNotice(null);
-          setSpeaking(true);
-          void speakChunks((line) => voice.speak(line, { rate }));
-          return;
-        } catch {
-          setPreparing(false);
-          // Falls through to the guidance below, which is the honest answer:
-          // the fallback exists but did not work here.
-          guidance.message = t('voiceFallbackUnavailable');
-        }
-      }
-
-      setVoiceProblemState(guidance);
-      setNotice(t('voiceUnavailable'));
-      setAnnouncement(t('voiceUnavailable'));
-      setSpeaking(false);
-      return;
-    }
-
-    setVoiceProblemState(null);
-    setEngine('device');
-    if (voice && !voiceMatchesLanguage(voice, language.tag)) {
-      // Said out loud rather than done quietly: being read in the wrong language
-      // is a small problem, being read in the wrong language without being told
-      // is a rude one.
-      setNotice(t('wrongLanguage', { language: voice.lang }));
-    } else {
-      setNotice(null);
     }
 
     if (pieces.length === 0) {
@@ -328,68 +205,55 @@ export function ReadAloud({
       return;
     }
 
-    queueIndex.current = 0;
+    cancelled.current = false;
+    setVoiceProblemState(null);
+    setNotice(null);
+    setPreparing(true);
     setSpeaking(true);
     setAnnouncement(
-      t('readingAloud', { language: language.label }) + (pieces.length > 1 ? ` ${pieces.length} ${t('passages')}` : '')
+      t('readingAloud', { language: language.label }) +
+        (pieces.length > 1 ? ` ${t('readingMany', { language: language.label, count: pieces.length })}` : '')
     );
 
-    const next = () => {
-      if (cancelled.current) return;
-      if (queueIndex.current >= pieces.length) {
+    const recorded = recordedFor(passageKey);
+    const joined = pieces.map((p) => p.text).join(' ');
+
+    await english.speak({
+      audioUrl: recorded,
+      text: recorded ? '' : joined,
+      rate,
+      onDone: () => {
         setSpeaking(false);
+        setPreparing(false);
         setAnnouncement(t('finishedReading'));
-        return;
-      }
-
-      const piece = pieces[queueIndex.current];
-      const utterance = new SpeechSynthesisUtterance(piece.text);
-      utterance.lang = language.tag;
-      utterance.rate = rate;
-
-      if (piece.label) setAnnouncement(`${piece.label}: ${t('readingNow')}`);
-
-      /*
-       * Assigning the voice is guarded, and that is not paranoia.
-       *
-       * The `voice` setter validates its argument, and the list can change
-       * between the moment it was read and the moment it is used — voices are
-       * installed and removed while the page is open. A rejected assignment
-       * throws out of this function, which would skip `synth.speak` entirely and
-       * leave the button showing "stop" with silence behind it: the one state
-       * that looks exactly like a broken page. So a bad voice costs the voice
-       * and nothing else, and the browser picks for itself.
-       */
-      if (voice) {
-        try {
-          utterance.voice = voice as unknown as SpeechSynthesisVoice;
-        } catch {
-          // Deliberately empty: no voice is better than no sound.
-        }
-      }
-
-      utterance.onend = () => {
-        queueIndex.current += 1;
-        next();
-      };
-      utterance.onerror = () => {
+      },
+      onError: () => {
         setSpeaking(false);
-        setNotice(t('failed'));
-        setAnnouncement(t('failed'));
-      };
-
-      try {
-        synth.speak(utterance);
-      } catch {
-        // Some engines refuse synchronously rather than firing onerror.
-        setSpeaking(false);
-        setNotice(t('failed'));
-        setAnnouncement(t('failed'));
-      }
-    };
-
-    next();
-  }, [language, rate, pieces, speakChunks, t]);
+        setPreparing(false);
+        /*
+         * Nothing could read this: no recording for the passage, no voice from
+         * the device, and the built-in one would not load either. "Reading failed"
+         * tells the reader nothing they can act on, and the steps differ per
+         * platform — so give the platform's own instructions, which is what this
+         * was replaced with once already and should not have been lost in the
+         * move to the shared hook.
+         */
+        const problem = voiceProblem({
+          userAgent: navigator.userAgent ?? '',
+          platformHint: (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform,
+          maxTouchPoints: navigator.maxTouchPoints ?? 0,
+        });
+        setVoiceProblemState({
+          message: t(problem.messageKey),
+          helpUrl: problem.helpUrl,
+          helpLabel: t('voiceHelpLabel'),
+          privateNote: t('voicePrivateNote'),
+        });
+        setNotice(t('voiceFallbackUnavailable'));
+        setAnnouncement(t('voiceUnavailable'));
+      },
+    });
+  }, [language, rate, pieces, passageKey, english, t]);
 
   return (
     <div className={cn('inline-flex flex-col gap-1', className)} onClick={(e) => e.stopPropagation()}>
@@ -414,9 +278,9 @@ export function ReadAloud({
         <p className="text-[11px] text-fg-muted" role="status">
           {t('voicePreparing')}
         </p>
-      ) : engine === 'robotic' ? (
-        <p className="text-[11px] text-fg-muted">{t('engineRobotic')}</p>
-      ) : engine === 'device' ? (
+      ) : english.source === 'device' ? (
+        /* A recording needs no explanation; a device voice might be the wrong
+           language, and that is said when it happens. */
         <p className="text-[11px] text-fg-faint">{t('engineDevice')}</p>
       ) : null}
 

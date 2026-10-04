@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, SkipBack, SkipForward, Repeat, Volume2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { RECITERS, DEFAULT_RECITER, RECITATION_SPEEDS, ayahAudioUrl, verseLabel } from '@/lib/reciters';
-import { createSpeechEngine, toSpeechPieces, type SpeechEngine } from '@/lib/speech-engine';
+import { useEnglishVoice, recordedFor } from '@/lib/english-voice';
 
 export interface RecitationVerse {
   passageKey: string;
@@ -72,8 +72,14 @@ export function RecitationPlayer({
    */
   const [phase, setPhase] = useState<'arabic' | 'english' | null>(null);
   const [englishNotice, setEnglishNotice] = useState<string | null>(null);
-  const engineRef = useRef<SpeechEngine | null>(null);
   const stopped = useRef(false);
+  /**
+   * The English half: a recording where one exists, the reader's own voice
+   * otherwise. One hook for both, because the reader should not be able to tell
+   * which they got by anything except being told.
+   */
+  const english = useEnglishVoice();
+  const [englishSource, setEnglishSource] = useState<'recorded' | 'device' | 'none'>('none');
   const src = current ? ayahAudioUrl(current.passageKey, reciterId) : null;
 
   useEffect(() => {
@@ -95,9 +101,11 @@ export function RecitationPlayer({
   useEffect(() => {
     return () => {
       stopped.current = true;
-      engineRef.current?.stop();
+      english.stop();
     };
-  }, [verses]);
+    // `english` is stable apart from its stop handler, which is a useCallback
+    // with no dependencies, so this fires when the passage changes and on unmount.
+  }, [verses, english]);
 
   // A new source has to be played deliberately; browsers reject it otherwise,
   // and a rejection here would be an unhandled promise rather than a message.
@@ -120,13 +128,13 @@ export function RecitationPlayer({
     (next: number) => {
       // Skipping while the English is speaking would otherwise leave the two
       // halves talking over each other.
-      engineRef.current?.stop();
+      english.stop();
       setPhase(null);
       const clamped = Math.max(0, Math.min(verses.length - 1, next));
       setIndex(clamped);
       setAnnouncement(t('nowPlaying', { label: verses[clamped]?.label ?? '' }));
     },
-    [verses, t]
+    [verses, t, english]
   );
 
   const toggle = useCallback(async () => {
@@ -136,7 +144,7 @@ export function RecitationPlayer({
     if (playing) {
       stopped.current = true;
       el.pause();
-      engineRef.current?.stop();
+      english.stop();
       setPlaying(false);
       setPhase(null);
       setAnnouncement(t('paused'));
@@ -144,28 +152,6 @@ export function RecitationPlayer({
     }
 
     setError(null);
-
-    /*
-     * The English half needs a voice, and building one can mean loading the
-     * built-in engine. Resolved before the Arabic starts so the two are not left
-     * racing each other, and so a failure is reported once rather than in the gap
-     * between the halves.
-     *
-     * Failure is not fatal: the recording is a human voice and needs no synthesis
-     * at all, so a reader with no speech engine still gets the Arabic. Saying so
-     * is better than a control that appears to do nothing.
-     */
-    if (current?.translation && !engineRef.current) {
-      try {
-        engineRef.current = await createSpeechEngine('en');
-        if (engineRef.current.wrongLanguage) {
-          setEnglishNotice(s('wrongLanguage', { language: engineRef.current.wrongLanguage }));
-        }
-      } catch {
-        setEnglishNotice(s('englishUnavailable'));
-      }
-    }
-
     stopped.current = false;
     setPhase('arabic');
     el.currentTime = 0;
@@ -179,7 +165,7 @@ export function RecitationPlayer({
         setPhase(null);
         setError(t('blocked'));
       });
-  }, [playing, src, current, t, s]);
+  }, [playing, src, current, t, english]);
 
   /**
    * Speak the translation, then carry on as the Arabic player always did.
@@ -195,15 +181,30 @@ export function RecitationPlayer({
   const speakTranslation = useCallback(
     async (from: number): Promise<boolean> => {
       const verse = verses[from];
-      const engine = engineRef.current;
-      if (!verse?.translation || !engine) return false;
+      if (!verse?.translation) return false;
 
       setPhase('english');
       setAnnouncement(`${verse.label}: ${s('phaseEnglish')}`);
-      await engine.speakQueue(toSpeechPieces(undefined, verse.translation), { rate: speed });
+
+      const recorded = recordedFor(verse.passageKey);
+      if (recorded) {
+        // A recorded reading exists for every passage once generation finishes,
+        // but the corpus is generated in stages, so this one may not. Falling
+        // through to a synthesised voice is the difference between a passage
+        // being read and a button doing nothing.
+        setEnglishNotice(null);
+      }
+
+      await english.speak({
+        audioUrl: recorded,
+        text: verse.translation,
+        rate: speed,
+        onSource: setEnglishSource,
+        onError: () => setEnglishNotice(s('englishFailed')),
+      });
       return true;
     },
-    [verses, speed, s]
+    [verses, speed, s, english]
   );
 
   const onEnded = useCallback(() => {
@@ -255,6 +256,9 @@ export function RecitationPlayer({
 
   const repeatLabel = repeat === 'off' ? t('repeatOff') : repeat === 'one' ? t('repeatOne') : t('repeatAll');
   const phaseLabel = phase === 'english' ? s('phaseEnglish') : phase === 'arabic' ? s('phaseArabic') : null;
+  // Only worth showing once something has actually been read, and only for the
+  // recorded form — a device voice needs no explanation.
+  const englishNote = phase !== 'english' && englishSource === 'recorded' ? s('englishRecorded') : null;
   const hasTranslation = verses.some((v) => Boolean(v.translation?.trim()));
 
   return (
@@ -367,6 +371,11 @@ export function RecitationPlayer({
       {englishNotice ? (
         <p className="mt-1 text-[11px] text-fg-muted">{englishNotice}</p>
       ) : null}
+
+      {/* Says which voice read the translation, because for a while both are in
+          play depending on whether the passage has been generated yet, and a
+          reader should not have to guess. */}
+      {englishNote ? <p className="mt-1 text-[11px] text-fg-faint">{englishNote}</p> : null}
 
       {/* Only worth saying where a translation is actually attached, or the
           explanation appears on passages that never had one. */}

@@ -503,6 +503,7 @@
     "phaseEnglish": "English meaning",
     "englishUnavailable": "No speech voice is available, so only the Arabic recitation will play.",
     "englishFailed": "The English reading stopped. The Arabic recitation is unaffected.",
-    "arabicFailed": "That recitation could not be loaded; going to the English meaning."
+    "arabicFailed": "That recitation could not be loaded; going to the English meaning.",
+    "englishRecorded": "Read from a recording, the same every time."
   }
 }
