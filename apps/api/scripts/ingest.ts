@@ -19,6 +19,7 @@ import { TextId, TEXT_METADATA } from '@ilm/shared';
 import { loadLocalEnv } from '../src/lib/env';
 import { stripSefariaHtml } from '../src/services/sefaria';
 import { upsertBook, upsertPassage, prisma, getTextStats } from '../src/services/passage';
+import { invalidateCorpusCache } from '../src/lib/corpus-cache';
 
 loadLocalEnv();
 
@@ -589,6 +590,15 @@ async function main(): Promise<void> {
   for (const textId of targets) {
     total += await TEXTS[textId]({ limit });
   }
+
+  /*
+   * The corpus cache is time-based, so a re-ingest would otherwise only become
+   * visible as entries happened to expire — which for a reader who has just been
+   * told a passage changed is not good enough. Dropped explicitly, and the
+   * reminder is printed because the search index needs building too, which is a
+   * different store and is not touched here.
+   */
+  invalidateCorpusCache();
 
   console.log(`\n🎉 ${total} passages in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
   console.log('Next: npm run index   (build the search index and score themes)');

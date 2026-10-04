@@ -7,6 +7,7 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/db';
+import { cached, catalogueCache } from '../lib/corpus-cache';
 import { Passage, TextId, BookMetadata, PassageKey, createPassageKey, TEXT_METADATA } from '@ilm/shared';
 import type { CrossReference } from '@prisma/client';
 
@@ -39,13 +40,17 @@ type PassageRow = Prisma.PassageGetPayload<{ include: typeof passageInclude }>;
 // ============================================================================
 
 export async function getPassageById(id: string): Promise<Passage | null> {
-  const row = await prisma.passage.findUnique({ where: { id }, include: passageInclude });
-  return row ? toPassage(row) : null;
+  return cached(`passageId:${id}`, async () => {
+    const row = await prisma.passage.findUnique({ where: { id }, include: passageInclude });
+    return row ? toPassage(row) : null;
+  });
 }
 
 export async function getPassageByKey(key: string): Promise<Passage | null> {
-  const row = await prisma.passage.findUnique({ where: { passageKey: key }, include: passageInclude });
-  return row ? toPassage(row) : null;
+  return cached(`passage:${key}`, async () => {
+    const row = await prisma.passage.findUnique({ where: { passageKey: key }, include: passageInclude });
+    return row ? toPassage(row) : null;
+  });
 }
 
 export async function getPassagesByIds(ids: string[]): Promise<Passage[]> {
@@ -95,12 +100,14 @@ export async function getPassagesByBook(textId: TextId, bookSlug: string, limit 
 }
 
 export async function getPassagesByChapter(textId: TextId, bookSlug: string, chapter: number): Promise<Passage[]> {
-  const rows = await prisma.passage.findMany({
-    where: { textId, bookSlug, chapterNum: chapter },
-    orderBy: { verseNum: 'asc' },
-    include: passageInclude,
+  return cached(`chapter:${textId}:${bookSlug}:${chapter}`, async () => {
+    const rows = await prisma.passage.findMany({
+      where: { textId, bookSlug, chapterNum: chapter },
+      orderBy: { verseNum: 'asc' },
+      include: passageInclude,
+    });
+    return rows.map(toPassage);
   });
-  return rows.map(toPassage);
 }
 
 // ============================================================================
@@ -268,8 +275,16 @@ export async function setPassageThemesBatch(entries: PassageThemeInput[]): Promi
 // ============================================================================
 
 export async function getBooks(textId: TextId): Promise<BookMetadata[]> {
-  const books = await prisma.book.findMany({ where: { textId }, orderBy: { order: 'asc' } });
-  return books.map(toBookMetadata);
+  // The book list is read on every navigation and only changes when a corpus is
+  // ingested, so it is held for an hour rather than looked up each time.
+  return cached(
+    `books:${textId}`,
+    async () => {
+      const books = await prisma.book.findMany({ where: { textId }, orderBy: { order: 'asc' } });
+      return books.map(toBookMetadata);
+    },
+    catalogueCache
+  );
 }
 
 export async function getBook(textId: TextId, bookId: string): Promise<BookMetadata | null> {

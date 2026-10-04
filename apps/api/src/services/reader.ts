@@ -20,6 +20,7 @@
  * source rather than presented as an interpretation.
  */
 import { prisma } from '../lib/db';
+import { cached, catalogueCache } from '../lib/corpus-cache';
 import { getBooks, getPassagesByChapter } from './passage';
 import type { Passage, TextId } from '@ilm/shared';
 
@@ -69,12 +70,18 @@ export interface BookReading {
 
 /** English translations available for a text, primary first. */
 export async function getReaderTranslations(textId: TextId): Promise<ReaderTranslation[]> {
-  const rows = await prisma.translation.findMany({
-    where: { textId, language: 'english' },
-    select: { id: true, name: true, translator: true, year: true, isPrimary: true },
-    orderBy: [{ isPrimary: 'desc' }, { name: 'asc' }],
-  });
-  return rows;
+  // Which translations exist for a corpus is fixed by ingestion, and this is read
+  // on every chapter open.
+  return cached(
+    `translations:${textId}`,
+    () =>
+      prisma.translation.findMany({
+        where: { textId, language: 'english' },
+        select: { id: true, name: true, translator: true, year: true, isPrimary: true },
+        orderBy: [{ isPrimary: 'desc' }, { name: 'asc' }],
+      }),
+    catalogueCache
+  );
 }
 
 /**

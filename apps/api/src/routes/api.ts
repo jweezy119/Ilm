@@ -47,6 +47,7 @@ import { getTopics } from '../services/topics';
 import { getCitationsForPassage } from '../services/citations';
 import { getRelatedPassages } from '../services/related';
 import { resolveIdentity, cookieOptions, getLibrary, getSavedKeys, savePassage, removePassage, LIBRARY_COOKIE } from '../services/library';
+import { corpusCache, catalogueCache } from '../lib/corpus-cache';
 import { repairStatus } from '../services/sefaria-repair';
 import {
   listJourneys,
@@ -258,6 +259,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         exhausted: judgeBudget().exhausted,
         refused: judgeBudget().refused,
       },
+      /*
+       * How often the corpus is being answered without the database.
+       *
+       * In memory, because it is a property of this process and disappears with
+       * it, which makes it a liveness-adjacent number in the same way the rest of
+       * this route is: it is here because an operator will want it and nowhere
+       * else would look, and it costs nothing to read.
+       */
+      cache: { corpus: corpusCache.stats, catalogue: catalogueCache.stats },
     });
   });
 
