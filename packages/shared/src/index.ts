@@ -17,7 +17,7 @@ import { z } from 'zod';
  * hadith is cited by its collection — al-Bukhari 2:4 is not the same claim as Muslim
  * 2:4 — and one bucket could not carry that distinction.
  */
-export const TextIdSchema = z.enum(['quran', 'talmud', 'torah', 'ot', 'nt', 'bukhari', 'muslim']);
+export const TextIdSchema = z.enum(['quran', 'talmud', 'torah', 'ot', 'nt', 'bukhari', 'muslim', 'enoch']);
 export type TextId = z.infer<typeof TextIdSchema>;
 
 export const LanguageSchema = z.enum(['arabic', 'hebrew', 'aramaic', 'greek', 'english']);
@@ -1030,6 +1030,14 @@ export const TEXT_METADATA: Record<TextId, {
     englishTranslations: ['KJV', 'ESV', 'NRSV', 'NIV', 'NKJV', 'NASB'],
     bookCount: 27,
     totalVerses: 7957,
+    direction: 'ltr',
+  },
+  enoch: {
+    name: 'Book of Enoch',
+    originalLanguage: 'english',
+    englishTranslations: ['R.H. Charles'],
+    bookCount: 5,
+    totalVerses: 1061,
     direction: 'ltr',
   },
 };

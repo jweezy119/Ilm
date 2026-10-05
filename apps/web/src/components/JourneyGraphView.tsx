@@ -338,6 +338,7 @@ const EDGE_CORPUS: Record<string, string> = {
   talmud: 'stroke-amber-600',
   ot: 'stroke-rose-600',
   nt: 'stroke-violet-600',
+  enoch: 'stroke-stone-600',
 };
 
 /**

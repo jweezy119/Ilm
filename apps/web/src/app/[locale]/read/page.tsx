@@ -20,7 +20,7 @@ import { useTextBooks } from '@/lib/useTextBooks';
 import { useInBookSearch } from '@/lib/useInBookSearch';
 import { Page } from '@/components/Shell';
 import { RecitationPlayer } from '@/components/RecitationPlayer';
-import { ReadAloud } from '@/components/ReadAloud';
+import { PodcastPlayer } from '@/components/PodcastPlayer';
 import { ayahAudioUrl, verseLabel, DEFAULT_RECITER } from '@/lib/reciters';
 import type { BookMetadata, TextId } from '@ilm/shared';
 
@@ -560,19 +560,19 @@ function ReadingPane({
         ) : null}
 
         {/*
-          Read aloud for every corpus, including the ones with no human
-          recitation. A reader part-way through Genesis had no audio at all
-          before this, because the player above is Quran-only by design and
-          nothing replaced it.
-
-          The whole chapter rather than a button per verse: three hundred
-          controls is not a reading surface, and a reader who is listening is
-          following the text rather than hunting for the right row.
+          Podcast Mode: Continuous reading for every corpus, using client-side
+          Speech Synthesis.
         */}
         {speechSegments.length ? (
           <div className="mt-3 rounded-xl border border-line bg-panel/50 p-3">
-            <h2 className="mb-1.5 text-xs uppercase tracking-wide text-fg-muted">{speechT('listenHeading')}</h2>
-            <ReadAloud segments={speechSegments} textId={textId} />
+            <PodcastPlayer
+              segments={speechSegments}
+              textId={textId}
+              onNextChapter={onNext}
+              onPrevChapter={onPrev}
+              hasNext={data.chapter < data.chapterCount}
+              hasPrev={data.chapter > 1}
+            />
           </div>
         ) : null}
       </header>

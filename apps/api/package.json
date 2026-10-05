@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "ingest": "tsx scripts/ingest.ts",
+    "ingest-enoch": "tsx scripts/ingest-enoch.ts",
     "ingest-sefaria-translations": "tsx scripts/ingest-sefaria-translations.ts",
     "ingest-sefaria-translations:torah": "tsx scripts/ingest-sefaria-translations.ts --text torah",
     "index": "tsx scripts/index.ts",

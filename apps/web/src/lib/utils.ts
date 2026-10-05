@@ -2,7 +2,7 @@
 
 import { TEXT_METADATA, type Passage, type TextId } from '@ilm/shared';
 
-export const TEXT_IDS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
+export const TEXT_IDS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt', 'enoch'];
 
 export function getTextLabel(textId: TextId, short = false): string {
   const name = TEXT_METADATA[textId]?.name ?? textId;
@@ -10,7 +10,7 @@ export function getTextLabel(textId: TextId, short = false): string {
   // Bukhari and Muslim abbreviate to their own initials rather than to "Hadith":
   // a hadith is cited by collection, and two chips that both read "H" would erase
   // the distinction the citation depends on.
-  return { quran: 'Qur’an', torah: 'Torah', talmud: 'Talmud', ot: 'OT', nt: 'NT', bukhari: 'Bukhari', muslim: 'Muslim' }[textId] ?? name;
+  return { quran: 'Qur’an', torah: 'Torah', talmud: 'Talmud', ot: 'OT', nt: 'NT', bukhari: 'Bukhari', muslim: 'Muslim', enoch: 'Enoch' }[textId] ?? name;
 }
 
 /** Tailwind text colour per corpus, so passages stay visually distinguishable. */
@@ -26,6 +26,7 @@ export const TEXT_STYLES: Record<TextId, { chip: string; accent: string; border:
   // unrelated traditions.
   bukhari: { chip: 'bg-slate-100 text-slate-900 dark:bg-slate-900/50 dark:text-slate-100', accent: 'text-slate-700 dark:text-slate-400', border: 'border-l-slate-600' },
   muslim: { chip: 'bg-slate-100 text-slate-900 dark:bg-slate-900/50 dark:text-slate-100', accent: 'text-slate-700 dark:text-slate-400', border: 'border-l-slate-600' },
+  enoch: { chip: 'bg-stone-100 text-stone-900 dark:bg-stone-900/50 dark:text-stone-100', accent: 'text-stone-700 dark:text-stone-400', border: 'border-l-stone-600' },
 };
 
 export function getTextChipClass(textId: TextId): string {

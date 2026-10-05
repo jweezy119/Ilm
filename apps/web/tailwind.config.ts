@@ -83,6 +83,7 @@ const config: Config = {
         torah: { DEFAULT: '#1e3a5f', light: '#e6ebf0', dark: '#0f2342' },
         ot: { DEFAULT: '#5c2a1a', light: '#f5ebe8', dark: '#3d1a10' },
         nt: { DEFAULT: '#3d1a5c', light: '#ebe8f5', dark: '#260f3d' },
+        enoch: { DEFAULT: '#4b5563', light: '#f3f4f6', dark: '#1f2937' },
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],

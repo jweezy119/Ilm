@@ -10,7 +10,7 @@ import {
 } from '@ilm/shared';
 import { api } from '@/lib/api';
 
-const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt'];
+const ALL_TEXTS: TextId[] = ['quran', 'torah', 'talmud', 'ot', 'nt', 'enoch'];
 
 // The cap is the API's, not a second one declared here. The two disagreed once
 // already, and the symptom was a 400 the UI could not explain.

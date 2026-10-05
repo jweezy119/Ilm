@@ -151,6 +151,7 @@
   .badge-torah { @apply badge bg-torah-light text-torah-dark dark:bg-torah-dark/30 dark:text-torah-light; }
   .badge-ot { @apply badge bg-ot-light text-ot-dark dark:bg-ot-dark/30 dark:text-ot-light; }
   .badge-nt { @apply badge bg-nt-light text-nt-dark dark:bg-nt-dark/30 dark:text-nt-light; }
+  .badge-enoch { @apply badge bg-enoch-light text-enoch-dark dark:bg-enoch-dark/30 dark:text-enoch-light; }
 
   .text-rtl { direction: rtl; text-align: right; }
   .text-ltr { direction: ltr; text-align: left; }
