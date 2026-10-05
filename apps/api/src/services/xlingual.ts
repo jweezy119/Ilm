@@ -39,6 +39,7 @@ export const CORPUS_LANGUAGE: Record<TextId, Language> = {
   nt: 'greek',
   bukhari: 'arabic',
   muslim: 'arabic',
+  enoch: 'english',
 };
 
 /**

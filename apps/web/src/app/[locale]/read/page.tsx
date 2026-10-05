@@ -14,13 +14,14 @@ import {
   Loader2,
   Search,
   X,
+  Podcast as PodcastIcon,
 } from 'lucide-react';
 import { getTextLabel, getLanguageDirection, getScriptFont, TEXT_IDS, cn } from '@/lib/utils';
 import { useTextBooks } from '@/lib/useTextBooks';
 import { useInBookSearch } from '@/lib/useInBookSearch';
 import { Page } from '@/components/Shell';
 import { RecitationPlayer } from '@/components/RecitationPlayer';
-import { PodcastPlayer } from '@/components/PodcastPlayer';
+import { usePodcast } from '@/components/PodcastContext';
 import { ayahAudioUrl, verseLabel, DEFAULT_RECITER } from '@/lib/reciters';
 import type { BookMetadata, TextId } from '@ilm/shared';
 
@@ -416,6 +417,7 @@ function ReadingPane({
 }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof import('@/lib/api').api.readBook>> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { playQueue, setNavigationUrls } = usePodcast();
 
   /*
    * Only verses with audio behind them. ayahAudioUrl returns null for anything
@@ -564,15 +566,39 @@ function ReadingPane({
           Speech Synthesis.
         */}
         {speechSegments.length ? (
-          <div className="mt-3 rounded-xl border border-line bg-panel/50 p-3">
-            <PodcastPlayer
-              segments={speechSegments}
-              textId={textId}
-              onNextChapter={onNext}
-              onPrevChapter={onPrev}
-              hasNext={data.chapter < data.chapterCount}
-              hasPrev={data.chapter > 1}
-            />
+          <div className="mt-3">
+            <button
+              onClick={() => {
+                const searchParams = new URLSearchParams(window.location.search);
+                const baseUrl = window.location.pathname;
+                
+                let nextUrl = null;
+                let prevUrl = null;
+
+                if (data.chapter < data.chapterCount) {
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.set('chapter', String(data.chapter + 1));
+                  nextUrl = `${baseUrl}?${nextParams.toString()}`;
+                } else if (data.next) {
+                  nextUrl = `${baseUrl}?text=${textId}&book=${encodeURIComponent(data.next.bookId)}`;
+                }
+
+                if (data.chapter > 1) {
+                  const prevParams = new URLSearchParams(searchParams);
+                  prevParams.set('chapter', String(data.chapter - 1));
+                  prevUrl = `${baseUrl}?${prevParams.toString()}`;
+                } else if (data.previous) {
+                  prevUrl = `${baseUrl}?text=${textId}&book=${encodeURIComponent(data.previous.bookId)}`;
+                }
+
+                setNavigationUrls(nextUrl, prevUrl);
+                playQueue(speechSegments, textId);
+              }}
+              className="flex items-center gap-2 rounded-xl border border-line bg-panel/50 px-4 py-3 text-sm font-medium hover:bg-panel transition-colors w-full"
+            >
+              <PodcastIcon className="w-5 h-5 text-accent" />
+              Listen in Podcast Mode
+            </button>
           </div>
         ) : null}
       </header>

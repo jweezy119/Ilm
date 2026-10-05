@@ -16,6 +16,7 @@ import {
   parseCitation,
 } from '@ilm/shared';
 import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
+import { crossExamine } from '../services/cross-examine';
 import { compareTheme, isKnownTheme } from '../services/compare';
 import { getFigure, getFiguresForPassage } from '../services/figures';
 import {
@@ -303,6 +304,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const query = request.body?.query?.trim() ?? '';
     if (query.length < 3) return ok({ intent: 'unknown', confidence: 0, source: 'derived' });
     return ok(await classifySearchIntent(query));
+  });
+
+  app.post('/api/cross-examine', async (request: FastifyRequest<{ Body: { query?: string } }>) => {
+    const query = request.body?.query?.trim() ?? '';
+    if (query.length < 2) return ok({ query, resultsByCorpus: {}, source: 'derived' });
+    return ok(await crossExamine(query));
   });
 
   app.get('/api/themes', async () => ok({ themes: await listThemes() }));

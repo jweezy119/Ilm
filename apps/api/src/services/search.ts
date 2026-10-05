@@ -294,7 +294,7 @@ function scoreCandidate(bm25: number, density: number, coverage: number): number
   return Number.isFinite(covered) ? Math.min(1, covered) : 0;
 }
 
-async function runFullText(term: string, query: SearchQuery) {
+export async function runFullText(term: string, query: SearchQuery) {
   return searchIndex({
     term,
     textIds: query.filters?.texts,

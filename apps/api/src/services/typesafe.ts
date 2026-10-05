@@ -118,7 +118,7 @@ const AFFINITY_QUESTION: Record<AffinityDimension, (a: Passage, b: Passage) => E
   }),
 };
 
-function passageView(p: Passage) {
+export function passageView(p: Passage) {
   return {
     text: p.textId,
     reference: `${p.book} ${p.chapter}:${p.verse}`,
@@ -215,7 +215,7 @@ const MIN_JEV_SCORE = 0.1;
  * engine that answered is reported as itself. Returning null means no engine could
  * answer, and every caller has a deterministic path for that.
  */
-async function askJev(state: EntryType, questions: JevQuestion[]): Promise<{ answers: Record<string, { value: number; probabilities: Record<string, number>; confidence: number; choice?: string }>; source: ScoreSource } | null> {
+export async function askJev(state: EntryType, questions: JevQuestion[]): Promise<{ answers: Record<string, { value: number; probabilities: Record<string, number>; confidence: number; choice?: string }>; source: ScoreSource } | null> {
   const judge = getJevJudge();
   if (!judge.available) return null;
 
@@ -1143,7 +1143,7 @@ export async function rerankForQuery(query: string, candidates: Passage[]): Prom
   };
 }
 
-function verdictFromSilence(silence: number): CorpusVerdict {
+export function verdictFromSilence(silence: number): CorpusVerdict {
   const addressed = 1 - silence;
   if (addressed >= CORPUS_ADDRESSED) return 'addressed';
   if (addressed >= CORPUS_PARTIAL) return 'partial';
@@ -1165,7 +1165,7 @@ export function blendSearchScore(jevRelevance: number, fullTextScore: number): n
   return w * jevRelevance + (1 - w) * fullTextScore;
 }
 
-function clamp01(value: number): number {
+export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
@@ -1357,6 +1357,7 @@ export function describeCorpus(): Array<{ textId: TextId; name: string; language
     nt: { name: 'New Testament', language: 'Greek', direction: 'ltr' },
     bukhari: { name: 'Sahih al-Bukhari', language: 'Arabic', direction: 'rtl' },
     muslim: { name: 'Sahih Muslim', language: 'Arabic', direction: 'rtl' },
+    enoch: { name: 'Book of Enoch', language: 'English', direction: 'ltr' },
   };
 
   return (Object.keys(meta) as TextId[]).map((textId) => ({ textId, ...meta[textId] }));

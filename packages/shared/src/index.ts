@@ -1139,3 +1139,12 @@ export type LexiconLookup = z.infer<typeof LexiconLookupSchema>;
 
 // Citation parsing lives in its own module; re-exported so both apps have one path.
 export { parseCitation, isUnambiguousCitation, type CitationMatch } from './citation.js';
+export const CrossExaminationResponseSchema = z.object({
+  query: z.string(),
+  resultsByCorpus: z.record(TextIdSchema, z.object({
+    verdict: CorpusVerdictSchema,
+    passages: z.array(SearchResultSchema),
+  })),
+  source: ScoreSourceSchema,
+});
+export type CrossExaminationResponse = z.infer<typeof CrossExaminationResponseSchema>;

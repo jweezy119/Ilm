@@ -1,6 +1,9 @@
 'use client';
 
 import { ThemeProvider } from './ThemeProvider';
+import { PodcastProvider } from './PodcastContext';
+import { GlobalPodcastPlayer } from './GlobalPodcastPlayer';
+import { GlobalAiSidebar } from './GlobalAiSidebar';
 
 /**
  * Client boundary for the app shell.
@@ -9,5 +12,13 @@ import { ThemeProvider } from './ThemeProvider';
  * server. Keeping it here means the root layout can stay a server component.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
-  return <ThemeProvider>{children}</ThemeProvider>;
+  return (
+    <ThemeProvider>
+      <PodcastProvider>
+        {children}
+        <GlobalPodcastPlayer />
+        <GlobalAiSidebar />
+      </PodcastProvider>
+    </ThemeProvider>
+  );
 }
