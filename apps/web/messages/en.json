@@ -30,7 +30,8 @@
     "journeys": "Journeys",
     "terms": "Terms",
     "privacy": "Privacy",
-    "contact": "Contact"
+    "contact": "Contact",
+    "support": "Support Ilm"
   },
   "language": {
     "label": "Language",
@@ -505,5 +506,38 @@
     "englishFailed": "The English reading stopped. The Arabic recitation is unaffected.",
     "arabicFailed": "That recitation could not be loaded; going to the English meaning.",
     "englishRecorded": "Read from a recording, the same every time."
+  },
+  "support": {
+    "metaTitle": "Support Ilm",
+    "title": "Support Ilm",
+    "intro": "Ilm is free, with no accounts and no ads. Donations keep it fast and keep new texts coming.",
+    "whereTitle": "Where the money goes",
+    "whereServers": "Servers and the database, so search stays fast and does not go to sleep.",
+    "whereModels": "Model calls that rank passages by meaning instead of by keyword.",
+    "whereTexts": "Adding and checking new texts and translations.",
+    "optionsTitle": "Ways to give",
+    "none": "Donation links have not been set up yet. Check back soon.",
+    "opensInNewTab": "(opens in a new tab)",
+    "paypal": {
+      "name": "PayPal",
+      "body": "PayPal balance or card."
+    },
+    "square": {
+      "name": "Square",
+      "body": "Card, Apple Pay, or Google Pay."
+    },
+    "bmac": {
+      "name": "Buy Me a Coffee",
+      "body": "One-off or monthly support."
+    },
+    "neutralTitle": "Donations do not change results",
+    "neutralBody": "Giving buys no influence over search ranking, cross-references, or scores. Every reader sees the same results.",
+    "processorNote": "Payments are handled entirely by the provider you choose. Ilm never sees your card details. Donations are not tax-deductible.",
+    "solana": {
+      "name": "Solana",
+      "body": "Send SOL or USDC to our public wallet."
+    },
+    "copyAddress": "Copy address",
+    "addressCopied": "Copied!"
   }
 }
