@@ -97,8 +97,8 @@ model Passage {
   language             String          @default("english")
   verseOrder           Int             @map("verse_order") // Global ordering within text
   metadata             Json            @default("{}")
-  // Semantic embeddings stored as JSON array (or use pgvector extension)
-  embeddings           Json?           @default("[]")
+  // Semantic embeddings stored as binary Bytes (Float32Array) for 50%+ compression over JSON
+  embeddings           Bytes?
   figureMentions       FigureMention[]
   createdAt            DateTime        @default(now()) @map("created_at")
   updatedAt            DateTime        @updatedAt @map("updated_at")

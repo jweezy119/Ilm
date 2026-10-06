@@ -50,11 +50,7 @@ async function main(): Promise<void> {
   // corrected one reported 1.
   const remaining = await prisma.passage.count({
     where: {
-      OR: [
-        { embeddings: { equals: Prisma.DbNull } },
-        { embeddings: { equals: '[]' } },
-        { embeddings: { equals: [] } },
-      ],
+      embeddings: null,
     },
   });
   const total = await prisma.passage.count();

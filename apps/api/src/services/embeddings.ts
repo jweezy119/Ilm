@@ -226,7 +226,7 @@ export async function embedMissingPassages(batchSize = 200): Promise<number> {
   }
 
   const passages = await prisma.passage.findMany({
-    where: { OR: [{ embeddings: { equals: Prisma.DbNull } }, { embeddings: { equals: [] } }] },
+    where: { embeddings: null },
     select: { id: true, primaryTranslation: true, originalText: true },
     take: batchSize,
     orderBy: { verseOrder: 'asc' },
@@ -250,7 +250,7 @@ export async function embedMissingPassages(batchSize = 200): Promise<number> {
 
   await prisma.$transaction(
     vectors.map((vector, i) =>
-      prisma.passage.update({ where: { id: passages[i].id }, data: { embeddings: vector as unknown as Prisma.InputJsonValue } })
+      prisma.passage.update({ where: { id: passages[i].id }, data: { embeddings: Buffer.from(new Float32Array(vector).buffer) } })
     )
   );
 

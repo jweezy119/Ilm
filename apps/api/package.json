@@ -19,6 +19,7 @@
     "index": "tsx scripts/index.ts",
     "embed": "tsx scripts/embed.ts",
     "detect-quotations": "tsx scripts/detect-quotations.ts",
+    "prune-logs": "tsx scripts/prune-logs.ts",
     "train-theme-classifier": "tsx scripts/train-theme-classifier.ts",
     "train-lexical-classifier": "tsx scripts/train-lexical-classifier.ts",
     "lint": "tsc --noEmit",

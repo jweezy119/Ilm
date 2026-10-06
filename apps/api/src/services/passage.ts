@@ -591,7 +591,7 @@ function toPassage(row: PassageRow): Passage {
       hizb: typeof stored.hizb === 'number' ? stored.hizb : undefined,
       page: typeof stored.page === 'number' ? stored.page : undefined,
     },
-    embeddings: Array.isArray(row.embeddings) ? (row.embeddings as number[]) : [],
+    embeddings: row.embeddings ? Array.from(new Float32Array(row.embeddings.buffer, row.embeddings.byteOffset, row.embeddings.byteLength / 4)) : [],
     themes: row.themes
       .map((t) => ({
         theme: t.theme.name,
