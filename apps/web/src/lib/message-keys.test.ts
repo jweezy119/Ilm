@@ -27,7 +27,6 @@ const FILES = [
   'src/app/[locale]/journeys/page.tsx',
   'src/app/[locale]/journeys/[journeyId]/page.tsx',
   'src/app/[locale]/passage/[...key]/page.tsx',
-  'src/app/[locale]/read/page.tsx',
 ];
 
 function flatKeys(obj: Record<string, unknown>, prefix = ''): Set<string> {

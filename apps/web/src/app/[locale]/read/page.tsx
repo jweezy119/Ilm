@@ -424,7 +424,6 @@ function ReadingPane({
    * that is not a Quran ayah, so this empties itself for every other corpus
    * rather than offering a player that would only fail when pressed.
    */
-  const speechT = useTranslations('speech');
 
   const speechSegments = useMemo(
     () =>
