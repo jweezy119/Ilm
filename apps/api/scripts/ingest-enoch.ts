@@ -31,7 +31,7 @@ async function ingestEnoch(): Promise<number> {
     update: { name: meta.name, originalLang: meta.originalLanguage, direction: meta.direction },
   });
 
-  const dataPath = path.join(process.cwd(), '../../data/enoch.json');
+  const dataPath = path.join(process.cwd(), 'data/enoch.json');
   const rawData = fs.readFileSync(dataPath, 'utf-8');
   const chapters = JSON.parse(rawData);
 

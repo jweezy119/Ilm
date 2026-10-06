@@ -56,6 +56,7 @@ logs/
 # that reports "available: false" and quietly fixes nothing.
 apps/api/data/*
 !apps/api/data/sefaria-translation-fixes.json
+!apps/api/data/enoch.json
 # Anchored to the repository root: unanchored, this matched apps/api/data too.
 /data/
 apps/api/.env.local
