@@ -70,7 +70,7 @@ export interface SpeakOptions {
 }
 
 export interface SpeechEngine {
-  readonly kind: 'device' | 'robotic';
+  readonly kind: 'device' | 'robotic' | 'cloud';
   /** Resolves when the queue has finished, been stopped, or failed. */
   speakQueue(pieces: SpeechPiece[], options?: SpeakOptions): Promise<void>;
   stop(): void;
@@ -88,6 +88,95 @@ export interface SpeechEngine {
 export async function createSpeechEngine(langTag = 'en'): Promise<SpeechEngine> {
   if (typeof window === 'undefined') throw new Error('speech: no window');
 
+  // We default to the natural Cloud TTS proxy
+  return cloudEngine(langTag);
+}
+
+function cloudEngine(langTag: string): SpeechEngine {
+  let cancelled = false;
+  let currentAudio: HTMLAudioElement | null = null;
+
+  const stop = () => {
+    cancelled = true;
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.removeAttribute('src');
+      currentAudio.load();
+      currentAudio = null;
+    }
+  };
+
+  return {
+    kind: 'cloud',
+    wrongLanguage: null,
+    stop,
+    speakQueue(pieces, options) {
+      return new Promise<void>((resolve) => {
+        stop();
+        cancelled = false;
+
+        let index = 0;
+        const next = () => {
+          if (cancelled) {
+            resolve();
+            return;
+          }
+          const piece = pieces[index];
+          if (!piece) {
+            options?.onDone?.();
+            resolve();
+            return;
+          }
+          options?.onPiece?.(piece, index);
+
+          const audioUrl = `/api/tts?text=${encodeURIComponent(piece.text)}&lang=${encodeURIComponent(langTag)}`;
+          const audio = new window.Audio(audioUrl);
+          currentAudio = audio;
+
+          if (options?.rate) {
+            audio.playbackRate = options.rate;
+            audio.defaultPlaybackRate = options.rate;
+          }
+
+          audio.onended = () => {
+            if (cancelled) return;
+            index += 1;
+            next();
+          };
+
+          audio.onerror = async () => {
+            if (cancelled) return;
+            // Fallback to device or robotic engine
+            console.warn('Cloud TTS failed, falling back...');
+            try {
+              const fallback = await createFallbackEngine(langTag);
+              await fallback.speakQueue(pieces.slice(index), options);
+            } catch (err) {
+              options?.onError?.(new Error('speech: all engines failed'));
+            }
+            resolve();
+          };
+
+          audio.play().catch(async (err) => {
+            if (cancelled) return;
+            console.warn('Cloud TTS playback failed, falling back...', err);
+            try {
+              const fallback = await createFallbackEngine(langTag);
+              await fallback.speakQueue(pieces.slice(index), options);
+            } catch (fallbackErr) {
+              options?.onError?.(err);
+            }
+            resolve();
+          });
+        };
+
+        next();
+      });
+    },
+  };
+}
+
+export async function createFallbackEngine(langTag = 'en'): Promise<SpeechEngine> {
   const synth = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null;
   if (synth) {
     const available = await voicesWhenReady(synth);

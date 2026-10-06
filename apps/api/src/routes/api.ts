@@ -314,7 +314,34 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/themes', async () => ok({ themes: await listThemes() }));
 
-  // ---------------------------------------------------------------- lexicon
+  // ---------------------------------------------------------------- tts
+  app.get('/api/tts', async (request: FastifyRequest<{ Querystring: { text?: string; lang?: string } }>, reply: FastifyReply) => {
+    const text = (request.query.text ?? '').trim();
+    const lang = (request.query.lang ?? 'en').trim();
+    if (!text) return fail(reply, 400, 'INVALID_INPUT', 'Text is required');
+
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob&q=${encodeURIComponent(text)}`;
+    
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Referer': 'https://translate.google.com/'
+        }
+      });
+      if (!response.ok) {
+        return fail(reply, 502, 'BAD_GATEWAY', `Upstream returned ${response.status}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      reply.header('Content-Type', 'audio/mpeg');
+      reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+      return reply.send(Buffer.from(arrayBuffer));
+    } catch (e) {
+      return fail(reply, 502, 'BAD_GATEWAY', 'Failed to fetch TTS');
+    }
+  });
+
   app.get('/api/lexicon', async (request: FastifyRequest<{ Querystring: { word?: string } }>) => {
     const word = (request.query.word ?? '').trim();
     if (!word) throw new HttpError(400, 'VALIDATION_ERROR', 'A word is required');

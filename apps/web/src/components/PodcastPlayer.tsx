@@ -37,7 +37,7 @@ export function PodcastPlayer({
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState<number>(1);
   const [notice, setNotice] = useState<string | null>(null);
-  const [engineState, setEngineState] = useState<'device' | 'robotic' | null>(null);
+  const [engineState, setEngineState] = useState<'device' | 'robotic' | 'cloud' | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
