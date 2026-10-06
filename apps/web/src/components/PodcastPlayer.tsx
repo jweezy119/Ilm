@@ -22,6 +22,7 @@ export function PodcastPlayer({
   onPrevChapter,
   hasNext,
   hasPrev,
+  isExpanded,
 }: {
   segments: SpeechSegment[];
   textId: TextId;

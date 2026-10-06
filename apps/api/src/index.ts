@@ -36,7 +36,17 @@ async function main(): Promise<void> {
   // serves it.
   await app.register(fastifyCookie, {});
 
-  await app.register(fastifyHelmet, { contentSecurityPolicy: false });
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "validator.swagger.io"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Prevents breaking if loaded in some Next.js setups
+  });
 
   await app.register(fastifyCors, {
     origin: process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()) ?? ['http://localhost:3000'],
@@ -44,7 +54,7 @@ async function main(): Promise<void> {
   });
 
   await app.register(fastifyRateLimit, {
-    max: Number(process.env.RATE_LIMIT_MAX ?? 600),
+    max: Number(process.env.RATE_LIMIT_MAX ?? 100), // Reduced from 600
     timeWindow: Number(process.env.RATE_LIMIT_WINDOW ?? 60000),
   });
 
