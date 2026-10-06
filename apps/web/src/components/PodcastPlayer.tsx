@@ -30,6 +30,7 @@ export function PodcastPlayer({
   onPrevChapter?: () => void;
   hasNext?: boolean;
   hasPrev?: boolean;
+  isExpanded?: boolean;
 }) {
   const t = useTranslations('speech');
   const language = useMemo(() => speechLanguage(textId), [textId]);
@@ -159,7 +160,7 @@ export function PodcastPlayer({
           <Volume2 className="h-5 w-5 text-accent" />
           <span className="text-sm font-medium">Podcast Mode</span>
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+        <label className="flex items-center gap-1.5 text-xs text-fg-muted h-12">
           <span>{t('rate')}</span>
           <select
             value={String(rate)}
@@ -171,7 +172,7 @@ export function PodcastPlayer({
                 setTimeout(() => playFromIndex(currentIndex), 50);
               }
             }}
-            className="rounded-lg border border-line bg-panel px-1.5 py-0.5"
+            className="rounded-lg border border-line bg-panel px-2 py-1.5 outline-none focus:border-accent min-h-[44px]"
           >
             {SPEECH_RATES.map((r) => (
               <option key={r} value={String(r)}>{r}×</option>
@@ -180,45 +181,71 @@ export function PodcastPlayer({
         </label>
       </div>
 
-      <div className="flex items-center justify-center gap-4">
+      <div className="flex items-center justify-center gap-6">
         <button
           type="button"
           onClick={prevPiece}
           disabled={!hasPrev && currentIndex === 0}
-          className="rounded-full p-2 text-fg-muted hover:bg-panel hover:text-fg disabled:opacity-50"
+          className="flex h-14 w-14 items-center justify-center rounded-full text-fg-muted hover:bg-panel hover:text-fg disabled:opacity-50"
           aria-label="Previous"
         >
-          <SkipBack className="h-5 w-5 fill-current" />
+          <SkipBack className="h-6 w-6 fill-current" />
         </button>
 
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-accent-fg shadow-sm hover:bg-accent-hover"
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-accent text-accent-fg shadow-sm hover:bg-accent-hover transition-transform active:scale-95"
           aria-label={playing ? t('pause') : t('play')}
           aria-pressed={playing}
         >
-          {playing ? <Pause className="h-5 w-5 fill-current" /> : <Play className="h-5 w-5 fill-current ml-1" />}
+          {playing ? <Pause className="h-7 w-7 fill-current" /> : <Play className="h-7 w-7 fill-current ml-1" />}
         </button>
 
         <button
           type="button"
           onClick={nextPiece}
           disabled={!hasNext && currentIndex >= pieces.length - 1}
-          className="rounded-full p-2 text-fg-muted hover:bg-panel hover:text-fg disabled:opacity-50"
+          className="flex h-14 w-14 items-center justify-center rounded-full text-fg-muted hover:bg-panel hover:text-fg disabled:opacity-50"
           aria-label="Next"
         >
-          <SkipForward className="h-5 w-5 fill-current" />
+          <SkipForward className="h-6 w-6 fill-current" />
         </button>
       </div>
 
-      <div className="text-center text-xs text-fg-muted">
+      <div className="text-center text-xs text-fg-muted truncate px-2">
         {playing ? (
           <span>Reading: {pieces[currentIndex]?.label || '...'}</span>
         ) : (
           <span>{notice ? notice : 'Ready to read'}</span>
         )}
       </div>
+
+      {isExpanded && pieces.length > 0 && (
+        <div className="mt-4 flex-1 overflow-y-auto rounded-xl border border-line bg-bg p-3 shadow-inner">
+          <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-fg-muted px-2">Reading Queue</h4>
+          <div className="space-y-1">
+            {pieces.map((piece, idx) => {
+              const isCurrent = idx === currentIndex;
+              const isPast = idx < currentIndex;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => playFromIndex(idx)}
+                  className={cn(
+                    "w-full text-left flex flex-col gap-1 p-3 rounded-lg transition-colors text-sm min-h-[48px]",
+                    isCurrent ? "bg-accent/10 text-accent" : "hover:bg-panel text-fg",
+                    isPast && "opacity-50"
+                  )}
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">{piece.label}</span>
+                  <span className="line-clamp-2">{piece.text}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

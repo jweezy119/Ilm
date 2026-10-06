@@ -1,27 +1,47 @@
 'use client';
 
+import { useState } from 'react';
 import { usePodcast } from './PodcastContext';
 import { PodcastPlayer } from './PodcastPlayer';
 import { useRouter } from 'next/navigation';
-import { X } from 'lucide-react';
+import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export function GlobalPodcastPlayer() {
   const { segments, textId, nextChapterUrl, prevChapterUrl, clearQueue } = usePodcast();
   const router = useRouter();
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (!segments.length || !textId) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl bg-panel border border-line shadow-xl rounded-2xl p-4 z-50 transition-all">
-      <button 
-        onClick={clearQueue}
-        className="absolute -top-2 -right-2 bg-panel border border-line rounded-full p-1 text-fg-muted hover:text-fg shadow-sm"
-        aria-label="Close player"
-      >
-        <X className="w-4 h-4" />
-      </button>
+    <div
+      className={cn(
+        "fixed z-50 flex flex-col bg-panel border-line shadow-2xl transition-all duration-300",
+        isExpanded
+          ? "inset-y-0 end-0 w-full sm:max-w-md border-s pt-4 px-4 pb-[env(safe-area-inset-bottom)]"
+          : "bottom-4 end-4 w-[calc(100%-2rem)] sm:w-96 rounded-2xl border p-4 sm:start-auto start-4"
+      )}
+    >
+      <div className="absolute top-2 end-2 flex gap-1 z-10">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-panel border border-line text-fg-muted hover:text-fg shadow-sm"
+          aria-label={isExpanded ? "Minimize player" : "Expand player"}
+        >
+          {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+        <button
+          onClick={clearQueue}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-panel border border-line text-fg-muted hover:text-fg shadow-sm"
+          aria-label="Close player"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
       <PodcastPlayer
         segments={segments}
         textId={textId}
@@ -29,6 +49,8 @@ export function GlobalPodcastPlayer() {
         onPrevChapter={prevChapterUrl ? () => router.push(prevChapterUrl) : undefined}
         hasNext={!!nextChapterUrl}
         hasPrev={!!prevChapterUrl}
+        isExpanded={isExpanded}
+        className={isExpanded ? "mt-6 flex-1 overflow-hidden" : ""}
       />
     </div>
   );
