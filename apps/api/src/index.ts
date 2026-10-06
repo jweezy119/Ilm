@@ -134,6 +134,22 @@ async function main(): Promise<void> {
     }
   }
 
+  // Auto-ingest Enoch if it's missing from the database
+  try {
+    const enochCount = await prisma.passage.count({ where: { textId: 'enoch' } });
+    if (enochCount === 0) {
+      app.log.info('Auto-ingesting Enoch passages...');
+      execFileSync('npx', ['tsx', 'scripts/ingest-enoch.ts'], {
+        cwd: new URL('..', import.meta.url).pathname,
+        stdio: 'inherit',
+        env: process.env,
+      });
+      app.log.info('Successfully auto-ingested Enoch.');
+    }
+  } catch (error) {
+    app.log.error({ err: error }, 'Failed to check or auto-ingest Enoch.');
+  }
+
   await app.listen({ port, host });
   app.log.info(`Ilm API listening on http://${host}:${port}`);
 

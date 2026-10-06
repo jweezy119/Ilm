@@ -129,7 +129,7 @@ function cloudEngine(langTag: string): SpeechEngine {
           }
           options?.onPiece?.(piece, index);
 
-          const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(langTag)}&client=tw-ob&q=${encodeURIComponent(piece.text)}`;
+          const audioUrl = `/api/tts?text=${encodeURIComponent(piece.text)}&lang=${encodeURIComponent(langTag)}`;
           const audio = new window.Audio(audioUrl);
           currentAudio = audio;
 
