@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+Allow: /api/passages/*/markdown
+Disallow: /api/search
+Disallow: /api/cross-examine
+Disallow: /api/passages/*/related
+Disallow: /api/passages/*/cross-references
+
+# Explicit AI Bot directives
+User-agent: ChatGPT-User
+Allow: /llms.txt
+Allow: /api/passages/*/markdown
+
+User-agent: GPTBot
+Allow: /llms.txt
+Allow: /api/passages/*/markdown
+
+User-agent: PerplexityBot
+Allow: /llms.txt
+Allow: /api/passages/*/markdown
+
+User-agent: anthropic-ai
+Allow: /llms.txt
+Allow: /api/passages/*/markdown
+
+Sitemap: https://your-ilm-domain.com/sitemap.xml

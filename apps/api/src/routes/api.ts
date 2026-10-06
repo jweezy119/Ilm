@@ -23,6 +23,7 @@ import {
   getPassageById,
   getPassageByKey,
   getPassagesByKeys,
+  getPassagesByIds,
   getPassagesByBook,
   getPassagesByChapter,
   getBooks,
@@ -350,6 +351,43 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const passage = await getPassageById(decodeURIComponent(request.params.id));
     if (!passage) return fail(reply, 404, 'NOT_FOUND', `No passage with id ${request.params.id}`);
     return ok(passage);
+  });
+
+  app.get('/api/passages/:id/markdown', async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const id = decodeURIComponent(request.params.id);
+    const passage = await getPassageById(id);
+    if (!passage) return reply.status(404).type('text/markdown').send('# Not Found\n\nThe requested passage was not found.');
+    
+    // We fetch cross-references to give the LLM a rich response
+    const { references } = await getCrossReferencesForPassage(passage.id, { refresh: false });
+    
+    let md = `# ${passage.passageKey}\n\n`;
+    md += `**Corpus:** ${passage.textId}\n`;
+    md += `**Book:** ${passage.book}\n`;
+    md += `**Chapter:** ${passage.chapter}\n`;
+    md += `**Verse:** ${passage.verse}\n\n`;
+    md += `## Text\n${passage.translation}\n\n`;
+    
+    if (passage.originalText) {
+      md += `## Original Text\n${passage.originalText}\n\n`;
+    }
+    
+    if (references && references.length > 0) {
+      md += `## Cross-References\n`;
+      // Fetch the actual passage text for the references
+      const targetIds = references.slice(0, 10).map(r => r.targetPassageId);
+      const targetPassages = await getPassagesByIds(targetIds);
+      
+      references.slice(0, 10).forEach(ref => {
+        const p = targetPassages.find(p => p.id === ref.targetPassageId);
+        if (p) {
+          md += `- **${p.passageKey}**: ${p.translation}\n`;
+        }
+      });
+      md += `\n`;
+    }
+    
+    return reply.status(200).type('text/markdown').send(md);
   });
 
   app.get(
