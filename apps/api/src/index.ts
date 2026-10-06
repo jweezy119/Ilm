@@ -134,24 +134,30 @@ async function main(): Promise<void> {
     }
   }
 
-  // Auto-ingest Enoch if it's missing from the database
-  try {
-    const enochCount = await prisma.passage.count({ where: { textId: 'enoch' } });
-    if (enochCount === 0) {
-      app.log.info('Auto-ingesting Enoch passages...');
-      execFileSync('npx', ['tsx', 'scripts/ingest-enoch.ts'], {
-        cwd: new URL('..', import.meta.url).pathname,
-        stdio: 'inherit',
-        env: process.env,
-      });
-      app.log.info('Successfully auto-ingested Enoch.');
-    }
-  } catch (error) {
-    app.log.error({ err: error }, 'Failed to check or auto-ingest Enoch.');
-  }
-
   await app.listen({ port, host });
   app.log.info(`Ilm API listening on http://${host}:${port}`);
+
+  // Auto-ingest Enoch if it's missing from the database (in background)
+  prisma.passage.count({ where: { textId: 'enoch' } })
+    .then(enochCount => {
+      if (enochCount === 0) {
+        app.log.info('Auto-ingesting Enoch passages in background...');
+        const { execFile } = require('child_process');
+        execFile('npx', ['tsx', 'scripts/ingest-enoch.ts'], {
+          cwd: new URL('..', import.meta.url).pathname,
+          env: process.env,
+        }, (error: Error | null, stdout: string, stderr: string) => {
+          if (error) {
+            app.log.error({ err: error, stderr }, 'Failed to auto-ingest Enoch.');
+          } else {
+            app.log.info({ stdout }, 'Successfully auto-ingested Enoch.');
+          }
+        });
+      }
+    })
+    .catch(error => {
+      app.log.error({ err: error }, 'Failed to check Enoch count.');
+    });
 
   /*
    * Check Sefaria-derived translations against Sefaria, in the background.
