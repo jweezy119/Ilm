@@ -309,7 +309,24 @@ export async function searchIndex(options: IndexSearchOptions): Promise<IndexSea
         // in its translation is a better answer than one that matches in either,
         // and adding them is the only honest way to say so — picking the larger
         // would discard the evidence for half the corpus.
-        rank: Prisma.sql`ts_rank_cd(p.search_vector, ${tsq}) + ts_rank_cd(p.search_vector_original, ${origQ})`,
+        /*
+         * COALESCE on the second term, and without it the literal search path
+         * returns nothing at all.
+         *
+         * search_vector_original is NULL for every passage that has no
+         * original-language text — the whole OT, the NT and Enoch, roughly a
+         * third of the corpus — and the column is added empty on purpose, filled
+         * in only where there is a text to fill it with. SQL sums with a NULL
+         * operand are NULL, so `a + NULL` made relevance NULL for those rows,
+         * `Number(row.relevance) || 0` turned it into 0, and the
+         * `textScore > 0` filter then dropped every one of them. An English
+         * query for "blessing" returned zero results while the database held
+         * 759 matches.
+         *
+         * 0 is the right substitute: a passage with no original text simply
+         * earns no original-text rank, which is what the sum is asking.
+         */
+        rank: Prisma.sql`ts_rank_cd(p.search_vector, ${tsq}) + COALESCE(ts_rank_cd(p.search_vector_original, ${origQ}), 0)`,
         condition: Prisma.sql`(p.search_vector @@ ${tsq} OR p.search_vector_original @@ ${origQ})`,
       },
     });

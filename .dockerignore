@@ -1,0 +1,37 @@
+# Build context exclusions. The context is the repository root (see
+# `build.context: ..` in deploy/docker-compose.prod.yml), so without this the
+# images would be built with .git, editor state and any local node_modules
+# sitting in the layer cache.
+
+.git
+.gitignore
+.github
+
+# Dependencies are installed inside the image from the lockfile. A host
+# node_modules is a different platform and must never leak in.
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/out
+
+# Local configuration and generated data.
+**/.env
+**/.env.local
+deploy/.env
+deploy/backups
+
+# Editor and OS state.
+.idea
+.vscode
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docs and agent scratch that the images do not read.
+*.md
+deploy/README.md
+AGENT*.md
+AGENTS.md
+CLAUDE.md
+.cursor

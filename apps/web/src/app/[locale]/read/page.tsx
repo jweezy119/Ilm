@@ -434,11 +434,24 @@ function ReadingPane({
     [data]
   );
 
+  /*
+   * Every verse with its translation, not just the Quran ayat.
+   *
+   * The player used to filter on there being a recording, which left every
+   * corpus but the Quran with no audio control at all. It has an English mode
+   * now, and that is what makes the Torah, the Talmud and the Testaments
+   * hearable — so the verses are handed over whole and the player decides which
+   * voices it can actually offer.
+   */
   const recitationVerses = useMemo(
     () =>
       (data?.verses ?? [])
-        .filter((v) => ayahAudioUrl(v.passageKey, DEFAULT_RECITER.id) !== null)
-        .map((v) => ({ passageKey: v.passageKey, label: verseLabel(v.passageKey) ?? `${v.chapter}:${v.verse}` })),
+        .filter((v) => (v.text ?? '').trim().length > 0)
+        .map((v) => ({
+          passageKey: v.passageKey,
+          label: verseLabel(v.passageKey) ?? `${v.chapter}:${v.verse}`,
+          translation: v.text,
+        })),
     [data]
   );
 

@@ -29,15 +29,21 @@ const voice = read('./english-voice.ts');
 describe('the translation rides with the verse', () => {
   it('is optional, so the player still works for recitation alone', () => {
     expect(player).toMatch(/translation\?: string;/);
-    expect(player).toContain('if (!verse?.translation) return false;');
+    // The Arabic path is gated on there being a recording, never on there being a
+    // translation: a verse with audio and no translation must still play.
+    expect(player).toMatch(
+      /if \(!el \|\| !ayahAudioUrl\(verse\.passageKey, reciterId\)\) return false;/
+    );
   });
 
   it('is spoken after the recording ends, not on a second press', () => {
     // The handoff is the whole point. A reader who cannot read Arabic is played the
     // verse and then told what it means.
-    expect(player).toContain('const onEnded = useCallback');
-    expect(player).toMatch(/onEnded[\s\S]{0,400}speakTranslation\(index\)/);
     expect(player).toContain('<audio');
+    // The element ending is what carries the player on, so no second press.
+    expect(player).toMatch(/onEnded=\{\(\) => proceed\(index\)\}/);
+    // And the recording is played before the translation is spoken, in one function.
+    expect(player).toMatch(/await el\.play\(\);[\s\S]{0,600}await english\.speak\(\{/);
   });
 
   it('resolves a voice only once the Arabic has finished', () => {
@@ -47,7 +53,10 @@ describe('the translation rides with the verse', () => {
      * all, and on the first press that would mean loading 1.8 MB before the
      * Arabic has even started.
      */
-    expect(player).toContain('await speakTranslation(index)');
+    // The synthesiser lives in useEnglishVoice and is only reached after the
+    // recording has been played, so a passage with audio costs no voice load.
+    const handoff = player.slice(player.indexOf('await el.play()'));
+    expect(handoff.slice(0, 900)).toContain('await english.speak(');
     expect(player).not.toMatch(/createSpeechEngine/);
     expect(voice).toContain('recordedFor');
   });
@@ -99,8 +108,9 @@ describe('the transport stays one control', () => {
   });
 
   it('explains the sequence only where there is a translation', () => {
-    // Otherwise the explanation appears on passages that never had one.
-    expect(player).toContain('hasTranslation && !phase && !englishNotice');
+    // Otherwise the explanation appears on passages that never had one — and, in
+    // English mode, promises an Arabic recitation that is not there.
+    expect(player).toContain('hasTranslation && !englishMode && !phase && !englishNotice');
   });
 });
 describe('a voice that has gone stale', () => {

@@ -42,10 +42,26 @@ the steps separately, run `npm run build:shared` first.
 ### One-time setup
 
 ```bash
-npm run db:deploy      # prisma migrate deploy — creates the schema
-npm run ingest         # ~15 minutes, fetches ~45,000 passages
-npm run index          # scores themes, builds the search index
+npm run db:deploy            # prisma migrate deploy — creates the schema
+npm run ingest               # ~35-40 minutes, fetches 45,453 passages
+npm run ingest-enoch         # the Book of Enoch, 1,011 passages
+npm run index-original-text  # Arabic, Hebrew and Greek search vectors
+npm run index                # scores themes, builds the search index
 ```
+
+#### `index-original-text` is not optional
+
+`search_vector` is maintained by a trigger, but `search_vector_original` is
+filled in by this script and by nothing else. Until it runs, that column is
+NULL on every row, and the ranking expression
+`ts_rank_cd(search_vector, …) + ts_rank_cd(search_vector_original, …)` sums
+with a NULL operand — so every relevance score comes out 0 and the
+`textScore > 0` filter drops the entire literal result set. Search appears to
+work only where a theme widening rescues it with a synthetic score. If a
+plain English query returns nothing while the database clearly contains the
+word, this is the step that was skipped.
+
+It is idempotent and takes about three seconds on the full corpus.
 
 Migrations live in `apps/api/prisma/migrations/` and are committed, so
 `db:deploy` applies a known history. Run this whenever the schema changes, and
@@ -73,6 +89,8 @@ that first request.
 | `TYPESAFE_API_KEY` | no | without it, scoring falls back to local |
 | `OPENROUTER_API_KEY` or `OPENAI_API_KEY` | no | without it, no vector similarity |
 | `ADMIN_TOKEN` | recommended in production | required for `POST /api/admin/reindex`; send as `x-admin-token` |
+| `TTS_CACHE_DIR` | no | where spoken audio is cached; default `<cwd>/data/tts-cache` |
+| `TTS_CACHE_MAX_BYTES` | no | stop writing past this and prune the oldest; default 4 GB, `0` disables |
 
 In production the API refuses to reindex without that header, so if you plan to
 rebuild the search index from a shell, either set `ADMIN_TOKEN` or run
@@ -277,6 +295,35 @@ whether Jev is configured:
 
 If `passagesIndexed` is 0 the corpus has not been ingested into that database, and
 if `jev.configured` is false the search box is running in literal mode.
+
+## Self-hosted / Oracle Always Free
+
+`deploy/` runs the same app on one machine with no paid services: Postgres, the
+API, the web server and Caddy for TLS, all in Docker. It builds for the host it
+runs on, so the same files work on an Oracle Always Free ARM instance or any
+other Docker host.
+
+```bash
+cd deploy
+cp .env.example .env && $EDITOR .env
+./bootstrap.sh
+```
+
+`bootstrap.sh` starts Postgres, applies the migrations, ingests the five corpora,
+scores and indexes them, then builds and starts the services. It is idempotent
+and safe to re-run.
+
+The app needs **no AI key**. Every Jev and embedding path has a local fallback
+and the UI labels locally derived results as such, so the running cost is the
+host alone. TTS uses Google Translate's public endpoint, which is also free.
+
+Expected footprint on the full corpus: a few hundred MB of Postgres, ~1 GB of
+running processes, and ~2 GB of RAM to build. Oracle's Always Free ARM shape
+(4 cores, 24 GB) covers that with a wide margin.
+
+See [deploy/README.md](./deploy/README.md) for the Oracle account, instance and
+firewall setup, the free hostname option, backups, and the keepalive that stops
+Always Free reclaiming an idle instance.
 
 ## Docker
 

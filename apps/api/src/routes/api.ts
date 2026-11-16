@@ -16,6 +16,7 @@ import {
   parseCitation,
 } from '@ilm/shared';
 import { searchPassages, logSearch, listThemes, getIndexStats } from '../services/search';
+import { synthesise } from '../services/tts';
 import { crossExamine } from '../services/cross-examine';
 import { compareTheme, isKnownTheme } from '../services/compare';
 import { getFigure, getFiguresForPassage } from '../services/figures';
@@ -320,24 +321,24 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const lang = (request.query.lang ?? 'en').trim();
     if (!text) return fail(reply, 400, 'INVALID_INPUT', 'Text is required');
 
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob&q=${encodeURIComponent(text)}`;
-    
+    /*
+     * Google's endpoint truncates or refuses long input, and a long passage is
+     * split into pieces by the caller. A clean refusal here beats audio that
+     * stops halfway through a verse.
+     */
+    if (text.length > 500) {
+      return fail(reply, 413, 'TOO_LONG', 'That is too long to be spoken in one piece');
+    }
+
     try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Referer': 'https://translate.google.com/'
-        }
-      });
-      if (!response.ok) {
-        return fail(reply, 502, 'BAD_GATEWAY', `Upstream returned ${response.status}`);
-      }
-      
-      const arrayBuffer = await response.arrayBuffer();
+      const { audio, cached } = await synthesise(text, lang);
       reply.header('Content-Type', 'audio/mpeg');
       reply.header('Cache-Control', 'public, max-age=31536000, immutable');
-      return reply.send(Buffer.from(arrayBuffer));
-    } catch (e) {
+      // Reported rather than assumed, so the saving can be seen from outside.
+      reply.header('x-tts-cache', cached ? 'hit' : 'miss');
+      return reply.send(audio);
+    } catch (error) {
+      request.log.warn({ err: error }, 'tts failed');
       return fail(reply, 502, 'BAD_GATEWAY', 'Failed to fetch TTS');
     }
   });

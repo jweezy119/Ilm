@@ -133,7 +133,8 @@
     "finished": "Recitation finished",
     "blocked": "Your browser blocked playback. Press play again, or allow audio for this site.",
     "unavailable": "This recitation could not be loaded.",
-    "listen": "Listen"
+    "listen": "Listen",
+    "voiceEnglish": "English — read aloud"
   },
   "topics": {
     "title": "Topics",

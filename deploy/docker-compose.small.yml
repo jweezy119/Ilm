@@ -1,0 +1,35 @@
+# Tuned for a 2 GB VPS: the same images with a lower memory ceiling.
+#
+# Measured on the full 45,453-passage corpus with SEARCH_ENGINE=postgres:
+#
+#   container     idle      40 concurrent searches
+#   postgres      260 MB    306 MB
+#   api            95 MB    148 MB
+#   web            64 MB     66 MB
+#   total         420 MB    ~520 MB
+#
+# So the app itself fits in 2 GB with room to spare. What does not fit is the
+# build: `npm ci` plus `next build` needs roughly 3-4 GB. Build elsewhere and
+# ship the images (see ship-images.sh), or give the box a swap file.
+#
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.small.yml up -d
+
+services:
+  postgres:
+    # shared_buffers defaults to 128 MB; 64 MB is plenty for a 193 MB database.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=50
+
+  api:
+    environment:
+      # The `start` script reads this. Node's baseline is ~120 MB, so 256 MB of
+      # heap is the ceiling this box can afford.
+      API_HEAP_MB: "256"

@@ -23,18 +23,21 @@ export interface Reciter {
   style?: string;
 }
 
-/** Verified reachable on the CDN; each is 128 or 192 kbps MP3. */
+/**
+ * Two reciters, not ten.
+ *
+ * The list had grown to ten entries and the selector had become the point: a
+ * reader who opened it to hear a verse had to scroll past near-duplicates (two
+ * Abdul Basit styles, two Minshawy styles, two Husary-named entries) to find a
+ * voice. Two well-known, clearly distinct recitations are easier to choose
+ * between and easier to remember which one is which.
+ *
+ * Both are 128 kbps MP3 on the everyayah CDN and verified reachable. Adding a
+ * third is one more line here; nothing else reads the length of this list.
+ */
 export const RECITERS: Reciter[] = [
   { id: 'alafasy', name: 'Mishary Rashid al-ʿAfasy', folder: 'Alafasy_128kbps' },
   { id: 'husary', name: 'Mahmoud Khalil Al-Husary', folder: 'Husary_128kbps' },
-  { id: 'abdulbasit-murattal', name: 'Abdul Basit Abdus-Samad', style: 'Murattal — measured, for learning', folder: 'Abdul_Basit_Murattal_192kbps' },
-  { id: 'abdulbasit-mujawwad', name: 'Abdul Basit Abdus-Samad', style: 'Mujawwad — improvised, for listening', folder: 'Abdul_Basit_Mujawwad_128kbps' },
-  { id: 'minshawy-murattal', name: 'Mahmoud Khalil Al-Husary', style: 'Murattal', folder: 'Minshawy_Murattal_128kbps' },
-  { id: 'minshawy-mujawwad', name: 'Muhammad Siddiq al-Minshawi', style: 'Mujawwad', folder: 'Minshawy_Mujawwad_192kbps' },
-  { id: 'sudais', name: 'Abdur-Rahman as-Sudais', folder: 'Abdurrahmaan_As-Sudais_192kbps' },
-  { id: 'shuraym', name: 'Saʿood bin Ibraaheem ash-Shuraym', folder: 'Saood_ash-Shuraym_128kbps' },
-  { id: 'ayyoub', name: 'Muhammad Ayyoub', folder: 'Muhammad_Ayyoub_128kbps' },
-  { id: 'hudhaify', name: 'Ali al-Hudhaify', folder: 'Hudhaify_128kbps' },
 ];
 
 export const DEFAULT_RECITER = RECITERS[0];

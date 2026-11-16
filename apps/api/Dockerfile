@@ -39,7 +39,12 @@ COPY --from=builder --chown=ilm:nodejs /app/packages ./packages
 COPY --from=builder --chown=ilm:nodejs /app/apps/api ./apps/api
 
 # Writable so the search index can be cached between restarts.
-RUN mkdir -p /app/apps/api/data && chown -R ilm:nodejs /app/apps/api/data
+#
+# The Orama engine resolves its cache as `<cwd>/data/search-index`, and cwd is
+# /app, so this is /app/data — not /app/apps/api/data. Without it the index
+# builds in memory and then logs `EACCES: permission denied, mkdir '/app/data'`
+# on every boot.
+RUN mkdir -p /app/apps/api/data /app/data && chown -R ilm:nodejs /app/apps/api/data /app/data
 
 USER ilm
 EXPOSE 4000

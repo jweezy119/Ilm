@@ -1,0 +1,23 @@
+# Local preview: same images as production, ports published to loopback, and
+# no Caddy (there is no public DNS name for localhost, so Caddy cannot get a
+# certificate). Use this to try the app before it has a host.
+#
+#   docker compose -f deploy/docker-compose.prod.yml -f deploy/docker-compose.local.yml \
+#     up -d --build postgres api web
+#
+# Then http://localhost:3000 and http://localhost:4000/health.
+# Do not start `caddy` with this override; it will fail on the ACME challenge.
+
+services:
+  postgres:
+    # The port the rest of this repository already expects locally.
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  api:
+    ports:
+      - "127.0.0.1:4000:4000"
+
+  web:
+    ports:
+      - "127.0.0.1:3000:3000"

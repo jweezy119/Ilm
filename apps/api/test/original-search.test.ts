@@ -66,7 +66,15 @@ describe('original-language search', () => {
     // better answer than one matching in either, and picking the larger rank
     // would throw away the evidence for half the corpus.
     expect(code(postgres)).toContain('p.search_vector @@ ${tsq} OR p.search_vector_original @@ ${origQ}');
-    expect(code(postgres)).toContain('ts_rank_cd(p.search_vector, ${tsq}) + ts_rank_cd(p.search_vector_original, ${origQ})');
+    // COALESCE on the second term, and this is not decoration.
+    // search_vector_original is NULL for every passage with no original-language
+    // text — the whole OT, NT and Enoch — and a sum with a NULL operand is NULL.
+    // That made every relevance score 0, and the `textScore > 0` filter then
+    // dropped the entire literal result set: an English query for "blessing"
+    // returned nothing while the database held 759 matches.
+    expect(code(postgres)).toContain(
+      'ts_rank_cd(p.search_vector, ${tsq}) + COALESCE(ts_rank_cd(p.search_vector_original, ${origQ}), 0)'
+    );
   });
 
   it('says which field matched, rather than leaving it to be inferred', () => {

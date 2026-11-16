@@ -35,11 +35,18 @@ docker run -d --rm --name ilm-postgres \
 cp apps/api/.env.example apps/api/.env
 
 # 3. Schema
-npm run db:deploy      # prisma migrate deploy
+npm run db:deploy            # prisma migrate deploy
 
-# 4. Text (~45,000 passages, roughly 15 minutes)
-npm run ingest
+# 4. Text (~46,000 passages, roughly 40 minutes)
+npm run ingest               # the five scriptures
+npm run ingest-enoch         # the Book of Enoch
+npm run index-original-text  # Arabic, Hebrew and Greek search vectors
 npm run index
+
+`index-original-text` is not optional. It fills `search_vector_original`, which
+nothing else fills; until it runs that column is NULL on every row and the
+ranking expression sums with a NULL operand, so every relevance score is 0 and
+an ordinary English search returns nothing. See [DEPLOY.md](./DEPLOY.md).
 
 # 5. Run
 npm run dev
@@ -72,7 +79,8 @@ and no re-ingestion required.
 | New Testament | English (KJV) | 27 books | 7,957 | thiagobodruk/bible bulk KJV |
 | Torah | Hebrew + English | 5 books | 5,846 | Sefaria |
 | Talmud | Aramaic + Hebrew + English | 38 tractates (Mishnah) | 2,269 | Sefaria |
-| **Total** | | | **45,453** | |
+| Book of Enoch | English (R.H. Charles) | 108 chapters | 1,011 | `apps/api/data/enoch.json` |
+| **Total** | | | **46,464** | |
 
 Two honest limitations, both by design rather than omission:
 
@@ -260,6 +268,8 @@ npm run db:push         push the schema without a migration history (local only)
 npm run db:up           start the Postgres container
 
 npm run ingest          fetch all corpora
+npm run ingest-enoch    fetch the Book of Enoch
+npm run index-original-text   build the Arabic/Hebrew/Greek search vectors
 npm run ingest -- quran --limit 3       one text, first 3 books only
 npm run index           score themes, then build the search index
 npm run index -- --themes 0             rebuild the search index only

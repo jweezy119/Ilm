@@ -1,0 +1,24 @@
+# Caddy serves both origins and obtains the certificates from Let's Encrypt.
+#
+# `{env.*}` placeholders are substituted by Caddy when it loads this file, so
+# the hostnames live in deploy/.env and this file stays generic. Caddy fails to
+# start rather than silently serving the wrong host if one is missing.
+
+{
+	email {env.CADDY_ACME_EMAIL}
+}
+
+# The web app. The browser only ever talks to this origin: /api/* is proxied
+# server-side by Next to http://api:4000, so no CORS preflight and no internal
+# host in the client bundle.
+{env.ILM_HOST} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+# The API on its own name, for checking it directly without going through the
+# web layer. Not linked from the UI.
+{env.ILM_API_HOST} {
+	encode zstd gzip
+	reverse_proxy api:4000
+}

@@ -1036,8 +1036,11 @@ export const TEXT_METADATA: Record<TextId, {
     name: 'Book of Enoch',
     originalLanguage: 'english',
     englishTranslations: ['R.H. Charles'],
-    bookCount: 5,
-    totalVerses: 1061,
+    // One book of 108 chapters in Charles's edition. It was declared as five
+    // books and 1,061 verses; the ingestion writes one book and 1,011 verses,
+    // and the declared figure is what a reader sees before the corpus loads.
+    bookCount: 1,
+    totalVerses: 1011,
     direction: 'ltr',
   },
 };

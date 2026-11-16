@@ -1,0 +1,114 @@
+# Ilm on one host: Postgres + API + web + Caddy.
+#
+# Build and run on the target machine (Oracle Always Free ARM, or any Docker
+# host). Nothing is pulled prebuilt, so the image architecture always matches
+# the host it builds on.
+#
+#   cd deploy
+#   cp .env.example .env        # fill in the values
+#   ./bootstrap.sh              # schema, corpus, index, then start everything
+
+name: ilm
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ilm}
+      POSTGRES_USER: ${POSTGRES_USER:-ilm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Loopback only. Nothing else reaches the database directly; the backup
+    # script goes through this container.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ilm} -d ${POSTGRES_DB:-ilm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ilm}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ilm}?schema=public
+      PORT: "4000"
+      HOST: 0.0.0.0
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      # Required by POST /api/admin/reindex in production. Send it as
+      # x-admin-token. Generate one with: openssl rand -hex 32
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      API_HEAP_MB: ${API_HEAP_MB:-512}
+      SEARCH_ENGINE: ${SEARCH_ENGINE:-postgres}
+      # Spoken audio is cached here and synthesised at most once per distinct
+      # text, shared across every reader rather than once per browser. The
+      # directory is persisted in the api_data volume, so a restart does not
+      # throw it away.
+      TTS_CACHE_DIR: ${TTS_CACHE_DIR:-/app/data/tts-cache}
+      TTS_CACHE_MAX_BYTES: ${TTS_CACHE_MAX_BYTES:-4000000000}
+      # Optional. Without them every AI feature uses its local fallback, and
+      # the UI labels the results as locally derived.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    volumes:
+      # Holds the TTS cache and the Orama index cache. Without this the
+      # container's writable layer is lost on every recreate.
+      - api_data:/app/data
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      # Baked into the server bundle at build time, so it must be passed as a
+      # build arg and not only as a runtime env var.
+      args:
+        NEXT_INTERNAL_API_URL: http://api:4000
+    restart: unless-stopped
+    environment:
+      # Read by next.config.js at runtime too. Server-side only: the browser
+      # calls /api/* on its own origin and Next proxies it, so the internal
+      # host never reaches the client bundle.
+      NEXT_INTERNAL_API_URL: http://api:4000
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ILM_HOST: ${ILM_HOST:?set ILM_HOST in deploy/.env}
+      ILM_API_HOST: ${ILM_API_HOST:?set ILM_API_HOST in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  postgres_data:
+  api_data:
+  caddy_data:
+  caddy_config:

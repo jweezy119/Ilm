@@ -6,7 +6,7 @@
  */
 
 import fs from 'fs';
-import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { TEXT_METADATA } from '@ilm/shared';
 import { loadLocalEnv } from '../src/lib/env';
 import { upsertBook, upsertPassage, prisma, getTextStats } from '../src/services/passage';
@@ -31,7 +31,16 @@ async function ingestEnoch(): Promise<number> {
     update: { name: meta.name, originalLang: meta.originalLanguage, direction: meta.direction },
   });
 
-  const dataPath = path.join(process.cwd(), '../../data/enoch.json');
+  /*
+   * Resolved from this file, not from the working directory.
+   *
+   * This script runs three ways — `npm run ingest-enoch` from apps/api,
+   * `npx tsx` from the repository root, and `npx tsx` from /app inside the
+   * image — and each has a different cwd. The old cwd-relative path pointed
+   * outside the repository in all three, so Enoch silently never ingested
+   * and the corpus came up empty.
+   */
+  const dataPath = fileURLToPath(new URL('../data/enoch.json', import.meta.url));
   const rawData = fs.readFileSync(dataPath, 'utf-8');
   const chapters = JSON.parse(rawData);
 
