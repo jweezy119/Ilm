@@ -37,14 +37,14 @@ import { useUiStore, useComparisonStore, useSearchStore } from '@/store';
  * which is the tell that they were never three distinct things to anyone.
  *
  * None of the five removed were peers of Search. They are all facets of the same
- * question, and the search page already carries the first two: a row of topic chips
- * and twenty-eight theme chips, on the page you land on. So /topics and /explore
+ * question, and the search page already carries the first two: topic and theme
+ * chips in its Start here disclosure. So /topics and /explore
  * were duplicate destinations for anyone arriving fresh, reached by a second path
  * to a place they were already standing.
  *
  * Compare needed no nav entry either. It is reached by the link on every relation
- * row, which goes straight to a shareable pair, and the search page carries a
- * Compare button beside the tray count. It was a destination you had to already be
+ * row, which goes straight to a shareable pair, and by the tray that appears as
+ * soon as a passage is picked. It was a destination you had to already be
  * holding something for.
  *
  * Journey is meaningful relative to a passage, and the passage page has one.

@@ -23,10 +23,21 @@ describe('mobile performance', () => {
     expect(search).toContain('async (term: string, texts: TextId[], useSemantic = effectiveSemantic)');
     expect(search).toContain('checked={effectiveSemantic}');
     expect(search).toContain("t('slowNetwork')");
+    expect(read('src/lib/useSlowConnection.ts')).toContain('useSyncExternalStore');
+    // A shared literal link and its scope must survive the recipient's own
+    // connection defaults, without re-running on every URL rewrite.
+    expect(search).toContain('literalParam');
+    expect(search).toContain('lastDeepLink.current');
+    expect(search).toContain('runSearch(candidate, scope, semanticFromLink ?? effectiveSemantic)');
   });
 
   it('renders long lists in batches as they enter view', () => {
-    expect(read('src/lib/useInView.ts')).toContain('IntersectionObserver');
+    const inView = read('src/lib/useInView.ts');
+    expect(inView).toContain('IntersectionObserver');
+    // A null ref at mount used to install no observer at all, capping every
+    // list at its first batch. The sentinel must be held in state.
+    expect(inView).toContain('useCallback((element: T | null) => setNode(element)');
+    expect(inView).toContain('}, [node, rootMargin]);');
     expect(search).toContain('results.slice(0, visibleResults)');
     expect(search).toContain('moreResultsRef');
     expect(reader).toContain('data.verses.slice(0, visibleVerses)');
@@ -41,6 +52,9 @@ describe('mobile performance', () => {
 
   it('stops audio when the tab is hidden', () => {
     expect(read('src/lib/usePauseOnHidden.ts')).toContain("visibilityState === 'hidden'");
+    // The composer yields to both fixed controls, not just the tray.
+    expect(search).toContain("passageKeys.length > 0 && podcastSegments.length > 0");
+    expect(search).toContain("'bottom-44'");
     for (const file of ['src/components/PodcastPlayer.tsx', 'src/components/RecitationPlayer.tsx']) {
       expect(read(file), `${file} keeps playing in a hidden tab`).toContain('usePauseOnHidden(');
     }

@@ -110,8 +110,11 @@ describe('installability', () => {
     const bare = code(worker);
     expect(bare).toContain("url.pathname.startsWith('/_next/static/')");
     expect(bare).toContain("url.pathname === '/api/topics'");
-    expect(bare).toContain("OFFLINE_URL = '/en/offline'");
+    expect(bare).toContain("OFFLINE_URLS = ['/en/offline', '/ar/offline', '/he/offline']");
     expect(bare).toContain("request.mode === 'navigate'");
+    // The offline notice is the one page served without a network, so it has
+    // to speak the reader's language.
+    expect(bare).toContain("match(/^\\/(en|ar|he)(?:\\/|$)/)");
 
     // No data that can change may be stored in either cache.
     for (const unsafe of ['/api/search', '/api/passages', '/api/compare', 'localStorage']) {
@@ -119,7 +122,7 @@ describe('installability', () => {
     }
     // A navigation goes to the network first; the cached notice is the failure
     // path, not a replacement for a live answer.
-    expect(bare).toContain("fetch(request).catch(() => caches.match(OFFLINE_URL))");
+    expect(bare).toContain('offlineFor(url.pathname)');
   });
 
   it('serves a static offline notice and an install action', () => {

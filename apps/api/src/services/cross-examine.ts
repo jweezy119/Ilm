@@ -130,10 +130,13 @@ export async function crossExamine(query: string): Promise<CrossExaminationRespo
           passage,
           score: localQueryCoverage(query, passage),
         }));
-        const best = Math.max(...scored.map((entry) => entry.score));
-
         resultsByCorpus[textId] = {
-          verdict: verdictFromSilence(clamp01(1 - best)),
+          // Literal overlap cannot answer "does this corpus address the
+          // question" — a full-text search always returns something. Without a
+          // model the verdict is explicitly unjudged; only the relevance scores
+          // are derived. Claiming more would be the cheap judgement the product
+          // exists not to make.
+          verdict: 'unknown',
           passages: scored
             .sort((a, b) => b.score - a.score)
             .map(({ passage, score }) => ({

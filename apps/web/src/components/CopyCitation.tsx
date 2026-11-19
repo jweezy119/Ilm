@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Copy, Check, Quote } from 'lucide-react';
 import type { Passage } from '@ilm/shared';
 import { getTextLabel } from '@/lib/utils';
@@ -105,6 +105,7 @@ export function CopyCitation({
   compact?: boolean;
 }) {
   const t = useTranslations('library');
+  const locale = useLocale();
   const [format, setFormat] = useState<CitationFormat>('plain');
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -155,7 +156,7 @@ export function CopyCitation({
           {copied ? t('copied') : t('copyCitation')}
         </button>
         <ShareButton
-          url={`${siteUrl}/passage/${passage.passageKey.split(':').map(encodeURIComponent).join('/')}`}
+          url={`${siteUrl}/${locale}/passage/${passage.passageKey.split(':').map(encodeURIComponent).join('/')}`}
           text={citation}
           title={`${corpusLabel(passage)} — ${referenceOf(passage)}`}
           copyText={citation}

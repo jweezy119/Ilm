@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Passage } from '@ilm/shared';
 import { localQueryCoverage, verdictFromSilence } from '../src/services/typesafe';
 
@@ -40,5 +42,14 @@ describe('cross-examination without a model', () => {
     expect(verdictFromSilence(1 - 1)).toBe('addressed');
     expect(verdictFromSilence(1 - 0.4)).toBe('partial');
     expect(verdictFromSilence(1 - 0)).toBe('unaddressed');
+  });
+
+  it('leaves the corpus verdict unjudged when no model answered', () => {
+    // Literal overlap can rank passages but cannot decide whether a corpus
+    // addresses a question. A derived verdict here would be a cheap stand-in
+    // for the corpus-level judgement the product is built around.
+    const source = readFileSync(join(__dirname, '../src/services/cross-examine.ts'), 'utf8');
+    expect(source).toContain("verdict: 'unknown'");
+    expect(source).not.toContain('verdict: verdictFromSilence(clamp01(1 - best))');
   });
 });

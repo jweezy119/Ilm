@@ -37,7 +37,7 @@ describe('reader-facing copy', () => {
 
   it('keeps the pinned composer clear of the comparison tray', () => {
     const search = read('src/app/[locale]/page.tsx');
-    expect(search).toContain("passageKeys.length > 0 ? 'bottom-24' : 'bottom-0'");
+    expect(search).toContain("passageKeys.length > 0 && podcastSegments.length > 0");
   });
 
   it('does not promise a contact address the deployment does not have', () => {

@@ -513,6 +513,7 @@
   },
   "crossExamine": {
     "open": "Cross-examine a concept",
+    "ask": "Ask across all texts",
     "title": "Across all texts",
     "intro": "Ask a question and see, corpus by corpus, whether these texts address it — with the passages and scores behind each verdict.",
     "placeholder": "For example: Is fasting required?",
@@ -564,7 +565,7 @@
     "open": "Explain this score",
     "title": "What this number means",
     "jev": "The hosted model judged this connection and returned a score. The number is a weighted judgement, not a fact about the text.",
-    "local": "A model running on this machine judged this connection.",
+    "local": "Produced by an engine on this device rather than the hosted model.",
     "derived": "No model was available. The number comes from word and theme overlap, labelled so you can tell it apart from a model judgement.",
     "manual": "A curator assigned this.",
     "literal": "This percentage is full-text relevance: how much of your query the passage actually contains. It is shown only when it is the thing that ordered the list."

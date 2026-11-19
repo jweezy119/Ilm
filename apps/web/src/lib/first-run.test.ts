@@ -42,6 +42,13 @@ describe('first-run entry', () => {
     }
   });
 
+  it('keeps the locale in shared links and returns focus from the drawer', () => {
+    expect(read('src/components/CopyCitation.tsx')).toContain('siteUrl}/${locale}/passage/');
+    const sidebar = read('src/components/GlobalAiSidebar.tsx');
+    expect(sidebar).toContain('launcherRef.current?.focus()');
+    expect(sidebar).toContain("aria-label={t('ask')}");
+  });
+
   it('localises every score explanation', () => {
     for (const locale of ['en', 'he', 'ar']) {
       const messages = JSON.parse(read(`messages/${locale}.json`));

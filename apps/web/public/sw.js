@@ -14,17 +14,25 @@
  * answer dressed up as a current one.
  */
 
-const STATIC_CACHE = 'ilm-static-v2';
-const TOPICS_CACHE = 'ilm-topics-v2';
-const OFFLINE_URL = '/en/offline';
+const STATIC_CACHE = 'ilm-static-v3';
+const TOPICS_CACHE = 'ilm-topics-v3';
+const OFFLINE_URLS = ['/en/offline', '/ar/offline', '/he/offline'];
+const offlineFor = (pathname) => {
+  const match = pathname.match(/^\/(en|ar|he)(?:\/|$)/);
+  return `/${match ? match[1] : 'en'}/offline`;
+};
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(STATIC_CACHE)
       // The notice is a page like any other, but it is fetched here so that it
-      // exists offline without ever intercepting a normal navigation.
-      .then((cache) => cache.add(OFFLINE_URL).catch(() => undefined))
+      // exists offline without ever intercepting a normal navigation. All three
+      // locales are cached so an Arabic or Hebrew reader is not told in English
+      // that they are offline.
+      .then((cache) =>
+        Promise.all(OFFLINE_URLS.map((url) => cache.add(url).catch(() => undefined)))
+      )
       .then(() => self.skipWaiting())
   );
 });
@@ -90,6 +98,11 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     // Network only while online. The cached page is the failure path, shown
     // solely when the network is gone — never in place of a live answer.
-    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
+    event.respondWith(
+      fetch(request).catch(async () => {
+        const url = offlineFor(url.pathname);
+        return (await caches.match(url)) || caches.match('/en/offline');
+      })
+    );
   }
 });

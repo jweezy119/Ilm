@@ -13,10 +13,19 @@ import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
 import { VerdictPanel } from '@/components/VerdictPanel';
 import { useComparisonStore, useSearchStore } from '@/store';
+import { usePodcast } from '@/components/PodcastContext';
 import { fetchCoverage } from '@/lib/coverage';
 import { useSlowConnection } from '@/lib/useSlowConnection';
 import { useInView } from '@/lib/useInView';
 import { cn, getTextLabel, TEXT_IDS } from '@/lib/utils';
+
+/**
+ * A seven- or eight-corpus shared link is narrow even though the UI only
+ * offers six pills. Comparing against the UI list alone would silently widen
+ * it to the reader's last search.
+ */
+const isNarrow = (texts: TextId[]) =>
+  texts.length !== TEXT_IDS.length || texts.some((textId, index) => textId !== TEXT_IDS[index]);
 
 const SUGGESTED = [
   { term: 'mercy', hint: 'across every corpus' },
@@ -151,6 +160,7 @@ function SearchInner() {
     };
   }, []);
   const { passageKeys, toggle, has } = useComparisonStore();
+  const { segments: podcastSegments } = usePodcast();
 
   /*
    * Searches can be started from four places: submit, the ?q= deep link, the text
@@ -165,6 +175,7 @@ function SearchInner() {
    */
   const searchSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastDeepLink = useRef('');
 
   const runSearch = useCallback(
     async (term: string, texts: TextId[], useSemantic = effectiveSemantic) => {
@@ -182,7 +193,7 @@ function SearchInner() {
           query: trimmed,
           limit: 40,
           semantic: useSemantic,
-          filters: texts.length < TEXT_IDS.length ? { texts } : undefined,
+          filters: isNarrow(texts) ? { texts } : undefined,
         });
         if (isStale()) return;
         // The store's query drives the result header and both empty states, so it
@@ -193,7 +204,7 @@ function SearchInner() {
         // The scope is part of the answer: "these texts do not address it" is a
         // weaker claim when only one corpus was searched. Put it in the URL so a
         // shared link carries the same claim the reader is looking at.
-        const scope = texts.length < TEXT_IDS.length ? `&texts=${texts.map(encodeURIComponent).join(',')}` : '';
+        const scope = isNarrow(texts) ? `&texts=${texts.map(encodeURIComponent).join(',')}` : '';
         router.replace(`/?q=${encodeURIComponent(trimmed)}${useSemantic ? '' : '&literal=1'}${scope}`, { scroll: false });
       } catch (caught) {
         if (isStale()) return;
@@ -236,7 +247,6 @@ function SearchInner() {
     const fromLink = textsParam
       ? textsParam.split(',').filter((t): t is TextId => (TextIdSchema.options as string[]).includes(t))
       : [];
-    if (fromLink.length) setActiveTexts(fromLink);
     const scope = fromLink.length ? fromLink : activeTexts;
 
     const sharedUrl = params.get('url')?.trim();
@@ -257,13 +267,22 @@ function SearchInner() {
     // title, then what is left of the URL, then an ordinary ?q= link. Without
     // this chain a share that carries only a URL lands on an empty page.
     const q = params.get('q');
+    const literalParam = params.get('literal');
     const incoming =
       params.get('text')?.trim() ||
       params.get('title')?.trim() ||
       (sharedUrl ? sharedUrl.replace(/^https?:\/\/[^/]+\//, '').trim() : '') ||
       q;
 
-    if (incoming?.trim() && incoming !== query) {
+    // runSearch rewrites the URL to the canonical form. Without this guard the
+    // rewrite re-triggers the same deep link forever, and a link that carries a
+    // scope or a literal mode would be re-run under the reader's own defaults.
+    const signature = `${incoming ?? ''}|${textsParam ?? ''}|${literalParam ?? ''}`;
+    if (signature === lastDeepLink.current) return;
+    lastDeepLink.current = signature;
+    if (fromLink.length) setActiveTexts(fromLink);
+
+    if (incoming?.trim()) {
       const candidate = incoming.trim();
       // A shared citation is a passage, not a search for the words in its
       // reference — the same distinction the composer makes.
@@ -273,7 +292,14 @@ function SearchInner() {
         return;
       }
       setInput(candidate);
-      void runSearch(candidate, scope);
+      // A literal link must stay literal on the recipient's device, whatever
+      // that device's connection prefers.
+      const semanticFromLink = literalParam === null ? null : literalParam !== '1';
+      if (semanticFromLink !== null) {
+        setSemanticOverridden(true);
+        setSemantic(semanticFromLink);
+      }
+      void runSearch(candidate, scope, semanticFromLink ?? effectiveSemantic);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -763,9 +789,16 @@ function SearchInner() {
         <div
           className={cn(
             'pointer-events-none fixed inset-x-0 z-30 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-5 pt-10 sm:px-8',
-            // The comparison tray owns the bottom edge once a passage is picked.
-            // Raising the composer keeps both controls reachable.
-            passageKeys.length > 0 ? 'bottom-24' : 'bottom-0'
+            // Three fixed controls share the bottom edge. The composer yields
+            // to the tray first, and to a playing podcast before that, so the
+            // thing the reader is typing into is never covered.
+            passageKeys.length > 0 && podcastSegments.length > 0
+              ? 'bottom-44'
+              : passageKeys.length > 0
+                ? 'bottom-24'
+                : podcastSegments.length > 0
+                  ? 'bottom-32'
+                  : 'bottom-0'
           )}
         >
           <div className="pointer-events-auto mx-auto w-full max-w-3xl">

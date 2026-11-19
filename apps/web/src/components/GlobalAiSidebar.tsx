@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, X, MessageSquare, Loader2, ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { CrossExaminationResponse, TextId } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { useComparisonStore } from '@/store';
 import { ScoreExplainer } from '@/components/ScoreExplainer';
+import { usePodcast } from '@/components/PodcastContext';
 
 const TEXT_COLORS: Record<TextId, string> = {
   quran: 'text-emerald-500',
@@ -52,12 +53,19 @@ export function GlobalAiSidebar() {
   const t = useTranslations('crossExamine');
   const tc = useTranslations('common');
   const trayCount = useComparisonStore((s) => s.passageKeys.length);
+  const { segments: podcastSegments } = usePodcast();
+  const launcherRef = useRef<HTMLButtonElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [result, setResult] = useState<CrossExaminationResponse | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const close = useCallback(() => {
+    setIsOpen(false);
+    requestAnimationFrame(() => launcherRef.current?.focus());
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -66,11 +74,11 @@ export function GlobalAiSidebar() {
     // field when they are ready. Escape dismisses it either way.
     if (window.matchMedia('(min-width: 768px)').matches) inputRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key === 'Escape') close();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen]);
+  }, [isOpen, close]);
 
   async function handleCrossExamine(e: React.FormEvent) {
     e.preventDefault();
@@ -93,10 +101,13 @@ export function GlobalAiSidebar() {
   if (!isOpen) {
     return (
       <button
+        ref={launcherRef}
         onClick={() => setIsOpen(true)}
-        // A finger clears the floating podcast player; on desktop the old
-        // position is kept so the button stays out of the reading column.
-        className={`fixed ${trayCount > 0 ? 'bottom-40' : 'bottom-32'} end-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-xl transition-transform hover:scale-105 active:scale-95 md:bottom-24 md:end-6`}
+        // A finger clears the floating podcast player; on desktop the button
+        // also moves up when that player is raised by the comparison tray.
+        className={`fixed ${trayCount > 0 ? 'bottom-40' : 'bottom-32'} end-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-xl transition-transform hover:scale-105 active:scale-95 ${
+          podcastSegments.length > 0 || trayCount > 0 ? 'md:bottom-32' : 'md:bottom-24'
+        } md:end-6`}
         title={t('open')}
         aria-label={t('open')}
       >
@@ -114,7 +125,7 @@ export function GlobalAiSidebar() {
       <button
         type="button"
         aria-label={tc('close')}
-        onClick={() => setIsOpen(false)}
+        onClick={close}
         className="fixed inset-0 z-40 bg-black/40 md:hidden"
       />
       <section
@@ -128,7 +139,7 @@ export function GlobalAiSidebar() {
             <span>{t('title')}</span>
           </div>
           <button
-            onClick={() => setIsOpen(false)}
+            onClick={close}
             className="icon-btn text-fg-muted hover:text-fg"
             aria-label={tc('close')}
           >
@@ -220,7 +231,7 @@ export function GlobalAiSidebar() {
               type="submit"
               disabled={loading || !query.trim()}
               className="absolute end-2 flex h-8 w-8 items-center justify-center rounded-full bg-accent text-accent-fg disabled:opacity-50"
-              aria-label={t('open')}
+              aria-label={t('ask')}
             >
               <ArrowRight className="h-4 w-4" />
             </button>
