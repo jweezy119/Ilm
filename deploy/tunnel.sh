@@ -26,8 +26,8 @@ set -a; . "$ENV_FILE"; set +a
 COMPOSE=(docker compose -f "$COMPOSE_FILE")
 
 if [[ "${1:-}" == "--bootstrap" ]]; then
-  echo "==> starting Postgres"
-  "${COMPOSE[@]}" up -d postgres
+  echo "==> starting Postgres and building the API image"
+  "${COMPOSE[@]}" up -d --build postgres api
 
   echo "==> waiting for Postgres"
   for _ in $(seq 1 60); do
