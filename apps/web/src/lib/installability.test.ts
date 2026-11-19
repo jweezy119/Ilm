@@ -99,18 +99,39 @@ describe('installability', () => {
     expect(read('src/components/ServiceWorkerRegistration.tsx')).toContain("process.env.NODE_ENV !== 'production'");
   });
 
-  it('caches nothing, because Ilm pages are answers that change', () => {
+  it('caches only things that cannot become untrue', () => {
     /*
-     * The failure this guards is the tempting one. Ilm's pages are server-rendered
-     * per request and its results come from a live database, so caching HTML means
-     * showing a reader a search that no longer exists or a passage that has since
-     * been re-scored, with no way to refresh past it. A stale font is a cosmetic bug;
-     * a stale HTML page is a lie about what the texts say.
+     * Ilm's pages are answers from a live database. Caching a search result or a
+     * passage means showing a reader something that may no longer be current,
+     * with no way to tell and no way to refresh past it. The safe set is hashed
+     * static assets, the curated topic list, and one static offline notice used
+     * only when a navigation actually fails.
      */
     const bare = code(worker);
-    expect(bare).not.toContain('caches.match');
-    expect(bare).not.toContain('respondWith');
-    expect(bare).not.toContain('addAll');
+    expect(bare).toContain("url.pathname.startsWith('/_next/static/')");
+    expect(bare).toContain("url.pathname === '/api/topics'");
+    expect(bare).toContain("OFFLINE_URL = '/en/offline'");
+    expect(bare).toContain("request.mode === 'navigate'");
+
+    // No data that can change may be stored in either cache.
+    for (const unsafe of ['/api/search', '/api/passages', '/api/compare', 'localStorage']) {
+      expect(bare, `${unsafe} must never be cached`).not.toContain(unsafe);
+    }
+    // A navigation goes to the network first; the cached notice is the failure
+    // path, not a replacement for a live answer.
+    expect(bare).toContain("fetch(request).catch(() => caches.match(OFFLINE_URL))");
+  });
+
+  it('serves a static offline notice and an install action', () => {
+    expect(existsSync(join(root, 'src/app/[locale]/offline/page.tsx'))).toBe(true);
+    expect(read('src/components/InstallApp.tsx')).toContain('beforeinstallprompt');
+    expect(read('src/app/[locale]/page.tsx')).toContain('<InstallApp />');
+  });
+
+  it('keeps the screen on while audio is playing', () => {
+    expect(read('src/lib/useWakeLock.ts')).toContain("wakeLock.request('screen')");
+    expect(read('src/components/RecitationPlayer.tsx')).toContain('useWakeLock(playing)');
+    expect(read('src/components/GlobalPodcastPlayer.tsx')).toContain('useWakeLock(segments.length > 0)');
   });
 
   it('serves verified links with a placeholder rather than a plausible-looking fake', () => {

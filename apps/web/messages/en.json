@@ -545,5 +545,17 @@
     "emptyTitle": "No passages are tagged “{theme}” yet",
     "emptyBody": "Nothing in the indexed texts carries this theme. Choose another theme above, or start from a topic instead.",
     "browseTopics": "Browse topics"
+  },
+  "offline": {
+    "title": "You are offline",
+    "description": "Ilm will not show you a cached answer to a question you just asked.",
+    "emptyTitle": "No connection",
+    "emptyBody": "Search and passages need the network, because a text or a score saved earlier may no longer be current. Reconnect and try again — the pages you had open will pick up where they left off."
+  },
+  "install": {
+    "title": "Keep Ilm on this device",
+    "body": "Install it for a home-screen shortcut. Already-open pages keep working offline; search and passages need a connection.",
+    "button": "Install",
+    "dismiss": "Dismiss"
   }
 }

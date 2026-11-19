@@ -8,6 +8,7 @@ import { Search, X, Loader2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { parseCitation, TextIdSchema, THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { CitationJump } from '@/components/CitationJump';
+import { InstallApp } from '@/components/InstallApp';
 import { Shell, Empty } from '@/components/Shell';
 import { PassageCard } from '@/components/PassageCard';
 import { VerdictPanel } from '@/components/VerdictPanel';
@@ -377,6 +378,8 @@ function SearchInner() {
                 used to be hardcoded English on a page served in three locales. */}
             <h1 className="text-[28px] font-medium tracking-tight sm:text-3xl">{t('heroTitle')}</h1>
             <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-fg-muted">{t('heroSubtitle')}</p>
+
+            <InstallApp />
 
             <div className="mt-8">{composer}</div>
 

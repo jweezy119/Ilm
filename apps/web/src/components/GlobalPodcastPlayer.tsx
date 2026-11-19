@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import { useComparisonStore } from '@/store';
 import { cn } from '@/lib/utils';
+import { useWakeLock } from '@/lib/useWakeLock';
 
 export function GlobalPodcastPlayer() {
   const { segments, textId, nextChapterUrl, prevChapterUrl, clearQueue } = usePodcast();
@@ -13,6 +14,7 @@ export function GlobalPodcastPlayer() {
   // The tray occupies the bottom edge when a comparison is being assembled.
   // Raise the player instead of covering the bar that owns the primary action.
   const trayCount = useComparisonStore((s) => s.passageKeys.length);
+  useWakeLock(segments.length > 0);
 
   if (!segments.length || !textId) {
     return null;

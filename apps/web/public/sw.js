@@ -1,59 +1,95 @@
 /*
- * A service worker that deliberately does nothing.
+ * A service worker with a narrow cache.
  *
- * It exists because installability requires one, and because the Trusted Web
- * Activity wrapper expects the origin to have registered it. That is the whole job.
+ * The previous version cached nothing, deliberately: Ilm's pages are answers,
+ * and a stale answer is a lie about what the texts say. That rule still holds.
+ * What is safe to cache here is the part that cannot become untrue:
  *
- * The temptation with a service worker is to cache things — the app shell, the
- * fonts, the icon. On this app that is actively dangerous, for reasons worth writing
- * down rather than discovering later.
+ *   - hashed static assets under /_next/static/, and icons/manifest;
+ *   - GET /api/topics, a curated list that changes only with a deployment;
+ *   - one static offline notice, used only when a navigation actually fails.
  *
- * Ilm's pages are server-rendered per request and its results are live: a search
- * answers from a database, and a passage page reflects theme labels and cross
- * references that change when the corpus is re-ingested. Caching HTML means a reader
- * is shown a search result that no longer exists, or a passage that has since been
- * re-scored, with no way to tell and no way to refresh past it. A cached app shell is
- * worse still, because the shell and the data are the same request here.
- *
- * So there is no precache, no runtime cache, and no fetch interception at all. The
- * `fetch` listener below never calls respondWith, which means the browser handles
- * every request exactly as it would with no service worker installed. Deleting this
- * file would change nothing except installability.
- *
- * The alternative — caching static assets only, by extension — was not worth the
- * failure mode. A stale font or icon is a cosmetic bug; a stale HTML page is a lie
- * about what the texts say, and this product's entire claim is that it does not lie
- * about that.
+ * No search result, passage, theme score, library entry or HTML page is cached.
+ * A reader without a connection gets a short page saying so, never a stale
+ * answer dressed up as a current one.
  */
 
-const CACHE = 'ilm-shell-v1';
+const STATIC_CACHE = 'ilm-static-v2';
+const TOPICS_CACHE = 'ilm-topics-v2';
+const OFFLINE_URL = '/en/offline';
 
-/*
- * Kept, and empty on purpose. An install step that caches nothing still gives the
- * browser a version to compare against on the next load, which is what makes
- * `skipWaiting` meaningful rather than decorative.
- */
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches
+      .open(STATIC_CACHE)
+      // The notice is a page like any other, but it is fetched here so that it
+      // exists offline without ever intercepting a normal navigation.
+      .then((cache) => cache.add(OFFLINE_URL).catch(() => undefined))
+      .then(() => self.skipWaiting())
+  );
 });
 
-/*
- * Every previously-installed cache is deleted on activate. There is only ever one and
- * it holds nothing, so this is close to a no-op — but it means a cache left behind by
- * an older version of this file cannot outlive it.
- */
 self.addEventListener('activate', (event) => {
+  const keep = new Set([STATIC_CACHE, TOPICS_CACHE]);
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => !keep.has(key)).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
-/*
- * Declared, and inert. Chrome's installability check requires a service worker with
- * a fetch handler; without this listener the app is not installable at all. Nothing
- * responds, so nothing is intercepted.
- */
-self.addEventListener('fetch', () => {});
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  const isStaticAsset =
+    url.pathname.startsWith('/_next/static/') ||
+    /\.(?:png|svg|woff2?|webmanifest)$/.test(url.pathname);
+
+  if (isStaticAsset) {
+    event.respondWith(
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (response.ok) await cache.put(request, response.clone());
+        return response;
+      })
+    );
+    return;
+  }
+
+  if (url.pathname === '/api/topics') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            void caches.open(TOPICS_CACHE).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(request);
+          return (
+            cached ||
+            new Response(JSON.stringify({ success: false, error: { code: 'OFFLINE', message: 'Offline' } }), {
+              status: 503,
+              headers: { 'content-type': 'application/json' },
+            })
+          );
+        })
+    );
+    return;
+  }
+
+  if (request.mode === 'navigate') {
+    // Network only while online. The cached page is the failure path, shown
+    // solely when the network is gone — never in place of a live answer.
+    event.respondWith(fetch(request).catch(() => caches.match(OFFLINE_URL)));
+  }
+});

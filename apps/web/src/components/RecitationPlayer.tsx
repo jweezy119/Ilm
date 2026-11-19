@@ -5,6 +5,7 @@ import { Pause, Play, SkipBack, SkipForward, Repeat, Volume2 } from 'lucide-reac
 import { useTranslations } from 'next-intl';
 import { RECITERS, DEFAULT_RECITER, RECITATION_SPEEDS, ayahAudioUrl, verseLabel } from '@/lib/reciters';
 import { useEnglishVoice, recordedFor } from '@/lib/english-voice';
+import { useWakeLock } from '@/lib/useWakeLock';
 
 /**
  * The English option in the voice selector.
@@ -72,6 +73,7 @@ export function RecitationPlayer({
 
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  useWakeLock(playing);
   const [reciterId, setReciterId] = useState(DEFAULT_RECITER.id);
   const [speed, setSpeed] = useState<number>(1);
   const [repeat, setRepeat] = useState<RepeatMode>('off');

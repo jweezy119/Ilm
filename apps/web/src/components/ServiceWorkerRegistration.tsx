@@ -5,13 +5,14 @@ import { useEffect } from 'react';
 /**
  * Registers the service worker, in production only.
  *
- * The worker does nothing — see public/sw.js for why that is deliberate rather than
- * unfinished. This exists to satisfy installability and the Trusted Web Activity
- * wrapper, and both of those are properties of the deployed site, not the dev server.
+ * The worker caches only hashed assets, the curated topic list and a static
+ * offline notice — see public/sw.js for why no answer is ever cached. This also
+ * satisfies installability and the Trusted Web Activity wrapper, both of which
+ * are properties of the deployed site rather than the dev server.
  *
- * Registered on load rather than on interaction because there is nothing to prompt
- * for: it caches nothing, collects nothing, and cannot make the app behave
- * differently. Asking a reader to consent to an inert file would be theatre.
+ * Registered on load rather than on interaction because none of that needs
+ * consent: it collects nothing and cannot change what an answer says. The
+ * install action is offered separately, only when the browser allows it.
  */
 export function ServiceWorkerRegistration() {
   useEffect(() => {
