@@ -344,7 +344,7 @@ function SearchInner() {
             aria-pressed={on}
             title={
               missing
-                ? 'This deployment cannot search this text: the index is held in memory and does not fit all five corpora here.'
+                ? 'This deployment cannot search this text yet. The other texts are still available.'
                 : undefined
             }
             className={cn(
@@ -682,8 +682,8 @@ function SearchInner() {
               <div className="mt-8">
                 <Empty icon={Search} title="Nothing matched">
                   {unindexed && unindexed.length > 0
-                    ? `This deployment searches ${unindexed.length < TEXT_IDS.length ? 'only some of' : 'none of'} the texts, because the search index is held in memory and does not fit all five corpora here. Settings lists which ones.`
-                    : 'Try a single common noun, or clear the text filters. Terms are matched literally unless semantic ranking is on and a TypeSafe key is configured.'}
+                    ? `This deployment can search ${TEXT_IDS.length - unindexed.length} of the ${TEXT_IDS.length} texts. Try another phrasing, or clear the text filters.`
+                    : 'Try a single common noun, or clear the text filters. Terms are matched literally unless ranking by meaning is on.'}
                 </Empty>
               </div>
             )}
@@ -695,7 +695,14 @@ function SearchInner() {
           does in every chat-shaped tool. Backdrop blur so results remain readable
           underneath it. */}
       {hasSearched ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-5 pt-10 sm:px-8">
+        <div
+          className={cn(
+            'pointer-events-none fixed inset-x-0 z-30 bg-gradient-to-t from-bg via-bg/95 to-transparent px-5 pb-5 pt-10 sm:px-8',
+            // The comparison tray owns the bottom edge once a passage is picked.
+            // Raising the composer keeps both controls reachable.
+            passageKeys.length > 0 ? 'bottom-24' : 'bottom-0'
+          )}
+        >
           <div className="pointer-events-auto mx-auto w-full max-w-3xl">
             {composer}
           </div>

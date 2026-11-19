@@ -405,7 +405,7 @@
     "securityBody": "Please report it before disclosing it publicly, and say how to reproduce it.",
     "responseTitle": "What to expect",
     "responseBody": "Corrections are the ones we can most often fix, and a confirmed wrong reference is usually fixed within days. Search-log deletions are done as soon as we read them. Security reports get a reply either way.",
-    "addressNote": "Replace this with your real address before shipping, or set NEXT_PUBLIC_CONTACT_EMAIL."
+    "addressNote": "This deployment has no contact address configured, so corrections and privacy requests cannot be sent from here. An installed deployment must provide one before it is published."
   },
   "journeys": {
     "title": "Journeys",
@@ -537,5 +537,11 @@
     "clear": "Clear",
     "remove": "Remove {key} from comparison",
     "dropHere": "Drop to add to comparison"
+  },
+  "explore": {
+    "loading": "Reading this theme across the texts…",
+    "emptyTitle": "No passages are tagged “{theme}” yet",
+    "emptyBody": "Nothing in the indexed texts carries this theme. Choose another theme above, or start from a topic instead.",
+    "browseTopics": "Browse topics"
   }
 }

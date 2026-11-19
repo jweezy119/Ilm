@@ -198,8 +198,9 @@ export default function SettingsPage() {
             {health && !health.jev.configured ? (
               <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                Add <code className="rounded bg-raised px-1">TYPESAFE_API_KEY</code> and restart to switch scoring from
-                keyword overlap to semantic Jev judgments.
+                This deployment scores by local rules rather than a model. Every score and verdict is
+                labelled with the source that produced it, so nothing here is presented as a model
+                judgement when it is not.
               </p>
             ) : null}
           </section>

@@ -128,12 +128,16 @@ describe('nothing points at nothing', () => {
 
   it('gives the contact page a real address rather than a silent placeholder', () => {
     // A form needs an endpoint that delivers mail, and one that silently fails is
-    // worse than a visible address. The placeholder is shown in the app when
-    // NEXT_PUBLIC_CONTACT_EMAIL is unset, because a privacy request sent to
-    // hello@example.com is a privacy request nobody acts on.
+    // worse than a visible address. A mailto to hello@example.com is no better:
+    // the privacy policy promises a deletion mechanism, and that address reaches
+    // nobody. Local builds say so plainly; deployed builds refuse to build.
     const page = read('src/app/[locale]/contact/page.tsx');
-    expect(page).toContain('NEXT_PUBLIC_CONTACT_EMAIL');
+    expect(read('src/lib/contact.ts')).toContain('NEXT_PUBLIC_CONTACT_EMAIL');
     expect(page).toContain('mailto:');
     expect(page).toContain('addressNote');
+    expect(page).not.toContain('hello@example.com');
+
+    const config = read('next.config.js');
+    expect(config).toContain('NEXT_PUBLIC_CONTACT_EMAIL must be a real address');
   });
 });

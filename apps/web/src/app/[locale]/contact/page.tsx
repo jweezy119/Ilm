@@ -5,6 +5,7 @@ import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
 import { Page, PageHeader } from '@/components/Shell';
+import { contactAddress } from '@/lib/contact';
 
 /**
  * Where a reader can actually reach someone.
@@ -34,7 +35,10 @@ export default async function ContactPage({ params }: { params: Promise<{ locale
   setRequestLocale(locale);
   const t = await getTranslations('contact');
 
-  const address = process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? 'hello@example.com';
+  // A deployed build cannot ship with an unconfigured address (next.config.js
+  // refuses it). In local development, say so rather than offering a mailto
+  // to an address nobody reads.
+  const address = contactAddress();
 
   const sections: Array<[string, string]> = [
     [t('correctionsTitle'), t('correctionsBody')],
@@ -49,22 +53,17 @@ export default async function ContactPage({ params }: { params: Promise<{ locale
       <div className="max-w-[68ch] space-y-6 text-[15px] leading-relaxed text-fg-muted">
         <section>
           <h2 className="font-medium text-fg">{t('addressLabel')}</h2>
-          <a
-            href={`mailto:${address}`}
-            className="mt-1.5 inline-flex items-center gap-2 text-accent underline underline-offset-4"
-          >
-            <Mail className="h-3.5 w-3.5" />
-            {address}
-          </a>
-          {/*
-              Shown in the app rather than only in the source, because a placeholder
-              address that reaches a reader is a message nobody will receive and a
-              privacy request nobody will act on. It disappears once
-              NEXT_PUBLIC_CONTACT_EMAIL is set.
-          */}
-          {address === 'hello@example.com' ? (
-            <p className="mt-1 text-[12px] text-amber-700 dark:text-amber-400">{t('addressNote')}</p>
-          ) : null}
+          {address ? (
+            <a
+              href={`mailto:${address}`}
+              className="mt-1.5 inline-flex items-center gap-2 text-accent underline underline-offset-4"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              {address}
+            </a>
+          ) : (
+            <p className="mt-1.5 text-[13px] text-amber-700 dark:text-amber-400">{t('addressNote')}</p>
+          )}
         </section>
 
         {sections.map(([heading, body]) => (

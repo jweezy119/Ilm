@@ -37,6 +37,19 @@ if (!configured) {
   console.warn(`[ilm] ${MISSING}`);
 }
 
+// The privacy policy promises a way to request deletion of a search log. A
+// mailto to hello@example.com is not a mechanism — it is a promise nobody
+// keeps — so a deployed build has to name a real address. Local development
+// still builds without one and says plainly that contact is not configured.
+const CONTACT = (process.env.NEXT_PUBLIC_CONTACT_EMAIL || '').trim();
+if (isDeploy && (!CONTACT || CONTACT === 'hello@example.com')) {
+  throw new Error(
+    'NEXT_PUBLIC_CONTACT_EMAIL must be a real address. The privacy policy and ' +
+      'contact page offer a way to request deletion of a search log; a ' +
+      'placeholder address would make that promise false.'
+  );
+}
+
 const API_ORIGIN = configured || 'http://localhost:4000';
 
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');

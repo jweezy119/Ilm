@@ -1,8 +1,9 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import type { TextId } from '@ilm/shared';
 import { api, ApiError, type ThemeMap } from '@/lib/api';
@@ -23,6 +24,7 @@ interface JourneyStep {
 
 function ExploreInner() {
   const router = useRouter();
+  const t = useTranslations('explore');
   const params = useSearchParams();
   const theme = params.get('theme') ?? 'mercy';
 
@@ -109,14 +111,16 @@ function ExploreInner() {
 
       {loading ? (
         <p className="flex items-center gap-2 py-12 text-sm text-fg-faint">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading theme journey…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t('loading')}
         </p>
       ) : null}
 
       {!loading && steps?.length === 0 ? (
-        <Empty icon={Sparkles} title={`No passages are tagged “${theme}”`}>
-          Themes are assigned by the indexing run. Run{' '}
-          <code className="rounded bg-panel px-1">npm run index</code> to (re)score the corpus.
+        <Empty icon={Sparkles} title={t('emptyTitle', { theme })}>
+          {t('emptyBody')}{' '}
+          <Link href="/topics" className="text-accent underline underline-offset-2">
+            {t('browseTopics')}
+          </Link>
         </Empty>
       ) : null}
 
