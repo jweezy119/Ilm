@@ -1,0 +1,95 @@
+# Local Docker stack exposed through a free Cloudflare quick tunnel.
+#
+#   cd deploy
+#   ./tunnel.sh                 # start (first run: add --bootstrap to ingest)
+#   ./tunnel.sh --bootstrap     # schema + corpus + index, then start
+#
+# No Caddy, no DNS, no open ports: cloudflared connects out to Cloudflare and
+# prints a random https://*.trycloudflare.com URL. The web app is bound to
+# loopback, so the tunnel is the only way in from outside.
+#
+# This is a quick-tunnel setup: the URL changes every time the container starts.
+# Use docker-compose.prod.yml with Caddy for a permanent address.
+
+name: ilm-tunnel
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ilm}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.tunnel.local}
+    volumes:
+      # Override POSTGRES_VOLUME in .env.tunnel.local to reuse an already
+      # ingested database (the README quick start uses ilm_postgres_data).
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ilm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ilm}?schema=public
+      PORT: "4000"
+      HOST: 0.0.0.0
+      # The browser calls /api/* on its own origin; CORS is not involved.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      API_HEAP_MB: ${API_HEAP_MB:-512}
+      SEARCH_ENGINE: ${SEARCH_ENGINE:-postgres}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    volumes:
+      - api_data:/app/data
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_INTERNAL_API_URL: http://api:4000
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+    restart: unless-stopped
+    environment:
+      NEXT_INTERNAL_API_URL: http://api:4000
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+      NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # No token and no named tunnel: a quick tunnel is free and needs no account.
+    # Its URL is printed in the logs on every start and dies with the container.
+    command: ["tunnel", "--no-autoupdate", "--url", "http://web:3000"]
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME:-ilm_tunnel_postgres_data}
+  api_data:

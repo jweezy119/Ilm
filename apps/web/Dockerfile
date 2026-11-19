@@ -17,6 +17,12 @@ RUN npm ci
 FROM deps AS builder
 ARG NEXT_INTERNAL_API_URL=http://api:4000
 ENV NEXT_INTERNAL_API_URL=$NEXT_INTERNAL_API_URL
+# NEXT_PUBLIC_* values are inlined at build time. Passing them only at runtime
+# leaves the contact and metadata URLs baked from the build environment.
+ARG NEXT_PUBLIC_SITE_URL=
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_CONTACT_EMAIL=
+ENV NEXT_PUBLIC_CONTACT_EMAIL=$NEXT_PUBLIC_CONTACT_EMAIL
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 RUN npm run build:shared && npm run build:web

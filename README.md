@@ -306,7 +306,9 @@ the background, which is handy for scripted checks.
 
 ## Deploying
 
-See [DEPLOY.md](./DEPLOY.md) for Render, Fly, and any other host.
+See [DEPLOY.md](./DEPLOY.md) for Render, Fly, and any other host. For a local
+Docker stack exposed through a free Cloudflare quick tunnel (no domain and no
+open ports), see [deploy/README.md](./deploy/README.md#local-docker--a-free-cloudflare-tunnel) and run `./deploy/tunnel.sh --bootstrap`.
 
 ---
 

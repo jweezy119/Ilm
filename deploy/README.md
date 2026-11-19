@@ -10,6 +10,48 @@ has a local fallback. The only bill is the host.
 
 ---
 
+## Local Docker + a free Cloudflare tunnel
+
+If you already have a machine and just want a public URL, you do not need a
+cloud account, a domain, Caddy or open ports. `docker-compose.tunnel.yml` runs
+Postgres, the API, the web app and a Cloudflare **quick tunnel**, which connects
+outbound and prints a random `https://*.trycloudflare.com` URL.
+
+```bash
+cd deploy
+./tunnel.sh --bootstrap     # first run: schema, ingest, index, then start
+./tunnel.sh                 # later runs
+```
+
+The first run takes 20–40 minutes (ingestion + indexing). Subsequent runs reuse
+the same volumes. `tunnel.sh` creates `deploy/.env.tunnel.local` from the
+example on first use; edit it before exposing anything publicly.
+
+To reuse a corpus you already ingested with the README's local Postgres, set in
+`.env.tunnel.local`:
+
+```
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_VOLUME=ilm_postgres_data
+```
+
+With a fresh volume, `--bootstrap` is required — an empty database answers
+nothing. The script prints the public URL once cloudflared has established it;
+you can also watch it with:
+
+```bash
+docker compose -f deploy/docker-compose.tunnel.yml logs -f cloudflared
+```
+
+Everything is bound to loopback except the tunnel, so no firewall changes are
+needed. A quick tunnel's address changes on every restart and is meant for a
+demo, not a permanent service — use the rest of this document (Caddy + a real
+hostname) for that. The service worker and install prompt work through the
+tunnel because Cloudflare supplies HTTPS.
+
+---
+
 ## 1. Get an Oracle Always Free account
 
 1. <https://www.oracle.com/cloud/free/> → **Start for free**.

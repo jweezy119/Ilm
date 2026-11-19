@@ -79,6 +79,8 @@ services:
       # build arg and not only as a runtime env var.
       args:
         NEXT_INTERNAL_API_URL: http://api:4000
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
     restart: unless-stopped
     environment:
       # Read by next.config.js at runtime too. Server-side only: the browser
@@ -86,6 +88,7 @@ services:
       # host never reaches the client bundle.
       NEXT_INTERNAL_API_URL: http://api:4000
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+      NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
     depends_on:
       api:
         condition: service_healthy
