@@ -4,6 +4,7 @@ import type {
   ComparisonRequest,
   CorpusVerdict,
   CrossRef,
+  CrossExaminationResponse,
   LexiconLookup,
   Passage,
   PassageJourney,
@@ -224,6 +225,12 @@ export interface ThemeMap {
 
 export const api = {
   health: () => get<Health>('/health'),
+
+  /**
+   * Ask the same question of every corpus. Used by the cross-examination drawer;
+   * routed through the client so the proxy-route test can see the path.
+   */
+  crossExamine: (query: string) => post<CrossExaminationResponse>('/api/cross-examine', { query }),
 
   search: (body: {
     query: string;

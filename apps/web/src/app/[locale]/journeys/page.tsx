@@ -50,6 +50,15 @@ function Journeys() {
     load();
   }, [load]);
 
+  // A visible confirmation should not become a permanent fixture. Five seconds
+  // is long enough to read it, short enough that it stops describing an action
+  // that happened several screens and one deletion ago.
+  useEffect(() => {
+    if (!announcement) return;
+    const timer = setTimeout(() => setAnnouncement(''), 5000);
+    return () => clearTimeout(timer);
+  }, [announcement]);
+
   const create = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
@@ -93,6 +102,17 @@ function Journeys() {
   return (
     <>
       <PageHeader title={t('title')} description={t('description')} />
+
+      {/* The same message is visible and announced. A reader who deletes a
+          journey gets a plain inline confirmation above the list, where the
+          change happened — not a toast, and not a screen-reader-only line. */}
+      <p
+        role="status"
+        aria-live="polite"
+        className={announcement ? 'mb-4 rounded-lg border border-line bg-panel p-3 text-sm text-fg-muted' : 'sr-only'}
+      >
+        {announcement}
+      </p>
 
       <form onSubmit={create} className="mb-8 flex flex-wrap items-end gap-2">
         <div className="min-w-[14rem] flex-1">
@@ -152,10 +172,6 @@ function Journeys() {
           ))}
         </ul>
       )}
-
-      <p className="sr-only" role="status" aria-live="polite">
-        {announcement}
-      </p>
 
       {empty ? <p className="sr-only">{t('emptyHint')}</p> : null}
     </>

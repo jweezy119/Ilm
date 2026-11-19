@@ -5,7 +5,7 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 import { Search, X, Loader2, AlertTriangle, ArrowRight, Layers } from 'lucide-react';
-import { THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
+import { parseCitation, TextIdSchema, THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { CitationJump } from '@/components/CitationJump';
 import { Shell, Empty } from '@/components/Shell';
@@ -16,7 +16,7 @@ import { fetchCoverage } from '@/lib/coverage';
 import { cn, getTextLabel, TEXT_IDS } from '@/lib/utils';
 
 const SUGGESTED = [
-  { term: 'mercy', hint: 'across all five corpora' },
+  { term: 'mercy', hint: 'across every corpus' },
   { term: 'covenant', hint: 'promise, obligation, breakage' },
   { term: 'light', hint: 'creation, revelation, guidance' },
   { term: 'forgiveness', hint: 'repentance and release' },
@@ -124,7 +124,7 @@ function SearchInner() {
   // be checkable against: "45,453 passages" is answerable, "the texts" is not.
   const [searched, setSearched] = useState<number | null>(null);
 
-  const { query, response, activeTexts, recent, setQuery, setResponse, toggleText, allTexts, remember } = useSearchStore();
+  const { query, response, activeTexts, recent, setQuery, setResponse, setActiveTexts, toggleText, allTexts, remember } = useSearchStore();
   const [narrowOpen, setNarrowOpen] = useState(false);
   // A search covering fewer than every text is a narrower claim, so it is named
   // rather than left for the reader to infer from a result count.
@@ -143,21 +143,6 @@ function SearchInner() {
     };
   }, []);
   const { passageKeys, toggle, has } = useComparisonStore();
-
-  /*
-   * Re-run the current search across all five texts.
-   *
-   * Offered on the "these texts do not address this" verdict, because that verdict
-   * is scoped to whatever the reader had filtered to: a search narrowed to the
-   * Quran finding nothing is a much weaker claim than the same search across all
-   * five, and without this the panel would report a no that the reader could
-   * disprove in one click and feel misled when they did.
-   */
-  const widenAllTexts = useCallback(() => {
-    for (const textId of TEXT_IDS) {
-      if (!activeTexts.includes(textId)) toggleText(textId);
-    }
-  }, [activeTexts, toggleText]);
 
   /*
    * Searches can be started from four places: submit, the ?q= deep link, the text
@@ -196,7 +181,11 @@ function SearchInner() {
         setQuery(trimmed);
         setResponse(result);
         remember(trimmed);
-        router.replace(`/?q=${encodeURIComponent(trimmed)}${useSemantic ? '' : '&literal=1'}`, { scroll: false });
+        // The scope is part of the answer: "these texts do not address it" is a
+        // weaker claim when only one corpus was searched. Put it in the URL so a
+        // shared link carries the same claim the reader is looking at.
+        const scope = texts.length < TEXT_IDS.length ? `&texts=${texts.map(encodeURIComponent).join(',')}` : '';
+        router.replace(`/?q=${encodeURIComponent(trimmed)}${useSemantic ? '' : '&literal=1'}${scope}`, { scroll: false });
       } catch (caught) {
         if (isStale()) return;
         setError(caught instanceof ApiError ? caught.message : 'Search failed.');
@@ -210,12 +199,72 @@ function SearchInner() {
     [setQuery, setResponse, remember, router, semantic]
   );
 
-  // Deep links like /?q=mercy should restore a search.
+  /*
+   * Widen a narrow verdict to every text and re-run the search, so the answer
+   * on screen and the scope in the URL change together. Changing only the store
+   * used to leave `&texts=quran` in the address bar — a link that restored the
+   * narrow verdict the reader had just rejected.
+   */
+  const widenAllTexts = useCallback(() => {
+    allTexts();
+    if (query) void runSearch(query, TEXT_IDS);
+  }, [allTexts, query, runSearch]);
+
+  /*
+   * Deep links, in order of specificity:
+   *   ?text= / ?url= — a reference shared into Ilm from another app (manifest
+   *                    share_target). A passage permalink opens the passage;
+   *                    anything else is searched, the same as ?q=.
+   *   ?texts=        — the corpus scope of a shared search, so a narrowed verdict
+   *                    is not silently widened when the link is opened.
+   *   ?q=            — an ordinary search link.
+   */
   useEffect(() => {
+    const textsParam = params.get('texts');
+    // Validate against the schema, not the six-corpus UI list: a link scoped
+    // to a hadith corpus must not be silently widened to the reader's last
+    // search just because this deployment does not show that pill.
+    const fromLink = textsParam
+      ? textsParam.split(',').filter((t): t is TextId => (TextIdSchema.options as string[]).includes(t))
+      : [];
+    if (fromLink.length) setActiveTexts(fromLink);
+    const scope = fromLink.length ? fromLink : activeTexts;
+
+    const sharedUrl = params.get('url')?.trim();
+    // A permalink from Ilm is a navigation, not a question.
+    if (sharedUrl) {
+      try {
+        const match = new URL(sharedUrl, window.location.origin).pathname.match(/\/passage\/(.+)$/);
+        if (match) {
+          router.push(`/passage/${match[1]}`);
+          return;
+        }
+      } catch {
+        // A malformed URL is just text; it falls through to the query below.
+      }
+    }
+
+    // The OS decides which fields it sends. Prefer its text, then the page
+    // title, then what is left of the URL, then an ordinary ?q= link. Without
+    // this chain a share that carries only a URL lands on an empty page.
     const q = params.get('q');
-    if (q && q !== query) {
-      setInput(q);
-      void runSearch(q, activeTexts);
+    const incoming =
+      params.get('text')?.trim() ||
+      params.get('title')?.trim() ||
+      (sharedUrl ? sharedUrl.replace(/^https?:\/\/[^/]+\//, '').trim() : '') ||
+      q;
+
+    if (incoming?.trim() && incoming !== query) {
+      const candidate = incoming.trim();
+      // A shared citation is a passage, not a search for the words in its
+      // reference — the same distinction the composer makes.
+      const parsed = parseCitation(candidate);
+      if (parsed.length === 1) {
+        router.push(`/passage/${parsed[0].passageKey.split(':').map(encodeURIComponent).join('/')}`);
+        return;
+      }
+      setInput(candidate);
+      void runSearch(candidate, scope);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -358,7 +407,7 @@ function SearchInner() {
                   }}
                   className="text-accent underline underline-offset-2"
                 >
-                  Search all five
+                  {t('widenFilters')}
                 </button>
               </p>
             ) : null}

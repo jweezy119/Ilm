@@ -3,10 +3,12 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from '@/i18n/navigation';
 import { useSearchParams } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import { Scale, X, Loader2, AlertTriangle, Copy, Check as CheckIcon, Link2 } from 'lucide-react';
 import type { Alignment, Passage } from '@ilm/shared';
 import { api, ApiError, type ComparisonResult } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
+import { ShareButton } from '@/components/ShareButton';
 import { useComparisonStore } from '@/store';
 import { segmentByPhrases } from '@/lib/highlighter';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
@@ -16,6 +18,7 @@ import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, pe
 function CompareInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const locale = useLocale();
   const { passageKeys, remove, clear } = useComparisonStore();
 
   const [result, setResult] = useState<ComparisonResult | null>(null);
@@ -50,7 +53,7 @@ function CompareInner() {
     void runCompare(keys);
   }, [keys, runCompare]);
 
-  const shareUrl = useMemo(() => (typeof window === 'undefined' ? '' : `${window.location.origin}/compare?keys=${keys.map(encodeURIComponent).join(',')}`), [keys]);
+  const shareUrl = useMemo(() => (typeof window === 'undefined' ? '' : `${window.location.origin}/${locale}/compare?keys=${keys.map(encodeURIComponent).join(',')}`), [keys, locale]);
 
   const copyShare = async () => {
     try {
@@ -73,6 +76,7 @@ function CompareInner() {
         action={
           keys.length > 0 ? (
             <div className="flex flex-wrap gap-2">
+              <ShareButton url={shareUrl} title="Ilm comparison" />
               <button type="button" onClick={() => void copyShare()} className="inline-flex items-center gap-1.5 rounded-lg border border-ink-300 px-3 py-1.5 text-sm hover:border-ink-500 dark:border-ink-700">
                 {copied ? <CheckIcon className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 {copied ? 'Copied' : 'Copy link'}

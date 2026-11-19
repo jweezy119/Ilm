@@ -25,11 +25,22 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Ilm · علم · דַּעַת',
     short_name: 'Ilm',
     description:
-      'The Quran, Torah, Talmud and both Testaments, in Hebrew, Greek, Aramaic and Arabic. Read a passage, and see what the other texts say about it.',
+      'The Quran, Torah, Talmud, both Testaments and the Book of Enoch, in Hebrew, Greek, Aramaic and Arabic. Read a passage, and see what the other texts say about it.',
     id: '/',
     start_url: '/en',
     scope: '/',
     display: 'standalone',
+    /*
+     * Receive a shared reference from another app. The GET action lands on the
+     * search page, which already knows how to turn ?text= into a search and ?url=
+     * into a passage permalink. Sharing a verse into Ilm is then one OS gesture
+     * rather than copy, open, paste, search.
+     */
+    share_target: {
+      action: '/en',
+      method: 'GET',
+      params: { title: 'title', text: 'text', url: 'url' },
+    },
     orientation: 'portrait',
     background_color: '#fdfcfa',
     theme_color: '#065f46',

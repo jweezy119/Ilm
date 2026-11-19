@@ -684,6 +684,19 @@ export function containsKeyword(haystack: string, keyword: string): boolean {
   return new RegExp(`${left}${escaped}${right}`, 'i').test(haystack);
 }
 
+/**
+ * Deterministic relevance for features whose model judge is unavailable: the
+ * fraction of the query's meaningful words a passage actually contains, in
+ * both its translation and its original text. Word boundaries matter — plain
+ * substring matching reads "reincarnation" as containing "nation".
+ */
+export function localQueryCoverage(query: string, passage: Passage): number {
+  const terms = [...significantTerms(query)];
+  if (terms.length === 0) return 0;
+  const haystack = `${passage.translation} ${passage.originalText ?? ''}`;
+  return terms.filter((term) => containsKeyword(haystack, term)).length / terms.length;
+}
+
 function themeEvidence(translation: string, theme: string): string[] {
   const sentences = translation.split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 20);
   const keywords = themeKeywords(theme);

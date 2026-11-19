@@ -96,6 +96,8 @@ interface SearchState {
   recent: string[];
   setQuery: (query: string) => void;
   setResponse: (response: SearchResponse | null) => void;
+  /** Restore the corpus filter from a shared link, without ever emptying it. */
+  setActiveTexts: (texts: TextId[]) => void;
   toggleText: (textId: TextId) => void;
   /**
    * Return to every text in one action.
@@ -120,6 +122,7 @@ export const useSearchStore = create<SearchState>()(
 
       setQuery: (query) => set({ query }),
       setResponse: (response) => set({ response }),
+      setActiveTexts: (texts) => set({ activeTexts: texts.length ? texts : ALL_TEXTS }),
 
       allTexts: () => set({ activeTexts: ALL_TEXTS }),
       toggleText: (textId) =>

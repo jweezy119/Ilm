@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { useRouter } from '@/i18n/navigation';
 import { useSearchParams } from 'next/navigation';
@@ -418,13 +417,6 @@ function ReadingPane({
   const [data, setData] = useState<Awaited<ReturnType<typeof import('@/lib/api').api.readBook>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { playQueue, setNavigationUrls } = usePodcast();
-
-  /*
-   * Only verses with audio behind them. ayahAudioUrl returns null for anything
-   * that is not a Quran ayah, so this empties itself for every other corpus
-   * rather than offering a player that would only fail when pressed.
-   */
-  const speechT = useTranslations('speech');
 
   const speechSegments = useMemo(
     () =>

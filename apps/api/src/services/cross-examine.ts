@@ -7,7 +7,7 @@ import {
   TextIdSchema
 } from '@ilm/shared';
 import { runFullText } from './search';
-import { askJev, clamp01, verdictFromSilence, passageView } from './typesafe';
+import { askJev, clamp01, verdictFromSilence, passageView, localQueryCoverage } from './typesafe';
 import type { JevQuestion } from './typesafe-client';
 import { getPassagesByKeys } from './passage';
 
@@ -116,6 +116,34 @@ export async function crossExamine(query: string): Promise<CrossExaminationRespo
             widenedVia: undefined,
             matchMode: 'exact'
           })).sort((a: any, b: any) => b.score - a.score)
+        };
+      }
+    } else {
+      // Jev was unavailable. The literal searches above still succeeded, so
+      // answer with them rather than an empty object that reads as "no corpus
+      // has anything to say". The result stays labelled `derived`.
+      for (const textId of TEXT_IDS) {
+        const candidates = candidatesByCorpus[textId] || [];
+        if (candidates.length === 0) continue;
+
+        const scored = candidates.map((passage) => ({
+          passage,
+          score: localQueryCoverage(query, passage),
+        }));
+        const best = Math.max(...scored.map((entry) => entry.score));
+
+        resultsByCorpus[textId] = {
+          verdict: verdictFromSilence(clamp01(1 - best)),
+          passages: scored
+            .sort((a, b) => b.score - a.score)
+            .map(({ passage, score }) => ({
+              passage,
+              score,
+              matchedFields: [],
+              highlights: {},
+              widenedVia: undefined,
+              matchMode: 'exact' as const,
+            })),
         };
       }
     }

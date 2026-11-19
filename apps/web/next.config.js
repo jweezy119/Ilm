@@ -63,6 +63,10 @@ const nextConfig = {
       // rewrites are matched in order, so a specific rule placed after it would be
       // dead configuration.
       { source: '/api/topics', destination: `${API_ORIGIN}/api/topics` },
+      // Concept cross-examination. The sidebar calls this path directly, so a
+      // missing rewrite here makes its only action a 404 from Next rather than an
+      // answer from the API.
+      { source: '/api/cross-examine', destination: `${API_ORIGIN}/api/cross-examine` },
       // Figures. Added with the figure feature and missing from the first attempt, so
       // the page fetched a 404 from Next rather than from the API. The test in
       // src/lib/proxy-routes.test.ts now fails if a new route family is not listed.

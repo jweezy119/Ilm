@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Copy, Check, Quote } from 'lucide-react';
 import type { Passage } from '@ilm/shared';
 import { getTextLabel } from '@/lib/utils';
+import { ShareButton } from '@/components/ShareButton';
 
 /**
  * Copy a passage as a citation, ready to paste.
@@ -109,12 +110,12 @@ export function CopyCitation({
   const [failed, setFailed] = useState(false);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const citation = buildCitation(passage, format, siteUrl, { score, source });
 
   const copy = async () => {
     setFailed(false);
-    const text = buildCitation(passage, format, siteUrl, { score, source });
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(citation);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -153,6 +154,12 @@ export function CopyCitation({
           {copied ? <Check className="h-3.5 w-3.5 text-accent" /> : <Copy className="h-3.5 w-3.5" />}
           {copied ? t('copied') : t('copyCitation')}
         </button>
+        <ShareButton
+          url={`${siteUrl}/passage/${passage.passageKey.split(':').map(encodeURIComponent).join('/')}`}
+          text={citation}
+          title={`${corpusLabel(passage)} — ${referenceOf(passage)}`}
+          copyText={citation}
+        />
       </div>
 
       {failed ? <p className="mt-1.5 text-[11px] text-fg-faint">{t('copyFailed')}</p> : null}
@@ -161,7 +168,7 @@ export function CopyCitation({
           paste rather than discovering it in a document. */}
       {!compact ? (
         <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-panel/40 p-2.5 text-[11px] leading-relaxed text-fg-muted">
-          {buildCitation(passage, format, siteUrl, { score, source })}
+          {citation}
         </pre>
       ) : null}
 

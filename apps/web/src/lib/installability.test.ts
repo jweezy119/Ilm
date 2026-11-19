@@ -78,6 +78,18 @@ describe('installability', () => {
     expect(manifest).not.toMatch(/^\s*(lang|dir):/m);
   });
 
+  it('accepts a shared reference from other apps', () => {
+    // A share target turns "share this verse into Ilm" into one OS gesture.
+    // The action has to be a real page inside the manifest scope, and the search
+    // page has to accept the fields the OS sends or the gesture lands on a
+    // page that quietly ignores it.
+    expect(manifest).toContain('share_target:');
+    expect(manifest).toContain("action: '/en'");
+    expect(manifest).toMatch(/method: 'GET'/);
+    expect(manifest).toContain("params: { title: 'title', text: 'text', url: 'url' }");
+    expect(read('src/app/[locale]/page.tsx')).toContain("params.get('text')");
+  });
+
   it('registers a service worker that has a fetch handler', () => {
     // A fetch listener is required for installability even when it does nothing.
     expect(code(worker)).toContain("self.addEventListener('fetch'");

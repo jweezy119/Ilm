@@ -22,12 +22,16 @@ const LOCALES = ['en', 'he', 'ar'] as const;
 const FILES = [
   'src/components/JourneyGraphView.tsx',
   'src/components/AddToJourney.tsx',
+  'src/components/GlobalAiSidebar.tsx',
+  'src/components/ShareButton.tsx',
   'src/components/ReadAloud.tsx',
   'src/components/RecitationPlayer.tsx',
   'src/app/[locale]/journeys/page.tsx',
   'src/app/[locale]/journeys/[journeyId]/page.tsx',
   'src/app/[locale]/passage/[...key]/page.tsx',
-  'src/app/[locale]/read/page.tsx',
+  // read/page.tsx used to be here with a `speechT` it never called, which made
+  // two assertions fail on clean master. It declares no translator now, so it
+  // has no keys for this guard to check.
 ];
 
 function flatKeys(obj: Record<string, unknown>, prefix = ''): Set<string> {

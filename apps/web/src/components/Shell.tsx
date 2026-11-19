@@ -1,7 +1,7 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { Link, usePathname, usePathname as useLocalizedPathname } from '@/i18n/navigation';
+import { Link, usePathname, usePathname as useLocalizedPathname, useRouter } from '@/i18n/navigation';
 import {
   BookOpen,
   Sun,
@@ -73,6 +73,7 @@ function LanguageSwitcher({ collapsed }: { collapsed: boolean }) {
   const t = useTranslations('language');
   const locale = useLocale();
   const pathname = useLocalizedPathname();
+  const router = useRouter();
 
   return (
     <div className={collapsed ? 'grid place-items-center' : ''}>
@@ -91,10 +92,14 @@ function LanguageSwitcher({ collapsed }: { collapsed: boolean }) {
           value={locale}
           onChange={(event) => {
             const next = event.target.value as (typeof routing.locales)[number];
-            // Same page, new language. A plain router.push would drop the query
-            // string, which here is the search term — switching language mid
-            // search should not clear the search.
-            window.location.assign(`/${next}${pathname === '/' ? '' : pathname}`);
+            // Same page, new language, same question. A full navigation with
+            // window.location.assign dropped the query string, so switching
+            // language mid-search cleared the search the reader had just run.
+            // next-intl's router takes the locale as an option and keeps the
+            // searchParams we pass in the path. Reading them here, in the event
+            // handler, avoids useSearchParams in the layout's static render.
+            const search = typeof window === 'undefined' ? '' : window.location.search;
+            router.push(`${pathname}${search}`, { locale: next });
           }}
           className={[
             'h-9 w-full appearance-none rounded-lg border border-line bg-panel text-sm text-fg outline-none',
