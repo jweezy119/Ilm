@@ -568,5 +568,12 @@
     "derived": "No model was available. The number comes from word and theme overlap, labelled so you can tell it apart from a model judgement.",
     "manual": "A curator assigned this.",
     "literal": "This percentage is full-text relevance: how much of your query the passage actually contains. It is shown only when it is the thing that ordered the list."
+  },
+  "settings": {
+    "title": "Preferences",
+    "intro": "These sliders decide what “related passages” means on a passage page. They do not change the texts or a search you have already run.",
+    "weightsTitle": "Recommendation weights",
+    "diagnosticsTitle": "Diagnostics",
+    "diagnosticsIntro": "Technical facts about this deployment: service status, what is searchable, and whether a model was available."
   }
 }

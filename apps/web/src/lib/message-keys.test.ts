@@ -33,6 +33,7 @@ const FILES = [
   'src/app/[locale]/journeys/[journeyId]/page.tsx',
   'src/app/[locale]/passage/[...key]/page.tsx',
   'src/app/[locale]/explore/page.tsx',
+  'src/app/[locale]/settings/page.tsx',
   // The legal pages use getTranslations on the server; this guard only parses
   // client-side useTranslations bindings.
   // read/page.tsx used to be here with a `speechT` it never called, which made

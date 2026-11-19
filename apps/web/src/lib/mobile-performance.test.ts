@@ -46,10 +46,23 @@ describe('mobile performance', () => {
     }
   });
 
+  it('does not run diagnostics before a reader asks for them', () => {
+    const settings = read('src/app/[locale]/settings/page.tsx');
+    expect(settings).toContain('if (!diagnosticsOpen) return');
+    expect(settings).toContain('<details className="group mt-6"');
+    expect(settings).toContain("ts('diagnosticsTitle')");
+    // The expensive vector scan is inside the same deferred effect.
+    const effect = settings.slice(settings.indexOf('if (!diagnosticsOpen) return'), settings.indexOf('const total'));
+    expect(effect).toContain('includeEmbeddings: true');
+    expect(settings.indexOf("ts('title')")).toBeLessThan(settings.indexOf("ts('diagnosticsTitle')"));
+  });
+
   it('localises the slow-connection notice', () => {
     for (const locale of ['en', 'he', 'ar']) {
       const messages = JSON.parse(read(`messages/${locale}.json`));
       expect(messages.search.slowNetwork, `${locale} has no slow-connection notice`).toBeTruthy();
+      expect(messages.settings.title, `${locale} has no preferences title`).toBeTruthy();
+      expect(messages.settings.diagnosticsIntro, `${locale} has no diagnostics explanation`).toBeTruthy();
     }
   });
 });
