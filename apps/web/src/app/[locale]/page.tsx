@@ -157,6 +157,7 @@ function SearchInner() {
    * This is the cancelled-flag pattern already used by fetchCoverage below.
    */
   const searchSeq = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const runSearch = useCallback(
     async (term: string, texts: TextId[], useSemantic = semantic) => {
@@ -270,6 +271,25 @@ function SearchInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
+  // One keyboard shortcut for the one entry point: focus the same field a
+  // first-time reader taps. `/` is skipped while typing so ordinary prose and
+  // scripture searches are not interrupted.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.isContentEditable ||
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '');
+      const shortcut = (event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !typing);
+      if (!shortcut) return;
+      event.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     void runSearch(input, activeTexts);
@@ -299,6 +319,7 @@ function SearchInner() {
       <input
         value={input}
         onChange={(e) => setInput(e.target.value)}
+        ref={inputRef}
         placeholder={t('placeholder')}
         aria-label={t('heroSearchLabel')}
         className="composer-input"
@@ -415,8 +436,19 @@ function SearchInner() {
               </p>
             ) : null}
 
-            <div className="mt-10">
-              <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-fg-faint">{t('heroTryOne')}</h2>
+            {/*
+                One entry point on arrival. The suggestions, topics and theme
+                chips are all useful, but stacked under the input they turned a
+                one-field page into a wall of choices. A native disclosure keeps
+                them one tap away without competing with the search box.
+            */}
+            <details className="group mt-8">
+              <summary className="cursor-pointer list-none text-xs font-medium text-accent underline underline-offset-4">
+                {t('startHere')}
+              </summary>
+              <div className="mt-1">
+                <div className="mt-6">
+                  <h2 className="mb-3 text-[11px] font-medium uppercase tracking-wider text-fg-faint">{t('heroTryOne')}</h2>
               <div className="grid gap-2 sm:grid-cols-2">
                 {SUGGESTED.map((s) => (
                   <button
@@ -481,6 +513,8 @@ function SearchInner() {
                 ))}
               </div>
             </div>
+              </div>
+            </details>
           </div>
         ) : (
           <>

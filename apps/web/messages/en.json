@@ -62,6 +62,7 @@
     "matchedOriginal": "Matched in the original text",
     "heroSearchLabel": "Search sacred texts",
     "heroTryOne": "Try one",
+    "startHere": "Start here",
     "unaddressedTitle": "These texts do not address this",
     "unaddressedBody": "The passages below are the closest literal matches, and they do not speak to what you asked. That is an answer rather than a failed search: no passage in the searched texts addresses it.",
     "partialTitle": "These texts touch on this rather than addressing it",
@@ -557,5 +558,14 @@
     "body": "Install it for a home-screen shortcut. Already-open pages keep working offline; search and passages need a connection.",
     "button": "Install",
     "dismiss": "Dismiss"
+  },
+  "scoreInfo": {
+    "open": "Explain this score",
+    "title": "What this number means",
+    "jev": "The hosted model judged this connection and returned a score. The number is a weighted judgement, not a fact about the text.",
+    "local": "A model running on this machine judged this connection.",
+    "derived": "No model was available. The number comes from word and theme overlap, labelled so you can tell it apart from a model judgement.",
+    "manual": "A curator assigned this.",
+    "literal": "This percentage is full-text relevance: how much of your query the passage actually contains. It is shown only when it is the thing that ordered the list."
   }
 }

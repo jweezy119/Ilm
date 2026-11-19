@@ -9,6 +9,7 @@ import { getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percen
 import { highlightTerm } from '@/lib/highlight';
 import { useMediaQuery, FINE_POINTER_QUERY } from '@/lib/useMediaQuery';
 import { PASSAGE_DRAG_TYPE } from '@/components/CompareTray';
+import { ScoreExplainer } from '@/components/ScoreExplainer';
 
 export function PassageCard({
   passage,
@@ -89,6 +90,7 @@ export function PassageCard({
             {percent(score)}
           </span>
         ) : null}
+        {score !== undefined && semanticScore === undefined ? <ScoreExplainer kind="literal" /> : null}
       </header>
 
       {passage.originalText ? (

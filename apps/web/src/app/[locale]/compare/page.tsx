@@ -9,6 +9,7 @@ import type { Alignment, Passage } from '@ilm/shared';
 import { api, ApiError, type ComparisonResult } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { ShareButton } from '@/components/ShareButton';
+import { ScoreExplainer } from '@/components/ScoreExplainer';
 import { useComparisonStore } from '@/store';
 import { segmentByPhrases } from '@/lib/highlighter';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
@@ -187,6 +188,7 @@ function CompareInner() {
                         <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] dark:bg-ink-800">{alignment.type.replace(/_/g, ' ')}</span>
                         <span className="font-mono text-xs text-ink-500">{percent(alignment.strength)}</span>
                         <SourceBadge source={alignment.source} />
+                        <ScoreExplainer source={alignment.source} />
                         {alignment.notes ? <span className="text-xs text-ink-500">{alignment.notes}</span> : null}
                       </div>
                       <p className="text-xs text-ink-600 dark:text-ink-400">

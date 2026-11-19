@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import type { CrossExaminationResponse, TextId } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { useComparisonStore } from '@/store';
+import { ScoreExplainer } from '@/components/ScoreExplainer';
 
 const TEXT_COLORS: Record<TextId, string> = {
   quran: 'text-emerald-500',
@@ -160,9 +161,10 @@ export function GlobalAiSidebar() {
             <div className="space-y-6">
               <div className="border-b border-line pb-4">
                 <h3 className="text-xl font-medium">“{result.query}”</h3>
-                <p className="mt-1 text-xs text-fg-faint">
-                  {t(SOURCE_KEY[result.source] ?? 'sourceUnknown')}
-                </p>
+                <div className="mt-1 flex items-center gap-1 text-xs text-fg-faint">
+                  <span>{t(SOURCE_KEY[result.source] ?? 'sourceUnknown')}</span>
+                  <ScoreExplainer source={result.source} />
+                </div>
               </div>
 
               {!hasResult ? <p className="text-sm text-fg-muted">{t('noAnswer')}</p> : null}

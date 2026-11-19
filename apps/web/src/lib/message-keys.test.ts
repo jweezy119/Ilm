@@ -26,6 +26,7 @@ const FILES = [
   'src/components/ShareButton.tsx',
   'src/components/CompareTray.tsx',
   'src/components/InstallApp.tsx',
+  'src/components/ScoreExplainer.tsx',
   'src/components/ReadAloud.tsx',
   'src/components/RecitationPlayer.tsx',
   'src/app/[locale]/journeys/page.tsx',

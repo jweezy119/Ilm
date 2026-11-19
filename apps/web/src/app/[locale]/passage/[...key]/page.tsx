@@ -18,6 +18,7 @@ import { RecitationPlayer, useRecitationVerse } from '@/components/RecitationPla
 import { ReadAloud } from '@/components/ReadAloud';
 import { GLOSSARY_TEXTS } from '@/lib/glossary';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
+import { ScoreExplainer } from '@/components/ScoreExplainer';
 import { TranslationSwitcher, useTranslationChoice } from '@/components/TranslationSwitcher';
 import { useSettingsStore } from '@/store';
 import { cn, getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, TEXT_STYLES } from '@/lib/utils';
@@ -438,10 +439,13 @@ function RecommendationPanel({ passage }: { passage: Passage }) {
           re-ranks without re-running the model.
         </p>
         {state.status === 'ready' && state.data ? (
-          <p className="mt-1 text-[11px] text-ink-500">
-            {SOURCE_SENTENCE[state.data.source]}
-            {state.data.cachedCount > 0 ? `, ${state.data.cachedCount} from cache` : ''}.
-          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-ink-500">
+            <span>
+              {SOURCE_SENTENCE[state.data.source]}
+              {state.data.cachedCount > 0 ? `, ${state.data.cachedCount} from cache` : ''}.
+            </span>
+            <ScoreExplainer source={state.data.source} />
+          </div>
         ) : null}
         <label className="mt-2 flex items-center gap-2 text-xs text-ink-600 dark:text-ink-400">
           <input type="checkbox" checked={excludeSameText} onChange={(e) => setExcludeSameText(e.target.checked)} />
