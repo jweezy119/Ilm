@@ -95,18 +95,33 @@ const TALMUD_TRACTATES = [
 // HTTP
 // ============================================================================
 
-async function getJson<T>(url: string, label: string, attempts = 3): Promise<T> {
+/**
+ * Sefaria rate-limits bursts with HTTP 429. Two half-second retries were not
+ * enough: a Torah ingest died at Genesis.10 after ten fast requests. Honour
+ * Retry-After when it is sent, otherwise back off exponentially with a little
+ * jitter so parallel ingests do not retry in lockstep.
+ */
+export async function getJson<T>(url: string, label: string, attempts = 6): Promise<T> {
+  const retryBase = Number(process.env.INGEST_RETRY_BASE_MS ?? 1000);
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const response = await fetch(url, { headers: { accept: 'application/json' } });
       if (response.status === 404) throw Object.assign(new Error(`${label}: 404`), { notFound: true });
+      if (response.status === 429) {
+        const seconds = Number(response.headers.get('retry-after'));
+        throw Object.assign(new Error(`${label}: HTTP 429`), {
+          retryAfterMs: Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0,
+        });
+      }
       if (!response.ok) throw new Error(`${label}: HTTP ${response.status}`);
       return (await response.json()) as T;
     } catch (error) {
       const notFound = (error as { notFound?: boolean }).notFound;
       if (notFound || attempt === attempts) throw error;
-      const backoff = 500 * 2 ** (attempt - 1);
-      console.warn(`  retry ${attempt}/${attempts - 1} for ${label} in ${backoff}ms`);
+      const retryAfter = (error as { retryAfterMs?: number }).retryAfterMs ?? 0;
+      const jitter = Math.floor(Math.random() * Math.min(250, retryBase));
+      const backoff = retryAfter > 0 ? retryAfter : Math.min(60_000, retryBase * 2 ** (attempt - 1)) + jitter;
+      console.warn(`  retry ${attempt}/${attempts - 1} for ${label} in ${Math.round(backoff / 1000)}s`);
       await sleep(backoff);
     }
   }
@@ -347,12 +362,15 @@ interface SefariaChapterResponse {
 }
 
 
+/** A short pause between Sefaria chapters avoids the burst limit entirely. */
+const SEFARIA_DELAY_MS = Number(process.env.SEFARIA_DELAY_MS ?? 750);
+const sleepBetweenSefariaRequests = () => sleep(SEFARIA_DELAY_MS);
+
 /** Fetch one Sefaria chapter as parallel English and original-language segments. */
 async function fetchSefariaChapter(ref: string): Promise<{ en: string[]; original: string[] } | null> {
   const data = await getJson<SefariaChapterResponse>(
     `${SEFARIA_API}/texts/${encodeURIComponent(ref)}?context=0&commentary=0&pad=0&wrap_per_vertex=0`,
-    `sefaria ${ref}`,
-    2
+    `sefaria ${ref}`
   );
 
   const en = Array.isArray(data.text) ? data.text : [];
@@ -385,6 +403,7 @@ export async function ingestTorah(): Promise<number> {
     let bookVerses = 0;
 
     for (let chapter = 1; chapter <= chapterCount; chapter += 1) {
+      await sleepBetweenSefariaRequests();
       const data = await fetchSefariaChapter(`${book}.${chapter}`);
       if (!data) continue;
 
@@ -466,6 +485,7 @@ export async function ingestTalmud(options: { limit?: number } = {}): Promise<nu
     for (let chapter = 1; chapter <= 12; chapter += 1) {
       let data: { en: string[]; original: string[] } | null;
       try {
+        await sleepBetweenSefariaRequests();
         data = await fetchSefariaChapter(`Mishnah_${sefariaTitle}.${chapter}`);
       } catch {
         data = null;
