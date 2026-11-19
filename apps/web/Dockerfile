@@ -23,6 +23,11 @@ ARG NEXT_PUBLIC_SITE_URL=
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_CONTACT_EMAIL=
 ENV NEXT_PUBLIC_CONTACT_EMAIL=$NEXT_PUBLIC_CONTACT_EMAIL
+# Optional Basic gate for a quick tunnel. Both values must be set to enable it.
+ARG ILM_BASIC_USER=
+ENV ILM_BASIC_USER=$ILM_BASIC_USER
+ARG ILM_BASIC_PASS=
+ENV ILM_BASIC_PASS=$ILM_BASIC_PASS
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 RUN npm run build:shared && npm run build:web

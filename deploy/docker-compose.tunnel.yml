@@ -72,11 +72,15 @@ services:
         NEXT_INTERNAL_API_URL: http://api:4000
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
         NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+        ILM_BASIC_USER: ${ILM_BASIC_USER:-}
+        ILM_BASIC_PASS: ${ILM_BASIC_PASS:-}
     restart: unless-stopped
     environment:
       NEXT_INTERNAL_API_URL: http://api:4000
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
       NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+      ILM_BASIC_USER: ${ILM_BASIC_USER:-}
+      ILM_BASIC_PASS: ${ILM_BASIC_PASS:-}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

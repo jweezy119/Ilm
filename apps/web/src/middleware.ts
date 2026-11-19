@@ -1,4 +1,5 @@
 import createMiddleware from 'next-intl/middleware';
+import { NextResponse, type NextRequest } from 'next/server';
 import { routing } from './i18n/routing';
 
 /**
@@ -15,8 +16,39 @@ import { routing } from './i18n/routing';
  * cached document responses, so a reader would get an id sometimes and not
  * others, with nothing to explain the difference. One mechanism, in the layer
  * that owns the data.
+ *
+ * The optional Basic gate is for a quick tunnel, which has no DNS or Cloudflare
+ * Access in front of it. It guards page requests only; /api and static assets
+ * are excluded by the matcher below. Unset either variable and there is no gate.
  */
-export default createMiddleware(routing);
+const intlMiddleware = createMiddleware(routing);
+
+function unauthorized(): NextResponse {
+  return new NextResponse('Authentication required', {
+    status: 401,
+    headers: { 'WWW-Authenticate': 'Basic realm="Ilm", charset="UTF-8"' },
+  });
+}
+
+function authorized(request: NextRequest): boolean {
+  const user = process.env.ILM_BASIC_USER;
+  const password = process.env.ILM_BASIC_PASS;
+  if (!user || !password) return true;
+
+  const header = request.headers.get('authorization');
+  if (!header?.startsWith('Basic ')) return false;
+  try {
+    const [givenUser, ...parts] = atob(header.slice(6)).split(':');
+    return givenUser === user && parts.join(':') === password;
+  } catch {
+    return false;
+  }
+}
+
+export default function middleware(request: NextRequest) {
+  if (!authorized(request)) return unauthorized();
+  return intlMiddleware(request);
+}
 
 export const config = {
   // Everything except API routes, Next internals, and anything with a file
