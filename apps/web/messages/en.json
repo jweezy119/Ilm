@@ -86,6 +86,7 @@
     "narrow": "narrow",
     "narrowed": "narrowed · {count} texts",
     "rankByMeaning": "Rank by meaning",
+    "slowNetwork": "Slow connection — ranking literally to keep results fast.",
     "crossLingualHeading": "The same theme, in the original languages",
     "crossLingualBody": "These words were read out of the texts themselves. They are ranked below your own words, so most of these passages are not in the results above — {count} more {count, plural, one {passage} other {passages}} across {texts, plural, one {one text} other {# texts}}.",
     "crossLingualTerm": "{count} more"

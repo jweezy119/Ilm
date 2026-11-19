@@ -14,6 +14,8 @@ import { PassageCard } from '@/components/PassageCard';
 import { VerdictPanel } from '@/components/VerdictPanel';
 import { useComparisonStore, useSearchStore } from '@/store';
 import { fetchCoverage } from '@/lib/coverage';
+import { useSlowConnection } from '@/lib/useSlowConnection';
+import { useInView } from '@/lib/useInView';
 import { cn, getTextLabel, TEXT_IDS } from '@/lib/utils';
 
 const SUGGESTED = [
@@ -117,6 +119,11 @@ function SearchInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [semantic, setSemantic] = useState(true);
+  const [semanticOverridden, setSemanticOverridden] = useState(false);
+  const slowConnection = useSlowConnection();
+  // The connection may choose literal ranking, but the reader can always
+  // override it. Until they do, the UI shows the ranking that actually ran.
+  const effectiveSemantic = semanticOverridden ? semantic : !slowConnection;
   // Which texts this deployment can actually search. Null until it arrives, and
   // the filters stay neutral until then rather than guessing.
   const [unindexed, setUnindexed] = useState<string[] | null>(null);
@@ -160,7 +167,7 @@ function SearchInner() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const runSearch = useCallback(
-    async (term: string, texts: TextId[], useSemantic = semantic) => {
+    async (term: string, texts: TextId[], useSemantic = effectiveSemantic) => {
       const trimmed = term.trim();
       if (!trimmed) return;
 
@@ -198,7 +205,7 @@ function SearchInner() {
         if (!isStale()) setLoading(false);
       }
     },
-    [setQuery, setResponse, remember, router, semantic]
+    [setQuery, setResponse, remember, router, effectiveSemantic]
   );
 
   /*
@@ -298,6 +305,18 @@ function SearchInner() {
   const results = response?.results ?? [];
   const hasSearched = Boolean(query) && !loading;
   const trayFull = passageKeys.length >= 8;
+
+  // Forty result rows are a lot to render at once on a phone. Start with a
+  // screenful and grow as the sentinel comes into view; the full result count
+  // above still says how many passages matched.
+  const [visibleResults, setVisibleResults] = useState(12);
+  const { ref: moreResultsRef, inView: moreResultsInView } = useInView<HTMLDivElement>();
+  useEffect(() => {
+    setVisibleResults(12);
+  }, [response]);
+  useEffect(() => {
+    if (moreResultsInView) setVisibleResults((count) => Math.min(count + 12, results.length));
+  }, [moreResultsInView, results.length]);
 
   // The composer's own text field, duplicated into state that resets on submit so
   // that a sent question leaves the field empty the way a chat composer does.
@@ -631,12 +650,18 @@ function SearchInner() {
                     <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] text-fg-faint">
                       <input
                         type="checkbox"
-                        checked={semantic}
-                        onChange={(e) => setSemantic(e.target.checked)}
+                        checked={effectiveSemantic}
+                        onChange={(e) => {
+                          setSemanticOverridden(true);
+                          setSemantic(e.target.checked);
+                        }}
                         className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
                       />
                       {t('rankByMeaning')}
                     </label>
+                    {slowConnection && !semanticOverridden ? (
+                      <span className="w-full text-[11px] text-fg-faint">{t('slowNetwork')}</span>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -672,7 +697,7 @@ function SearchInner() {
                 ) : null}
 
                 <div className="mt-2">
-                  {results.map((result) => (
+                  {results.slice(0, visibleResults).map((result) => (
                     <PassageCard
                       key={result.passage.id}
                       passage={result.passage}
@@ -688,6 +713,9 @@ function SearchInner() {
                       onToggleCompare={toggle}
                     />
                   ))}
+                  {visibleResults < results.length ? (
+                    <div ref={moreResultsRef} aria-hidden className="h-1" />
+                  ) : null}
                 </div>
               </>
             ) : response?.verdict === 'unaddressed' ? (

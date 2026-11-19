@@ -18,6 +18,8 @@ import {
 import { getTextLabel, getLanguageDirection, getScriptFont, TEXT_IDS, cn } from '@/lib/utils';
 import { useTextBooks } from '@/lib/useTextBooks';
 import { useInBookSearch } from '@/lib/useInBookSearch';
+import { useInView } from '@/lib/useInView';
+import { runWhenIdle } from '@/lib/idle';
 import { Page } from '@/components/Shell';
 import { RecitationPlayer } from '@/components/RecitationPlayer';
 import { usePodcast } from '@/components/PodcastContext';
@@ -390,6 +392,16 @@ function BookPicker({
   );
 }
 
+type ChapterData = Awaited<ReturnType<typeof import('@/lib/api').api.readBook>>;
+
+/**
+ * A tiny cache of adjacent chapters, populated only while the browser is idle.
+ * It holds one screen of reading at a time, never a search answer.
+ */
+const chapterCache = new Map<string, ChapterData>();
+const chapterKey = (textId: TextId, bookId: string, chapter: number, translation?: string) =>
+  `${textId}:${bookId}:${chapter}:${translation ?? ''}`;
+
 /** The chapter itself. */
 function ReadingPane({
   textId,
@@ -414,8 +426,10 @@ function ReadingPane({
   onPrev: () => void;
   onNext: () => void;
 }) {
-  const [data, setData] = useState<Awaited<ReturnType<typeof import('@/lib/api').api.readBook>> | null>(null);
+  const [data, setData] = useState<ChapterData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [visibleVerses, setVisibleVerses] = useState(20);
+  const { ref: moreVersesRef, inView: moreVersesInView } = useInView<HTMLDivElement>();
   const { playQueue, setNavigationUrls } = usePodcast();
 
   const speechSegments = useMemo(
@@ -449,11 +463,17 @@ function ReadingPane({
 
   useEffect(() => {
     let cancelled = false;
-    setData(null);
+    const key = chapterKey(textId, bookId, chapter, translation);
+    const cached = chapterCache.get(key);
+    setData(cached ?? null);
+    setVisibleVerses(20);
     setError(null);
+    if (cached) return;
+
     void import('@/lib/api')
       .then(({ api }) => api.readBook(textId, bookId, { chapter, translation }))
       .then((result) => {
+        chapterCache.set(key, result);
         if (!cancelled) setData(result);
       })
       .catch((caught) => {
@@ -463,6 +483,24 @@ function ReadingPane({
       cancelled = true;
     };
   }, [textId, bookId, chapter, translation]);
+
+  // Turning the page should feel immediate. Fetch the next chapter only when
+  // the reader has stopped interacting, and give up quietly on a weak link.
+  useEffect(() => {
+    if (!data) return;
+    const key = chapterKey(textId, bookId, chapter + 1, translation);
+    if (chapterCache.has(key)) return;
+    return runWhenIdle(() => {
+      void import('@/lib/api')
+        .then(({ api }) => api.readBook(textId, bookId, { chapter: chapter + 1, translation }))
+        .then((result) => chapterCache.set(key, result))
+        .catch(() => undefined);
+    });
+  }, [data, textId, bookId, chapter, translation]);
+
+  useEffect(() => {
+    if (moreVersesInView) setVisibleVerses((count) => Math.min(count + 20, data?.verses.length ?? 0));
+  }, [moreVersesInView, data?.verses.length]);
 
   const hasOriginal = useMemo(() => data?.verses.some((v) => v.originalText && v.originalText !== v.text) ?? false, [data]);
 
@@ -631,7 +669,7 @@ function ReadingPane({
       ) : null}
 
       <div className="max-w-2xl">
-        {data.verses.map((verse) => {
+        {data.verses.slice(0, visibleVerses).map((verse) => {
           // The original reads in its own script's direction, not its corpus's.
           const direction = getLanguageDirection(verse.language);
           return (
@@ -670,6 +708,9 @@ function ReadingPane({
             </div>
           );
         })}
+        {visibleVerses < data.verses.length ? (
+          <div ref={moreVersesRef} aria-hidden className="h-1" />
+        ) : null}
       </div>
 
       <nav className="mt-8 flex items-center justify-between border-t border-line pt-4" aria-label="Book navigation">

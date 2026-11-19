@@ -86,6 +86,7 @@
     "narrow": "تضييق",
     "narrowed": "مُضيَّق · {count} نصوص",
     "rankByMeaning": "الترتيب بالمعنى",
+    "slowNetwork": "اتصال بطيء — الترتيب حرفي حتى تصل النتائج بسرعة.",
     "crossLingualHeading": "الموضوع نفسه، بلغات المصدر",
     "crossLingualBody": "قرئت هذه الكلمات من النصوص نفسها. وهي مرتّبة دون كلماتك، لذا معظم هذه الآيات ليست في النتائج أعلاه — {count} آية إضافية في {texts, plural, one {نص واحد} other {# نصوص}}.",
     "crossLingualTerm": "{count} إضافية"

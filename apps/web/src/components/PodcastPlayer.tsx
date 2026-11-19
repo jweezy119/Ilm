@@ -8,6 +8,7 @@ import { speechLanguage, splitForSpeech, SPEECH_RATES } from '@/lib/speech';
 import { cn } from '@/lib/utils';
 import { voiceProblem } from '@/lib/voice-help';
 import { createSpeechEngine, type SpeechEngine, type SpeechPiece } from '@/lib/speech-engine';
+import { usePauseOnHidden } from '@/lib/usePauseOnHidden';
 
 export interface SpeechSegment {
   label: string;
@@ -57,6 +58,7 @@ export function PodcastPlayer({
     engineRef.current?.stop();
     setPlaying(false);
   }, []);
+  usePauseOnHidden(stopEngine);
 
   useEffect(() => {
     return () => {

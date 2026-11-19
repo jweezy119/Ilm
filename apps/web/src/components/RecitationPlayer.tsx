@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { RECITERS, DEFAULT_RECITER, RECITATION_SPEEDS, ayahAudioUrl, verseLabel } from '@/lib/reciters';
 import { useEnglishVoice, recordedFor } from '@/lib/english-voice';
 import { useWakeLock } from '@/lib/useWakeLock';
+import { usePauseOnHidden } from '@/lib/usePauseOnHidden';
 
 /**
  * The English option in the voice selector.
@@ -95,6 +96,18 @@ export function RecitationPlayer({
    * which they got by anything except being told.
    */
   const english = useEnglishVoice();
+
+  // Switching tabs must not leave a chapter reading to itself. The same stop
+  // path as the pause button, so a hidden tab and a pressed pause agree.
+  const pauseOnHidden = useCallback(() => {
+    if (!playing) return;
+    stopped.current = true;
+    audioRef.current?.pause();
+    english.stop();
+    setPlaying(false);
+    setPhase(null);
+  }, [playing, english]);
+  usePauseOnHidden(pauseOnHidden);
   const [englishSource, setEnglishSource] = useState<'recorded' | 'device' | 'none'>('none');
 
   const current = verses[index];
