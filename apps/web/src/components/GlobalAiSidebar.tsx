@@ -5,6 +5,7 @@ import { Bot, X, MessageSquare, Loader2, ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { CrossExaminationResponse, TextId } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
+import { useComparisonStore } from '@/store';
 
 const TEXT_COLORS: Record<TextId, string> = {
   quran: 'text-emerald-500',
@@ -49,6 +50,7 @@ const SOURCE_KEY: Record<string, string> = {
 export function GlobalAiSidebar() {
   const t = useTranslations('crossExamine');
   const tc = useTranslations('common');
+  const trayCount = useComparisonStore((s) => s.passageKeys.length);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -93,7 +95,7 @@ export function GlobalAiSidebar() {
         onClick={() => setIsOpen(true)}
         // A finger clears the floating podcast player; on desktop the old
         // position is kept so the button stays out of the reading column.
-        className="fixed bottom-32 end-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-xl transition-transform hover:scale-105 active:scale-95 md:bottom-24 md:end-6"
+        className={`fixed ${trayCount > 0 ? 'bottom-40' : 'bottom-32'} end-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-xl transition-transform hover:scale-105 active:scale-95 md:bottom-24 md:end-6`}
         title={t('open')}
         aria-label={t('open')}
       >

@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import { Search, X, Loader2, AlertTriangle, ArrowRight, Layers } from 'lucide-react';
+import { Search, X, Loader2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { parseCitation, TextIdSchema, THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { CitationJump } from '@/components/CitationJump';
@@ -575,16 +575,6 @@ function SearchInner() {
                   >
                     {narrowedFromDefault ? t('narrowed', { count: activeTexts.length }) : t('narrow')}
                   </button>
-                  {passageKeys.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => router.push('/compare')}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent hover:text-accent-fg"
-                    >
-                      <Layers className="h-3.5 w-3.5" />
-                      Compare {passageKeys.length}
-                    </button>
-                  ) : null}
                 </div>
 
                 {/*

@@ -36,6 +36,9 @@ export function useMediaQuery(query: string): boolean {
 /** The `lg` breakpoint the layout switches to, from tailwind.config.ts. */
 export const DESKTOP_QUERY = '(min-width: 1024px)';
 
+/** Native drag-and-drop is a desktop affordance; on touch, tap the button. */
+export const FINE_POINTER_QUERY = '(hover: hover) and (pointer: fine)';
+
 export function usePrefersReducedMotion(): boolean {
   return useMediaQuery('(prefers-reduced-motion: reduce)');
 }

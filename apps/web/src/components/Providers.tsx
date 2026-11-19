@@ -4,6 +4,7 @@ import { ThemeProvider } from './ThemeProvider';
 import { PodcastProvider } from './PodcastContext';
 import { GlobalPodcastPlayer } from './GlobalPodcastPlayer';
 import { GlobalAiSidebar } from './GlobalAiSidebar';
+import { CompareTray } from './CompareTray';
 
 /**
  * Client boundary for the app shell.
@@ -16,6 +17,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProvider>
       <PodcastProvider>
         {children}
+        <CompareTray />
         <GlobalPodcastPlayer />
         <GlobalAiSidebar />
       </PodcastProvider>

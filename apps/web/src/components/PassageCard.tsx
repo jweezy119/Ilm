@@ -7,6 +7,8 @@ import { Plus, Check, Scale } from 'lucide-react';
 import type { Passage, SearchResult } from '@ilm/shared';
 import { getTextChipClass, getTextDirection, getTextLabel, getScriptFont, percent, truncate, cn } from '@/lib/utils';
 import { highlightTerm } from '@/lib/highlight';
+import { useMediaQuery, FINE_POINTER_QUERY } from '@/lib/useMediaQuery';
+import { PASSAGE_DRAG_TYPE } from '@/components/CompareTray';
 
 export function PassageCard({
   passage,
@@ -40,6 +42,7 @@ export function PassageCard({
   const href = `/passage/${passage.passageKey.split('/').map(encodeURIComponent).join('/')}`;
   const t = useTranslations('search');
   const direction = getTextDirection(passage.textId);
+  const canDrag = useMediaQuery(FINE_POINTER_QUERY);
 
   return (
     /*
@@ -134,6 +137,15 @@ export function PassageCard({
           <button
             type="button"
             onClick={() => onToggleCompare(passage)}
+            // On desktop the same button is also a drag handle for the tray.
+            // Touch devices keep the click path: HTML5 drag has no touch
+            // equivalent, and a fake one would fight with scrolling.
+            draggable={canDrag}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(PASSAGE_DRAG_TYPE, passage.passageKey);
+              event.dataTransfer.effectAllowed = 'copy';
+            }}
+            title={canDrag ? 'Drag to the comparison tray, or click to add' : undefined}
             className={cn(
               'grid h-7 w-7 place-items-center rounded-full border transition-colors',
               inComparison

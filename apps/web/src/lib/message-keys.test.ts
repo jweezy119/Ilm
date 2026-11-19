@@ -24,6 +24,7 @@ const FILES = [
   'src/components/AddToJourney.tsx',
   'src/components/GlobalAiSidebar.tsx',
   'src/components/ShareButton.tsx',
+  'src/components/CompareTray.tsx',
   'src/components/ReadAloud.tsx',
   'src/components/RecitationPlayer.tsx',
   'src/app/[locale]/journeys/page.tsx',

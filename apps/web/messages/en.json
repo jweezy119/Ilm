@@ -529,5 +529,13 @@
     "open": "Share",
     "copied": "Copied",
     "failed": "Could not copy to the clipboard."
+  },
+  "compareTray": {
+    "label": "Comparison tray",
+    "selected": "{count} selected",
+    "open": "Compare",
+    "clear": "Clear",
+    "remove": "Remove {key} from comparison",
+    "dropHere": "Drop to add to comparison"
   }
 }

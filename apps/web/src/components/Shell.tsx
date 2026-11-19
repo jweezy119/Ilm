@@ -8,7 +8,6 @@ import {
   Moon,
   Sparkles,
   Settings,
-  ArrowLeftRight,
   Search,
   PanelLeftClose,
   PanelLeftOpen,
@@ -141,7 +140,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Reading routes give their vertical space back to the text. See the header.
   const scrollAwayHeader = pathname.startsWith('/passage');
   const stored = useUiStore((s) => s.theme);
-  const count = useComparisonStore((s) => s.passageKeys.length);
+  const trayCount = useComparisonStore((s) => s.passageKeys.length);
   const recent = useSearchStore((s) => s.recent);
   const clearRecent = useSearchStore((s) => s.clearRecent);
 
@@ -291,23 +290,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
               {t('disclaimer')}
             </p>
           ) : null}
-          {/* The tray, now that it is not a nav row. Reaching a comparison you have
-              already assembled is a one-off act, so it lives where the controls
-              live rather than in the list of places you can go. */}
-          {!collapsed && count > 0 ? (
-            <Link
-              href="/compare"
-              onClick={() => setMobileOpen(false)}
-              className="mb-2 flex items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent"
-            >
-              <ArrowLeftRight className="h-4 w-4 shrink-0" />
-              {t('compare')}
-              <span className="ms-auto rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-fg tabular-nums">
-                {count}
-              </span>
-            </Link>
-          ) : null}
-
           <Link
             href="/settings"
             onClick={() => setMobileOpen(false)}
@@ -449,7 +431,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
         {/* The skip link targets this, so it needs an id of its own: the rail is
             before it in the DOM and holds the first focusable elements. */}
-        <main id="ilm-content" tabIndex={-1} className="min-w-0 flex-1">
+        <main
+          id="ilm-content"
+          tabIndex={-1}
+          className={[
+            'min-w-0 flex-1',
+            // The tray is fixed to the bottom edge on a phone. Without this the
+            // last result sits underneath it with no way to scroll clear.
+            trayCount > 0 && pathname !== '/compare' ? 'pb-24 md:pb-0' : '',
+          ].join(' ')}
+        >
           {children}
         </main>
       </div>
