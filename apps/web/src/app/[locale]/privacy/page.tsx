@@ -4,6 +4,7 @@ import { hasLocale } from 'next-intl';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
 import { Page, PageHeader } from '@/components/Shell';
+import { contactAddress } from '@/lib/contact';
 
 /**
  * The privacy policy and the terms, as one page with a toggle.
@@ -51,7 +52,7 @@ async function PrivacyPage({ params }: { params: Promise<{ locale: string }> }) 
         </section>
         <section>
           <h2 className="font-medium text-fg">{n('contact')}</h2>
-          <p className="mt-1.5">{t('rights')}</p>
+          <p className="mt-1.5">{t(contactAddress() ? 'rights' : 'rightsUnconfigured')}</p>
         </section>
         <p className="text-[13px] text-fg-faint">{t('changes')}</p>
       </div>

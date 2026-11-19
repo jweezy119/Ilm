@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
 import { Page, PageHeader } from '@/components/Shell';
 import { ContactLink } from '@/components/ContactLink';
+import { contactAddress } from '@/lib/contact';
 
 async function TermsPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -31,7 +32,7 @@ async function TermsPage({ params }: { params: Promise<{ locale: string }> }) {
         ))}
         <section className="border-t border-line pt-4 dark:border-white/10">
           <h2 className="font-medium text-fg">{n('contact')}</h2>
-          <p className="mt-1.5">{t('contact')}</p>
+          <p className="mt-1.5">{t(contactAddress() ? 'contact' : 'contactUnconfigured')}</p>
           <ContactLink />
         </section>
       </div>

@@ -17,6 +17,8 @@ const PAGES = [
   'src/app/[locale]/explore/page.tsx',
   'src/app/[locale]/settings/page.tsx',
   'src/app/[locale]/contact/page.tsx',
+  'src/app/[locale]/privacy/page.tsx',
+  'src/app/[locale]/terms/page.tsx',
 ];
 
 describe('reader-facing copy', () => {
@@ -36,6 +38,15 @@ describe('reader-facing copy', () => {
   it('keeps the pinned composer clear of the comparison tray', () => {
     const search = read('src/app/[locale]/page.tsx');
     expect(search).toContain("passageKeys.length > 0 ? 'bottom-24' : 'bottom-0'");
+  });
+
+  it('does not promise a contact address the deployment does not have', () => {
+    // Both legal pages used to say "the contact page has the address" even on
+    // deployments where the contact page says the opposite.
+    for (const page of ['privacy', 'terms']) {
+      const source = read(`src/app/[locale]/${page}/page.tsx`);
+      expect(source, `${page} promises an address unconditionally`).toContain('contactAddress() ?');
+    }
   });
 
   it('localises the reader-facing empty state', () => {

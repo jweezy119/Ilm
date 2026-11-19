@@ -379,6 +379,7 @@
       "thirdPartyBody": "A search query is sent to Jev, an external AI service we use, so the app can work out what kind of question you are asking and re-order results accordingly. The query text is sent. If you would rather it were not, the app still works: Jev is optional, and without it the app falls back to a deterministic method and labels every score as derived rather than model-produced.",
       "noSell": "We do not sell or share your data for advertising. There are no third-party advertising or analytics scripts on this site.",
       "rights": "Write to us and we will delete it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when — the contact page has the address.",
+      "rightsUnconfigured": "We would delete a search log on request. This deployment has no contact address configured, so there is no way to send that request; the contact page says so plainly.",
       "changes": "If this policy changes, the date below changes with it."
     },
     "terms": {
@@ -390,7 +391,8 @@
       "accuracyBody": "Ilm is not an authority on religion and should not be used as one. The search ranks passages by how well they match your words and, where a model was available, by a model's judgement of relevance. Every score says which of the two it was. Verbatim matches are exact and you can check them by reading. Theme tags come from a keyword classifier and are the weakest kind of match in the app, and the interface says so wherever they appear.",
       "quoteTitle": "Quoting from Ilm",
       "quoteBody": "The original-language texts are not subject to copyright. The English translations are each governed by their own rights, and several in this app are. Quote the language you want to quote and name the translation.",
-      "contact": "Write to us and we will delete it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when — the contact page has the address."
+      "contact": "Write to us and we will delete it. Because there are no accounts, we can only find a log by the query text it contains, so tell us what you searched for and when — the contact page has the address.",
+      "contactUnconfigured": "We would delete a search log on request. This deployment has no contact address configured, so there is no way to send that request; the contact page says so plainly."
     }
   },
   "contact": {
