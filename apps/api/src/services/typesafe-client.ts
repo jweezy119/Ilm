@@ -13,6 +13,7 @@ import { TypeSafeClient, choice, noul, score } from '@typesafe-ai/sdk';
 import type { ChoiceCriteria, EntryType, Questions, ScoreCriteria } from '@typesafe-ai/sdk';
 import type { ScoreSource } from '@ilm/shared';
 import { judgeBudget, recordJudgeUsage, reserveJudgeCall } from './judge-budget';
+import { LocalNeuralJudge } from './local-judge';
 
 export type { ChoiceCriteria, EntryType, Questions, ScoreCriteria };
 export { judgeBudget };
@@ -264,6 +265,13 @@ function buildChain(): JevJudge[] {
     );
   } else {
     chain.push(new UnavailableJudge(apiKey ? 'TYPESAFE_API_KEY is a placeholder' : 'TYPESAFE_API_KEY is not set'));
+  }
+
+  // Local quantized ONNX cross-encoder judge (`source: 'local'`).
+  // Runs offline with zero API keys when LOCAL_JUDGE_ENABLED=1.
+  const localJudge = new LocalNeuralJudge();
+  if (localJudge.available) {
+    chain.push(localJudge);
   }
 
   return chain;

@@ -66,7 +66,8 @@ import {
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
 import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
-import { isIndexReady, invalidateOramaIndex, indexedTextIds, engineName } from '../search/engine';
+import { isIndexReady, invalidateOramaIndex, indexedTextIds, engineName, compactIndexStats } from '../search/engine';
+import { isPackStorageEnabled } from '../lib/pack-store';
 import { getEmbeddingConfig } from '../services/embeddings';
 import { HttpError } from '../lib/errors';
 
@@ -246,7 +247,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         // Which engine answered, because the two rank differently: the in-process
         // index matches theme names and book slugs, Postgres matches the scripture.
         engine: engineName,
+        ...(engineName === 'compact' ? { compact: compactIndexStats() } : {}),
       },
+      storage: isPackStorageEnabled() ? 'pack' : 'postgres',
       // Kept for compatibility with anything already reading `jev`, but the chain
       // below is the real answer: `configured` is true only if some engine can run.
       jev: { configured: judge.available, reason: judge.reason },

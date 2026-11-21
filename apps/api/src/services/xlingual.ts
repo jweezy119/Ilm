@@ -364,6 +364,14 @@ export async function xlingualTermsForTheme(theme: string, limit = 4): Promise<X
   const entry = cache.get(theme);
   if (entry && Date.now() - entry.at < TTL_MS) return entry.terms;
 
+  const { getPackStoreIfEnabled } = await import('../lib/pack-store');
+  const packStore = getPackStoreIfEnabled();
+  if (packStore) {
+    const terms = packStore.getXlingualTermsForTheme(theme, limit);
+    cache.set(theme, { terms, at: Date.now() });
+    return terms;
+  }
+
   const { prisma } = await import('./passage');
   const rows = await prisma.xlingualTerm.findMany({
     where: { theme },

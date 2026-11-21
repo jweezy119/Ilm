@@ -8,6 +8,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/db';
 import { cached, catalogueCache } from '../lib/corpus-cache';
+import { getPackStoreIfEnabled } from '../lib/pack-store';
 import { Passage, TextId, BookMetadata, PassageKey, createPassageKey, TEXT_METADATA } from '@ilm/shared';
 import type { CrossReference } from '@prisma/client';
 
@@ -40,6 +41,8 @@ type PassageRow = Prisma.PassageGetPayload<{ include: typeof passageInclude }>;
 // ============================================================================
 
 export async function getPassageById(id: string): Promise<Passage | null> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassageByKey(id);
   return cached(`passageId:${id}`, async () => {
     const row = await prisma.passage.findUnique({ where: { id }, include: passageInclude });
     return row ? toPassage(row) : null;
@@ -47,6 +50,8 @@ export async function getPassageById(id: string): Promise<Passage | null> {
 }
 
 export async function getPassageByKey(key: string): Promise<Passage | null> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassageByKey(key);
   return cached(`passage:${key}`, async () => {
     const row = await prisma.passage.findUnique({ where: { passageKey: key }, include: passageInclude });
     return row ? toPassage(row) : null;
@@ -55,12 +60,16 @@ export async function getPassageByKey(key: string): Promise<Passage | null> {
 
 export async function getPassagesByIds(ids: string[]): Promise<Passage[]> {
   if (ids.length === 0) return [];
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassagesByKeys(ids);
   const rows = await prisma.passage.findMany({ where: { id: { in: ids } }, include: passageInclude });
   return orderByRequested(ids, rows.map(toPassage));
 }
 
 export async function getPassagesByKeys(keys: string[]): Promise<Passage[]> {
   if (keys.length === 0) return [];
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassagesByKeys(keys);
   const rows = await prisma.passage.findMany({ where: { passageKey: { in: keys } }, include: passageInclude });
   return orderByRequested(keys, rows.map(toPassage));
 }
@@ -78,6 +87,8 @@ function orderByRequested<T extends { passageKey: string }>(keys: string[], rows
 }
 
 export async function getPassagesByText(textId: TextId, limit = 100, offset = 0): Promise<Passage[]> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassagesByText(textId, limit, offset);
   const rows = await prisma.passage.findMany({
     where: { textId },
     orderBy: { verseOrder: 'asc' },
@@ -89,6 +100,8 @@ export async function getPassagesByText(textId: TextId, limit = 100, offset = 0)
 }
 
 export async function getPassagesByBook(textId: TextId, bookSlug: string, limit = 200, offset = 0): Promise<Passage[]> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassagesByBook(textId, bookSlug, limit, offset);
   const rows = await prisma.passage.findMany({
     where: { textId, bookSlug },
     orderBy: [{ chapterNum: 'asc' }, { verseNum: 'asc' }],
@@ -100,6 +113,8 @@ export async function getPassagesByBook(textId: TextId, bookSlug: string, limit 
 }
 
 export async function getPassagesByChapter(textId: TextId, bookSlug: string, chapter: number): Promise<Passage[]> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getPassagesByChapter(textId, bookSlug, chapter);
   return cached(`chapter:${textId}:${bookSlug}:${chapter}`, async () => {
     const rows = await prisma.passage.findMany({
       where: { textId, bookSlug, chapterNum: chapter },
@@ -284,6 +299,8 @@ export async function setPassageThemesBatch(entries: PassageThemeInput[]): Promi
 // ============================================================================
 
 export async function getBooks(textId: TextId): Promise<BookMetadata[]> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getBooks(textId);
   // The book list is read on every navigation and only changes when a corpus is
   // ingested, so it is held for an hour rather than looked up each time.
   return cached(
@@ -297,6 +314,8 @@ export async function getBooks(textId: TextId): Promise<BookMetadata[]> {
 }
 
 export async function getBook(textId: TextId, bookId: string): Promise<BookMetadata | null> {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getBook(textId, bookId);
   const book = await prisma.book.findUnique({ where: { textId_bookId: { textId, bookId } } });
   return book ? toBookMetadata(book) : null;
 }
@@ -403,6 +422,7 @@ export async function addCrossReference(data: {
  * `onlyDetected` skips a read when the caller is about to compute them anyway.
  */
 export async function getStoredCrossReferences(passageId: string, limit = 20): Promise<CrossReference[]> {
+  if (getPackStoreIfEnabled()) return [];
   return prisma.crossReference.findMany({
     where: { OR: [{ sourcePassageId: passageId }, { targetPassageId: passageId }] },
     orderBy: { strength: 'desc' },
@@ -439,6 +459,7 @@ export async function hasStoredCrossReferences(
   passageId: string,
   types: readonly string[] = MODEL_REFERENCE_TYPES
 ): Promise<boolean> {
+  if (getPackStoreIfEnabled()) return false;
   const count = await prisma.crossReference.count({
     where: {
       AND: [
@@ -451,6 +472,7 @@ export async function hasStoredCrossReferences(
 }
 
 export async function getCrossReferences(passageId: string, limit = 20) {
+  if (getPackStoreIfEnabled()) return [];
   return prisma.crossReference.findMany({
     where: { OR: [{ sourcePassageId: passageId }, { targetPassageId: passageId }] },
     orderBy: { strength: 'desc' },
@@ -464,6 +486,7 @@ export async function cacheAlignment(
   targetPassageId: string,
   alignment: { type: string; strength: number; matchedSegments: unknown[]; notes?: string }
 ): Promise<void> {
+  if (getPackStoreIfEnabled()) return;
   const data = {
     type: alignment.type,
     strength: alignment.strength,
@@ -478,12 +501,14 @@ export async function cacheAlignment(
 }
 
 export async function getCachedAlignment(sourcePassageId: string, targetPassageId: string) {
+  if (getPackStoreIfEnabled()) return null;
   return prisma.alignment.findUnique({
     where: { sourcePassageId_targetPassageId: { sourcePassageId, targetPassageId } },
   });
 }
 
 export async function getAlignments(passageId: string) {
+  if (getPackStoreIfEnabled()) return [];
   return prisma.alignment.findMany({
     where: { OR: [{ sourcePassageId: passageId }, { targetPassageId: passageId }] },
     orderBy: { strength: 'desc' },
@@ -496,6 +521,8 @@ export async function getAlignments(passageId: string) {
 // ============================================================================
 
 export async function getTextStats(textId: TextId) {
+  const pack = getPackStoreIfEnabled();
+  if (pack) return pack.getTextStats(textId);
   const themes = await prisma.passageTheme.findMany({
     where: { passage: { textId } },
     distinct: ['themeId'],

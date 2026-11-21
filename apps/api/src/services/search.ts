@@ -13,6 +13,7 @@ import { xlingualTermsForTheme } from './xlingual';
 import type { WidenedTerm, WidenedLabel } from './xlingual';
 import { classifySearchIntent, localIntent, expandQueryTheme, rerankForQuery, blendSearchScore, themeSearchTerms, significantTerms, type QueryExpansion, type ScoreSource } from './typesafe';
 import { matchesAnyReading } from '../lib/script-normalize';
+import { isPackStorageEnabled } from '../lib/pack-store';
 
 export { initializeOramaIndex };
 
@@ -125,14 +126,14 @@ export async function searchPassages(query: SearchQuery): Promise<SearchResponse
   const candidates = indexResult.hits
     .map((hit) => ({ hit, passage: byKey.get(hit.document.passageKey) }))
     .filter((c): c is { hit: typeof c.hit; passage: Passage } => Boolean(c.passage))
-    .map((c) => ({
-      ...c,
-      textScore: scoreCandidate(
-        normalizeBm25(c.hit.score),
-        c.hit.document.density,
-        termCoverage(c.passage, terms, indexResult.provenance?.get(c.passage.passageKey))
-      ),
-    }))
+    .map((c) => {
+      const lexicalCoverage = termCoverage(c.passage, terms, indexResult.provenance?.get(c.passage.passageKey));
+      const coverage = c.hit.document.matchedIn === 'semantic' ? Math.max(lexicalCoverage, 0.55) : lexicalCoverage;
+      return {
+        ...c,
+        textScore: scoreCandidate(normalizeBm25(c.hit.score), c.hit.document.density, coverage),
+      };
+    })
     /*
      * Sort by the score we are about to report, not by the index's BM25 order.
      *
@@ -537,6 +538,7 @@ export async function logSearch(params: {
   userId?: string;
   sessionId?: string;
 }): Promise<void> {
+  if (isPackStorageEnabled()) return;
   try {
     await prisma.searchLog.create({
       data: {

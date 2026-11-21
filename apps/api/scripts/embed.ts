@@ -19,17 +19,82 @@
  *   npx tsx --env-file=.env scripts/embed.ts --dry-run
  */
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
 import { prisma } from '../src/services/passage';
-import { embedMissingPassages, getEmbeddingConfig } from '../src/services/embeddings';
+import { embedMissingPassages, generateEmbeddings, getEmbeddingConfig } from '../src/services/embeddings';
 import { loadLocalEnv } from '../src/lib/env';
+import { CompactVectorIndex } from '../src/search/compact-vectors';
 
 loadLocalEnv();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function exportQuantizedVectors(args: string[], dryRun: boolean, limit: number): Promise<void> {
+  const outIdx = args.indexOf('--out');
+  const outPath = outIdx >= 0 ? args[outIdx + 1] : join(process.cwd(), 'data', 'vectors.ilm.vec.br');
+  const sqDimsIdx = args.indexOf('--sq-dims');
+  const sqDims = sqDimsIdx >= 0 ? Number(args[sqDimsIdx + 1]) : 128;
+
+  const rows = await prisma.passage.findMany({
+    select: { passageKey: true, primaryTranslation: true, originalText: true },
+    orderBy: [{ verseOrder: 'asc' }, { passageKey: 'asc' }],
+  });
+
+  const targetCount = Number.isFinite(limit) ? Math.min(rows.length, limit) : rows.length;
+  console.log(`🔢 Quantized vector export -> ${outPath} (${targetCount}/${rows.length} passages, SQ8 dims=${sqDims})`);
+  if (dryRun) {
+    console.log('DRY RUN: nothing written.');
+    return;
+  }
+
+  const startedAt = Date.now();
+  const batchSize = 64;
+  let vecIndex: CompactVectorIndex | null = null;
+
+  for (let start = 0; start < targetCount; start += batchSize) {
+    const slice = rows.slice(start, Math.min(targetCount, start + batchSize));
+    const inputs = slice.map((r) => (r.originalText ? `${r.primaryTranslation}\n${r.originalText}` : r.primaryTranslation));
+    const vectors = await generateEmbeddings(inputs);
+    if (!vecIndex && vectors[0]?.length) {
+      vecIndex = new CompactVectorIndex(rows.length, vectors[0].length, Math.min(vectors[0].length, sqDims));
+    }
+    if (vecIndex) {
+      for (let i = 0; i < vectors.length; i += 1) {
+        vecIndex.set(start + i, vectors[i]);
+      }
+    }
+    if ((start / batchSize) % 5 === 0 || start + slice.length >= targetCount) {
+      const done = start + slice.length;
+      const rate = done / Math.max(0.1, (Date.now() - startedAt) / 1000);
+      process.stdout.write(`  ${done}/${targetCount} (${(rate * 60).toFixed(0)}/min)\r`);
+    }
+  }
+  process.stdout.write('\n');
+
+  if (!vecIndex || vecIndex.size === 0) {
+    console.log('No vectors produced.');
+    return;
+  }
+
+  const rawBlob = vecIndex.serialize();
+  const compressed = brotliCompressSync(Buffer.from(rawBlob.buffer, rawBlob.byteOffset, rawBlob.byteLength), {
+    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 7 },
+  });
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, compressed);
+
+  console.log(
+    `✅ Exported ${vecIndex.size} quantized vectors in ${((Date.now() - startedAt) / 1000).toFixed(1)}s ` +
+      `(raw=${(rawBlob.byteLength / 1024 / 1024).toFixed(2)} MB -> brotli=${(compressed.byteLength / 1024 / 1024).toFixed(2)} MB)`
+  );
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const exportQuantized = args.includes('--export-quantized');
   const limitIndex = args.indexOf('--limit');
   const limit = limitIndex >= 0 ? Number(args[limitIndex + 1]) : Infinity;
 
@@ -38,6 +103,11 @@ async function main(): Promise<void> {
     console.log('No embedding provider configured.');
     console.log('  Local (no key, runs on CPU):  EMBEDDING_PROVIDER=local npx tsx scripts/embed.ts');
     console.log('  Hosted:                      set OPENROUTER_API_KEY or OPENAI_API_KEY');
+    return;
+  }
+
+  if (exportQuantized) {
+    await exportQuantizedVectors(args, dryRun, limit);
     return;
   }
 

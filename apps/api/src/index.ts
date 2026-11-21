@@ -18,6 +18,7 @@ import { HttpError } from './lib/errors';
 import { initializeOramaIndex } from './search/engine';
 import { prisma } from './services/passage';
 import { getJevJudge } from './services/typesafe-client';
+import { isPackStorageEnabled, loadPackStore } from './lib/pack-store';
 
 async function main(): Promise<void> {
   const app = Fastify({
@@ -108,6 +109,12 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 4000);
   const host = process.env.HOST ?? '0.0.0.0';
 
+  const packMode = isPackStorageEnabled();
+  if (packMode) {
+    const store = loadPackStore();
+    app.log.info(`ILM_STORAGE=pack active (${store.passageCount} passages loaded in memory — Postgres not required)`);
+  }
+
   // Pending migrations are applied before the server accepts traffic.
   //
   // The host's build command generates the Prisma client but does not migrate, so
@@ -119,7 +126,7 @@ async function main(): Promise<void> {
   // cannot serve requests anyway, and failing the boot rolls the deploy back to a
   // commit whose code matches the schema, which does work. Starting anyway would
   // leave the service up and returning 500s.
-  if (process.env.SKIP_MIGRATE !== '1') {
+  if (!packMode && process.env.SKIP_MIGRATE !== '1') {
     app.log.info('applying pending migrations');
     try {
       execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
@@ -137,38 +144,12 @@ async function main(): Promise<void> {
   await app.listen({ port, host });
   app.log.info(`Ilm API listening on http://${host}:${port}`);
 
-  /*
-   * Check Sefaria-derived translations against Sefaria, in the background.
-   *
-   * Some Torah rows were written by a markup stripper that untagged Sefaria's
-   * inline footnotes instead of removing them, so a translator's note runs into
-   * the middle of the verse — Genesis 1:1 as "When God began to createaWhen God
-   * began to create In contrast to others ...". The stripper was fixed and
-   * tested; the rows were not, because the script that writes them only inserted
-   * what was missing. Re-running that script needs a database URL and therefore a
-   * shell, and this plan does not have one, so the app checks itself.
-   *
-   * Each row records whether it has been compared, so the first pass walks the
-   * Sefaria corpora once and later passes find nothing to do. Per row rather than
-   * per translation, so an interrupted run resumes where it stopped.
-   *
-   * Deliberately after listen() and never awaited: it makes network calls to a
-   * third party and must never sit between a deploy and its first request.
-   * Bounded by a deadline, so it cannot become an outage.
-   *
-   * On an interval as well as at boot, because a boot-only repair is one that
-   * waits for the next deploy to be any use at all — and a deploy can be missed.
-   * That is not hypothetical: this sat undeployed for hours while the corpus
-   * stayed broken. Re-running is nearly free once caught up, and the status
-   * endpoint exists so the question can be answered without a shell.
-   */
   void (async () => {
+    if (packMode) return;
     try {
       const { startSefariaMaintenance } = await import('./services/sefaria-repair');
       startSefariaMaintenance();
     } catch (error) {
-      // Swallowed on purpose. A check that fails to start is something to notice
-      // in the logs; it is never a reason to take a working service down.
       app.log.error({ err: error }, 'Sefaria translation check failed to start');
     }
   })();
@@ -176,7 +157,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     app.log.info(`${signal} received, shutting down`);
     await app.close();
-    await prisma.$disconnect();
+    if (!packMode) await prisma.$disconnect();
     process.exit(0);
   };
 

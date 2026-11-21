@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "NODE_OPTIONS=--max-old-space-size=${API_HEAP_MB:-320} tsx src/index.ts",
+    "start:local": "ILM_STORAGE=pack SEARCH_ENGINE=compact LOCAL_JUDGE_ENABLED=1 NODE_OPTIONS=--max-old-space-size=${API_HEAP_MB:-320} tsx src/index.ts",
+    "pack": "tsx scripts/pack-corpus.ts",
+    "hydrate": "tsx scripts/unpack-corpus.ts",
+    "embed:quantized": "EMBEDDING_PROVIDER=local tsx scripts/embed.ts --export-quantized",
     "build": "prisma generate && tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
