@@ -9,6 +9,8 @@
  *   npx tsx scripts/build-xlingual-terms.ts [--depth=150] [--replace] [--dry-run]
  */
 
+import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/passage';
 import { deriveTerms, MIN_SPECIFICITY, type DeriveInput } from '../src/services/xlingual';
 
@@ -70,14 +72,25 @@ async function main(): Promise<void> {
     console.log(`\nCleared ${deleted.count} existing rows`);
   }
 
+  const BATCH = 500;
   let written = 0;
-  for (const term of terms) {
-    await prisma.xlingualTerm.upsert({
-      where: { theme_language_term: { theme: term.theme, language: term.language, term: term.term } },
-      create: term,
-      update: { inPassages: term.inPassages, specificity: term.specificity },
-    });
-    written += 1;
+  for (let i = 0; i < terms.length; i += BATCH) {
+    const chunk = terms.slice(i, i + BATCH);
+    await prisma.$executeRaw`
+      INSERT INTO xlingual_terms (id, theme, language, term, in_passages, specificity, created_at)
+      VALUES ${Prisma.join(
+        chunk.map(
+          (term) =>
+            Prisma.sql`(${randomUUID()}, ${term.theme}, ${term.language}, ${term.term}, ${term.inPassages}, ${term.specificity}, NOW())`
+        ),
+        ','
+      )}
+      ON CONFLICT (theme, language, term)
+      DO UPDATE SET
+        in_passages = EXCLUDED.in_passages,
+        specificity = EXCLUDED.specificity
+    `;
+    written += chunk.length;
   }
 
   const total = await prisma.xlingualTerm.count();

@@ -12,28 +12,33 @@
  *   npm run index -- --crossrefs   # also detect cross-references (slow, costs API calls)
  */
 
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { TextId, TEXT_METADATA, type Passage } from '@ilm/shared';
 import { loadLocalEnv } from '../src/lib/env';
-import { prisma, setPassageThemesBatch } from '../src/services/passage';
-import { classifyThemes, scoreSemanticDensity, needsJudgement } from '../src/services/typesafe';
+import { prisma, setPassageThemesBatch, type PassageThemeInput } from '../src/services/passage';
+import { classifyThemesAndDensity, localThemeScores, needsJudgement } from '../src/services/typesafe';
 import { getJevJudge } from '../src/services/typesafe-client';
 import { embedMissingPassages, isEmbeddingConfigured } from '../src/services/embeddings';
 import { getCrossReferencesForPassage } from '../src/services/crossrefs';
+import { engineName } from '../src/search/engine';
 import { buildOramaIndex, persistOramaIndex } from '../src/search/orama';
 
 // Without this the script would find no TYPESAFE_API_KEY, fall back to local theme
 // scoring, and write those scores over the model-derived ones without saying so.
 loadLocalEnv();
 
-const THEME_BATCH = 100;
-const CROSSREF_BATCH = 5;
+const LOCAL_THEME_BATCH = 1000;
+const JEV_THEME_BATCH = 100;
+const INDEX_CONCURRENCY = Math.max(1, Number(process.env.INDEX_CONCURRENCY ?? 8));
+const INDEX_PACE_MS = Math.max(0, Number(process.env.INDEX_PACE_MS ?? 250));
 
 interface Options {
   themes: number | null;
   crossrefs: boolean;
   only: TextId[];
   skipEmbeddings: boolean;
+  /** Force rebuilding the in-process Orama index even when SEARCH_ENGINE=postgres. */
+  orama: boolean;
   /**
    * Send only passages the keyword classifier is unsure about to the model.
    *
@@ -117,6 +122,7 @@ function parseArgs(): Options {
     crossrefs: args.includes('--crossrefs'),
     only,
     skipEmbeddings: args.includes('--skip-embeddings'),
+    orama: args.includes('--orama'),
     onlyUncertain: args.includes('--only-uncertain'),
     dryRun: args.includes('--dry-run'),
   };
@@ -125,13 +131,40 @@ function parseArgs(): Options {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function readStoredDensity(metadata: Prisma.JsonValue): number | null {
+  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
+  const val = (metadata as Record<string, unknown>).density;
+  return typeof val === 'number' && Number.isFinite(val) ? val : null;
+}
+
+/**
+ * Batch-write semantic density into `passages.metadata` in one SQL statement
+ * rather than issuing one `prisma.passage.update` per passage.
+ */
+async function updatePassageDensitiesBatch(updates: Array<{ id: string; density: number }>): Promise<void> {
+  if (updates.length === 0) return;
+  await prisma.$executeRaw`
+    UPDATE passages AS p
+    SET metadata = COALESCE(p.metadata, '{}'::jsonb) || jsonb_build_object('density', v.density)
+    FROM (
+      VALUES ${Prisma.join(
+        updates.map((u) => Prisma.sql`(${u.id}::text, ${u.density}::double precision)`),
+        ','
+      )}
+    ) AS v(id, density)
+    WHERE p.id = v.id
+  `;
+}
+
 // ============================================================================
 
 async function main(): Promise<void> {
   const options = parseArgs();
   const jev = getJevJudge();
+  const startedAt = Date.now();
 
   console.log('🔧 Indexing Ilm');
+  console.log(`   Engine:     ${engineName}${options.orama && engineName !== 'orama' ? ' (+ --orama requested)' : ''}`);
   console.log(`   Jev:        ${jev.available ? 'configured' : `unavailable (${jev.reason}) — themes will be keyword-derived`}`);
   console.log(`   Embeddings: ${options.skipEmbeddings ? 'skipped' : isEmbeddingConfigured() ? 'configured' : 'not configured — skipping'}`);
 
@@ -141,7 +174,8 @@ async function main(): Promise<void> {
   if (options.themes !== 0) {
     const take = options.themes;
     const total = await prisma.passage.count({ where });
-    console.log(`\n🏷️  Scoring themes for ${take ?? total} passages...`);
+    const batchSize = jev.available ? JEV_THEME_BATCH : LOCAL_THEME_BATCH;
+    console.log(`\n🏷️  Scoring themes for ${take ?? total} passages (batch ${batchSize})...`);
     if (options.onlyUncertain) {
       console.log(`   Only passages the keyword list is unsure about will be judged.`);
       console.log(`   Confident: top theme ≥ ${UNCERTAIN_MIN_SCORE} and clear of the runner-up by ≥ ${UNCERTAIN_MARGIN}.`);
@@ -157,12 +191,14 @@ async function main(): Promise<void> {
     let cursor: string | undefined;
 
     for (;;) {
+      // Omit `embeddings` — theme scoring never reads vectors, and selecting
+      // 384-float JSONB arrays transfers ~150+ MB across the corpus for nothing.
       const rows = await prisma.passage.findMany({
         where,
-        take: THEME_BATCH,
+        take: batchSize,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: { id: 'asc' },
-        select: { id: true, passageKey: true, originalText: true, primaryTranslation: true, textId: true, bookSlug: true, chapterNum: true, verseNum: true, language: true, verseOrder: true, metadata: true, embeddings: true },
+        select: { id: true, passageKey: true, originalText: true, primaryTranslation: true, textId: true, bookSlug: true, chapterNum: true, verseNum: true, language: true, verseOrder: true, metadata: true },
       });
       if (rows.length === 0) break;
 
@@ -175,46 +211,60 @@ async function main(): Promise<void> {
       const toJudge = options.onlyUncertain ? batch.filter((row) => needsJudgement(toPassage(row))) : batch;
       skipped += batch.length - toJudge.length;
 
-      // Bounded rather than a Promise.all over the whole batch. A hundred
-      // simultaneous requests is enough to trip the connection layer, and the
-      // failures arrive as "Connection error: fetch failed" with no status to
-      // distinguish them from a rejection.
-      const CONCURRENCY = 8;
       let carriedOver = 0;
+      const batchThemes: PassageThemeInput[] = [];
+      const densityUpdates: Array<{ id: string; density: number }> = [];
 
-      for (let i = 0; i < toJudge.length; i += CONCURRENCY) {
-        const slice = toJudge.slice(i, i + CONCURRENCY);
+      if (!jev.available) {
+        // Local keyword scoring is purely synchronous CPU work; score the full
+        // batch at once and flush to Postgres in a single batched write.
+        for (const row of toJudge) {
+          const passage = toPassage(row);
+          const themes = localThemeScores(passage, 5);
+          if (themes.length === 0) carriedOver += 1;
+          else batchThemes.push({ passageId: row.id, themes });
 
-        const scored = await Promise.all(
-          slice.map(async (row) => {
-            const passage = toPassage(row);
-            // Density is a property of the passage, not of a theme, so it is
-            // stored on the passage and reused by search ranking.
-            const [themes, density] = await Promise.all([
-              // A failed call returns nothing rather than the keyword answer, so a
-              // transient failure cannot overwrite judged rows with local guesses
-              // while still counting as progress.
-              classifyThemes(passage, 5, { requireJudge: jev.available && !options.dryRun }),
-              scoreSemanticDensity(passage),
-            ]);
+          // Avoid rewriting unchanged default density (0.5) on re-runs.
+          if (readStoredDensity(row.metadata) === null) {
+            densityUpdates.push({ id: row.id, density: 0.5 });
+          }
+        }
+      } else {
+        // Bounded rather than a Promise.all over the whole batch. A hundred
+        // simultaneous requests is enough to trip the connection layer, and the
+        // failures arrive as "Connection error: fetch failed" with no status to
+        // distinguish them from a rejection.
+        for (let i = 0; i < toJudge.length; i += INDEX_CONCURRENCY) {
+          const slice = toJudge.slice(i, i + INDEX_CONCURRENCY);
 
-            if (themes.length === 0) carriedOver += 1;
-
-            if (density !== null) {
-              await prisma.passage.update({
-                where: { id: row.id },
-                data: { metadata: { ...(typeof row.metadata === 'object' && row.metadata ? row.metadata : {}), density } },
+          const scored = await Promise.all(
+            slice.map(async (row) => {
+              const passage = toPassage(row);
+              // Batch theme choice and semantic density in one Jev call (2 HTTP
+              // requests per passage instead of 3).
+              const { themes, density } = await classifyThemesAndDensity(passage, 5, {
+                requireJudge: !options.dryRun,
               });
-            }
 
-            return { passageId: row.id, themes };
-          })
-        );
+              if (themes.length === 0) carriedOver += 1;
+              if (density !== null && readStoredDensity(row.metadata) !== density) {
+                densityUpdates.push({ id: row.id, density });
+              }
 
-        if (!options.dryRun) await setPassageThemesBatch(scored);
+              return { passageId: row.id, themes };
+            })
+          );
 
-        // Jev is billed per request; pace so a full corpus does not trip rate limits.
-        if (jev.available) await sleep(250);
+          batchThemes.push(...scored);
+
+          // Jev is billed per request; pace so a full corpus does not trip rate limits.
+          if (INDEX_PACE_MS > 0) await sleep(INDEX_PACE_MS);
+        }
+      }
+
+      if (!options.dryRun) {
+        await setPassageThemesBatch(batchThemes);
+        await updatePassageDensitiesBatch(densityUpdates);
       }
 
       deferred += carriedOver;
@@ -231,7 +281,7 @@ async function main(): Promise<void> {
       const share = scanned > 0 ? (judged / scanned) * 100 : 0;
       console.log(`   scanned ${scanned}, judged ${judged} (${share.toFixed(1)}%), left as-is ${skipped}`);
       if (deferred > 0) console.log(`   deferred: ${deferred} calls failed, existing themes left untouched — re-run to pick them up`);
-      // Two requests per judged passage: the 80-option choice and the strength rubric.
+      // Two requests per judged passage: the 80-option choice (+ density) and the strength rubric.
       const tokens = judged * (THEME_CLASSIFY_TOKENS + THEME_STRENGTH_TOKENS);
       console.log(`   ~${(tokens / 1e6).toFixed(1)}M input tokens ≈ $${((tokens / 1e6) * JEV_INPUT_USD_PER_M).toFixed(2)}`);
     }
@@ -251,9 +301,13 @@ async function main(): Promise<void> {
   }
 
   // ---------------------------------------------------------------- search index
-  console.log('\n🔍 Building the search index...');
-  await buildOramaIndex();
-  await persistOramaIndex();
+  if (engineName === 'orama' || options.orama) {
+    console.log('\n🔍 Building the Orama search index...');
+    await buildOramaIndex();
+    await persistOramaIndex();
+  } else {
+    console.log('\n🔍 Search index: Postgres full-text vectors are maintained automatically (pass --orama to also build the rollback index).');
+  }
 
   // Cross-references are computed lazily on first view and then stored, so this
   // only warms the cache for a set of passages rather than scanning the corpus.
@@ -280,7 +334,7 @@ async function main(): Promise<void> {
     process.stdout.write('\n');
   }
 
-  console.log('\n🎉 Indexing complete');
+  console.log(`\n🎉 Indexing complete in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
 }
 
 /** Build the shared Passage shape from a lean Prisma row. */
@@ -296,7 +350,6 @@ function toPassage(row: {
   language: string;
   verseOrder: number;
   metadata: Prisma.JsonValue;
-  embeddings: unknown;
 }): Passage {
   return {
     id: row.id,
@@ -314,7 +367,7 @@ function toPassage(row: {
       canonicalOrder: row.verseOrder,
       verseOrder: row.verseOrder,
     },
-    embeddings: Array.isArray(row.embeddings) ? (row.embeddings as number[]) : [],
+    embeddings: [],
     themes: [],
     crossReferences: [],
   };

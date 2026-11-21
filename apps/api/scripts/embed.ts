@@ -19,9 +19,8 @@
  *   npx tsx --env-file=.env scripts/embed.ts --dry-run
  */
 
-import { Prisma } from '@prisma/client';
 import { prisma } from '../src/services/passage';
-import { embedMissingPassages, getEmbeddingConfig, generateEmbeddings } from '../src/services/embeddings';
+import { embedMissingPassages, getEmbeddingConfig } from '../src/services/embeddings';
 import { loadLocalEnv } from '../src/lib/env';
 
 loadLocalEnv();
@@ -42,21 +41,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Every way a passage can be un-embedded, and all three are needed. A passage
-  // that has never been embedded holds DbNull, and Prisma's `equals` does not
-  // match it: without that arm the count reads 0 to go on a completely
-  // un-embedded corpus and the backfill exits having done nothing. Verified by
-  // setting one passage to DbNull — the old query reported 0 to go, the
-  // corrected one reported 1.
-  const remaining = await prisma.passage.count({
-    where: {
-      OR: [
-        { embeddings: { equals: Prisma.DbNull } },
-        { embeddings: { equals: '[]' } },
-        { embeddings: { equals: [] } },
-      ],
-    },
-  });
+  // Counted via the `passages_embedding_length_idx` expression index rather than
+  // Prisma's JSON `OR` filter, which scans the table. Matches both SQL NULL
+  // (never embedded) and empty arrays (`[]`).
+  const [{ remaining } = { remaining: 0 }] = await prisma.$queryRaw<Array<{ remaining: number }>>`
+    SELECT count(*)::int AS remaining
+    FROM passages
+    WHERE embeddings IS NULL OR jsonb_array_length(embeddings) = 0
+  `;
   const total = await prisma.passage.count();
   const embedded = total - remaining;
 

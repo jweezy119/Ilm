@@ -426,31 +426,15 @@ const THEME_STRENGTH_RUBRIC = [
   'The passage is definitive for this theme',
 ];
 
-/**
- * Score the passage against every theme in the taxonomy.
- * One request; the model ranks the options and we read the probabilities.
- */
-export async function classifyThemes(
-  passage: Passage,
-  maxThemes = 5,
-  options: { requireJudge?: boolean } = {}
-): Promise<{ theme: string; score: number; confidence: number; evidence: string[] }[]> {
-  const jev = getJevJudge();
+export interface ThemeScoreEntry {
+  theme: string;
+  score: number;
+  confidence: number;
+  evidence: string[];
+  source: 'jev' | 'derived';
+}
 
-  if (!jev.available) {
-    return localThemeScores(passage, maxThemes);
-  }
-
-  /**
-   * A failed call falls back to the keyword answer, which is right for a live
-   * request and wrong for a backfill: there, a transient network blip would be
-   * written over good judged rows and counted as progress, and nothing would look
-   * wrong afterwards. `requireJudge` returns nothing instead, so the existing rows
-   * are left alone and the passage can be retried.
-   */
-  const fallBack = (): { theme: string; score: number; confidence: number; evidence: string[] }[] =>
-    options.requireJudge ? [] : localThemeScores(passage, maxThemes);
-
+function buildThemeCriteria() {
   // The option label is already the theme name, so a description of "The passage
   // addresses mercy" restates it. Dropping the descriptions takes this question from
   // about 1,150 input tokens to about 500 — most of the cost of a backfill is this
@@ -464,11 +448,123 @@ export async function classifyThemes(
   // passages came back with an identical theme set, and the remainder differ only
   // around the 0.25 probability cut; the bare form gained a theme on 159 passages
   // and lost one on 176, so it is marginally more conservative rather than lossy.
-  //
   const bare = process.env.THEME_CRITERIA === 'bare';
-  const criteria = bare
+  return bare
     ? Object.fromEntries(THEME_TAXONOMY.map((t) => [t, null]))
     : Object.fromEntries(THEME_TAXONOMY.map((t) => [t, `The passage addresses ${t.replace(/_/g, ' ')}`]));
+}
+
+/**
+ * Score both themes and semantic density for one passage, batching the initial
+ * theme choice and density score into a single `systemOne` request so indexing
+ * pays two Jev round-trips per passage instead of three.
+ */
+export async function classifyThemesAndDensity(
+  passage: Passage,
+  maxThemes = 5,
+  options: { requireJudge?: boolean } = {}
+): Promise<{ themes: ThemeScoreEntry[]; density: number | null }> {
+  const jev = getJevJudge();
+
+  if (!jev.available) {
+    return {
+      themes: localThemeScores(passage, maxThemes),
+      density: 0.5,
+    };
+  }
+
+  const fallBackThemes = (): ThemeScoreEntry[] =>
+    options.requireJudge ? [] : localThemeScores(passage, maxThemes);
+
+  const view = passageView(passage);
+  const result = await askJev({ passage: view }, [
+    {
+      kind: 'choice',
+      id: 'themes',
+      instructions: {
+        question: 'Which themes from the taxonomy apply to this passage?',
+        chooseAllThatApply: true,
+        note: 'Select every theme the passage genuinely addresses, most relevant first.',
+      },
+      criteria: buildThemeCriteria() as never,
+    },
+    {
+      kind: 'score',
+      id: 'density',
+      instructions: 'How semantically dense and conceptually rich is this passage?',
+      criteria: DENSITY_RUBRIC,
+    },
+  ]);
+
+  const density =
+    typeof result?.answers.density?.value === 'number'
+      ? result.answers.density.value
+      : options.requireJudge
+        ? null
+        : 0.5;
+
+  const answer = result?.answers.themes;
+  if (!answer?.probabilities) {
+    return { themes: fallBackThemes(), density };
+  }
+
+  const ranked = Object.entries(answer.probabilities)
+    .filter(([, p]) => p >= 0.25)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxThemes);
+
+  if (ranked.length === 0) {
+    return { themes: fallBackThemes(), density };
+  }
+
+  // Turn the ranking into graded strengths so downstream scoring has magnitude, not just order.
+  const strength = await askJev({ passage: view }, [
+    ...ranked.map(([theme], i) => ({
+      kind: 'score' as const,
+      id: `s${i}`,
+      instructions: { question: `How strongly does this passage embody the theme "${theme.replace(/_/g, ' ')}"?`, passage: view },
+      criteria: THEME_STRENGTH_RUBRIC,
+    })),
+  ]);
+
+  const themes: ThemeScoreEntry[] = ranked.map(([theme, probability], i) => ({
+    theme,
+    score: strength?.answers[`s${i}`]?.value ?? probability,
+    confidence: Math.min(answer.confidence || 0, probability + 0.2),
+    evidence: themeEvidence(passage.translation, theme),
+    // Stated explicitly. Without it the writer's default labels a model judgement
+    // as a local rule, which is the reverse of the mistake we care about and just
+    // as wrong: a reader is told nothing was judged when something was.
+    source: 'jev' as const,
+  }));
+
+  return { themes, density };
+}
+
+/**
+ * Score the passage against every theme in the taxonomy.
+ * One request; the model ranks the options and we read the probabilities.
+ */
+export async function classifyThemes(
+  passage: Passage,
+  maxThemes = 5,
+  options: { requireJudge?: boolean } = {}
+): Promise<ThemeScoreEntry[]> {
+  const jev = getJevJudge();
+
+  if (!jev.available) {
+    return localThemeScores(passage, maxThemes);
+  }
+
+  /**
+   * A failed call falls back to the keyword answer, which is right for a live
+   * request and wrong for a backfill: there, a transient network blip would be
+   * written over good judged rows and counted as progress, and nothing would look
+   * wrong afterwards. `requireJudge` returns nothing instead, so the existing rows
+   * are left alone and the passage can be retried.
+   */
+  const fallBack = (): ThemeScoreEntry[] =>
+    options.requireJudge ? [] : localThemeScores(passage, maxThemes);
 
   const result = await askJev({ passage: passageView(passage) }, [
     {
@@ -479,7 +575,7 @@ export async function classifyThemes(
         chooseAllThatApply: true,
         note: 'Select every theme the passage genuinely addresses, most relevant first.',
       },
-      criteria: criteria as never,
+      criteria: buildThemeCriteria() as never,
     },
   ]);
 
@@ -516,7 +612,7 @@ export async function classifyThemes(
 }
 
 /** Keyword-based theme detection, used when Jev is unavailable. */
-export function localThemeScores(passage: Passage, maxThemes = 5): { theme: string; score: number; confidence: number; evidence: string[] }[] {
+export function localThemeScores(passage: Passage, maxThemes = 5): ThemeScoreEntry[] {
   const haystack = `${passage.originalText} ${passage.translation}`.toLowerCase();
   const terms = significantTerms(haystack);
 
@@ -668,6 +764,9 @@ function themeKeywords(theme: string): string[] {
   return THEME_KEYWORDS[theme] ?? [theme.replace(/_/g, ' ')];
 }
 
+const keywordRegexCache = new Map<string, RegExp>();
+const KEYWORD_REGEX_CACHE_LIMIT = 4096;
+
 /**
  * Whether a text contains a keyword as a whole word or phrase.
  *
@@ -677,11 +776,20 @@ function themeKeywords(theme: string): string[] {
  */
 export function containsKeyword(haystack: string, keyword: string): boolean {
   if (!keyword) return false;
-  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // \\b does not behave for keywords that start or end in punctuation.
-  const left = /^[a-z0-9]/i.test(keyword) ? '\\b' : '';
-  const right = /[a-z0-9]$/i.test(keyword) ? '\\b' : '';
-  return new RegExp(`${left}${escaped}${right}`, 'i').test(haystack);
+  const cacheKey = keyword.toLowerCase();
+  let pattern = keywordRegexCache.get(cacheKey);
+  if (!pattern) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // \\b does not behave for keywords that start or end in punctuation.
+    const left = /^[a-z0-9]/i.test(keyword) ? '\\b' : '';
+    const right = /[a-z0-9]$/i.test(keyword) ? '\\b' : '';
+    pattern = new RegExp(`${left}${escaped}${right}`, 'i');
+    if (keywordRegexCache.size >= KEYWORD_REGEX_CACHE_LIMIT) {
+      keywordRegexCache.clear();
+    }
+    keywordRegexCache.set(cacheKey, pattern);
+  }
+  return pattern.test(haystack);
 }
 
 /**

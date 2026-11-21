@@ -237,12 +237,27 @@ export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
   let inserted = 0;
 
   for (;;) {
+    // Lean select: omit `originalText` (not indexed by Orama) and `embeddings`
+    // (large JSONB vectors unused here), and read `themeId` directly since it
+    // already holds `Theme.name` without joining the `themes` table.
     const passages = await prisma.passage.findMany({
       take: batchSize,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       orderBy: { id: 'asc' },
       where: textIds ? { textId: { in: textIds as never[] } } : undefined,
-      include: { themes: { include: { theme: true } } },
+      select: {
+        id: true,
+        passageKey: true,
+        textId: true,
+        bookSlug: true,
+        chapterNum: true,
+        verseNum: true,
+        primaryTranslation: true,
+        language: true,
+        verseOrder: true,
+        metadata: true,
+        themes: { select: { themeId: true } },
+      },
     });
     if (passages.length === 0) break;
 
@@ -260,7 +275,7 @@ export async function buildOramaIndex(batchSize = 2000): Promise<IndexDB> {
       matchedIn: '',
       language: p.language,
       verseOrder: p.verseOrder,
-      themes: p.themes.map((t) => t.theme.name),
+      themes: p.themes.map((t) => t.themeId),
       density: readDensity(p.metadata),
     }));
 

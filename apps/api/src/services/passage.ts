@@ -223,23 +223,31 @@ export interface PassageThemeInput {
 }
 
 /**
+ * Theme names already confirmed to exist in the `themes` table during this
+ * process lifetime. The taxonomy is small (~80 entries) and static, so caching
+ * confirmed names avoids issuing ~100k redundant `theme.upsert` round-trips
+ * during full-corpus indexing.
+ */
+const ensuredThemes = new Set<string>();
+
+/**
  * Write theme scores for many passages at once.
- * The theme catalogue is small and fixed, so the upserts are hoisted out of the
- * loop — otherwise indexing tens of thousands of passages issues a redundant
- * upsert per theme per passage.
+ * Unseen theme names are inserted in a single `createMany(..., skipDuplicates)`
+ * and cached in memory for the remainder of the process.
  */
 export async function setPassageThemesBatch(entries: PassageThemeInput[]): Promise<void> {
   const withThemes = entries.filter((entry) => entry.themes.length > 0);
   if (withThemes.length === 0) return;
 
   const names = [...new Set(withThemes.flatMap((entry) => entry.themes.map((t) => t.theme)))];
+  const missing = names.filter((name) => !ensuredThemes.has(name));
 
-  for (const name of names) {
-    await prisma.theme.upsert({
-      where: { name },
-      create: { name, category: categorizeTheme(name) },
-      update: {},
+  if (missing.length > 0) {
+    await prisma.theme.createMany({
+      data: missing.map((name) => ({ name, category: categorizeTheme(name) })),
+      skipDuplicates: true,
     });
+    for (const name of missing) ensuredThemes.add(name);
   }
 
   const passageIds = withThemes.map((entry) => entry.passageId);
@@ -253,21 +261,22 @@ export async function setPassageThemesBatch(entries: PassageThemeInput[]): Promi
    * `source` was a stale `derived` sitting beside a fresh `jev`. Both callers write
    * a passage's complete theme set, so the whole set is what gets replaced.
    */
-  await prisma.passageTheme.deleteMany({ where: { passageId: { in: passageIds } } });
-
-  await prisma.passageTheme.createMany({
-    data: withThemes.flatMap((entry) =>
-      entry.themes.map((t) => ({
-        passageId: entry.passageId,
-        themeId: t.theme,
-        score: t.score,
-        confidence: t.confidence,
-        evidence: t.evidence,
-        source: t.source ?? 'derived',
-      }))
-    ),
-    skipDuplicates: true,
-  });
+  await prisma.$transaction([
+    prisma.passageTheme.deleteMany({ where: { passageId: { in: passageIds } } }),
+    prisma.passageTheme.createMany({
+      data: withThemes.flatMap((entry) =>
+        entry.themes.map((t) => ({
+          passageId: entry.passageId,
+          themeId: t.theme,
+          score: t.score,
+          confidence: t.confidence,
+          evidence: t.evidence,
+          source: t.source ?? 'derived',
+        }))
+      ),
+      skipDuplicates: true,
+    }),
+  ]);
 }
 
 // ============================================================================

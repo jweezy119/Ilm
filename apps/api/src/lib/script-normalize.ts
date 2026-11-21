@@ -144,6 +144,11 @@ const UTHMANI_CARRIERS: [RegExp, string][] = [
   [/\u0621/g, ''],
 ];
 
+const HAS_NON_ASCII = /[^\x00-\x7F]/;
+const HAS_ARABIC = /[\u0600-\u06FF]/;
+const HAS_HEBREW = /[\u0590-\u05FF]/;
+const HEBREW_FINAL_REGEX = /[\u05DA\u05DD\u05DF\u05E1\u05E3]/g;
+
 /**
  * Reduce a text to a form that matches how a reader types it.
  *
@@ -153,33 +158,48 @@ const UTHMANI_CARRIERS: [RegExp, string][] = [
 export function fold(input: string): string {
   if (input.length === 0) return input;
 
+  // Fast path for plain ASCII (e.g. English queries and translations): skip
+  // NFKD decomposition and all Arabic/Hebrew regex passes.
+  if (!HAS_NON_ASCII.test(input)) {
+    return input.replace(/\s+/g, ' ').trim();
+  }
+
   const decomposed = input.normalize('NFKD');
+  const hasArabic = HAS_ARABIC.test(decomposed);
+  const hasHebrew = HAS_HEBREW.test(decomposed);
 
   /*
    * The carrier rules run on the decomposed text, before the marks are stripped,
    * because a dagger alif or a carrier hamza is only recognisable while the
    * letters around it are still adjacent.
    */
-  let orthographic = decomposed;
-  for (const [pattern, replacement] of UTHMANI_CARRIERS) {
-    orthographic = orthographic.replace(pattern, replacement);
+  let text = decomposed;
+  if (hasArabic) {
+    for (const [pattern, replacement] of UTHMANI_CARRIERS) {
+      text = text.replace(pattern, replacement);
+    }
   }
 
-  const stripped = orthographic
-    .replace(COMBINING, '')
-    .replace(HEBREW_POINTS, '')
-    .replace(ARABIC_MARKS, '');
+  text = text.replace(COMBINING, '');
 
-  const foldedText = stripped
-    .replace(FOLD_ALEF, '\u0627')
-    .replace(FOLD_YEH, '\u064A')
-    .replace(FOLD_TA_MARBUTA, '\u0647')
-    .replace(FOLD_WAW, '\u0648')
-    .replace(/[\u05DA\u05DD\u05DF\u05E1\u05E3]/g, (ch) => HEBREW_FINAL_FORMS.get(ch) ?? ch);
+  if (hasHebrew) {
+    text = text
+      .replace(HEBREW_POINTS, '')
+      .replace(HEBREW_FINAL_REGEX, (ch) => HEBREW_FINAL_FORMS.get(ch) ?? ch);
+  }
+
+  if (hasArabic) {
+    text = text
+      .replace(ARABIC_MARKS, '')
+      .replace(FOLD_ALEF, '\u0627')
+      .replace(FOLD_YEH, '\u064A')
+      .replace(FOLD_TA_MARBUTA, '\u0647')
+      .replace(FOLD_WAW, '\u0648');
+  }
 
   // NFKD can leave the pieces of a decomposed ligature adjacent, and a run of
   // spaces changes how `websearch_to_tsquery` parses the phrase.
-  return foldedText.replace(/\s+/g, ' ').trim();
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -209,13 +229,12 @@ export function normalizeForSearch(input: string): string {
  * by `normalizeForSearch`, which is correct precisely because the index holds them
  * all.
  */
-function alternativeReadings(input: string): string[] {
+function alternativeReadings(input: string, canonical: string): string[] {
   // The reading with every dagger alif promoted to a real alif, which is the
   // spelling used when the dagger *is* the letter rather than a long vowel.
-  if (!/\u0670/.test(input)) return [];
+  if (!input.includes('\u0670')) return [];
 
   const promoted = fold(input.replace(/\u0670/g, '\u0627'));
-  const canonical = fold(input);
   if (promoted === canonical) return [];
 
   const alternatives = new Set<string>();
@@ -238,7 +257,7 @@ export function searchReadings(input: string): string[] {
   const canonical = fold(input);
   if (canonical.length === 0) return [];
 
-  return [canonical, ...alternativeReadings(input).filter((a) => a !== canonical)];
+  return [canonical, ...alternativeReadings(input, canonical).filter((a) => a !== canonical)];
 }
 
 /**

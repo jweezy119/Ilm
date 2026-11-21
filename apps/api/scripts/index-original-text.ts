@@ -134,17 +134,25 @@ async function main(): Promise<void> {
      * `simple` is named here rather than relying on the column's default: a
      * tsvector built with the wrong configuration cannot be rebuilt without
      * dropping the column, so the choice is stated at the point it is made.
+     *
+     * `expandForIndex` is computed once per row; Greek passages add a second
+     * weight-D stemmed vector while Arabic, Hebrew and Aramaic (where
+     * `stemGreekTokens` is a no-op) avoid running `to_tsvector` twice.
      */
     await prisma.$executeRaw`
       UPDATE passages AS p
       SET search_vector_original = v.tsv
       FROM (
         VALUES ${Prisma.join(
-          batch.map(
-            (row) =>
-              Prisma.sql`(${row.id}::text, setweight(to_tsvector('simple', ${expandForIndex(row.originalText ?? '')}), 'A')
-                || setweight(to_tsvector('simple', ${stemGreekTokens(expandForIndex(row.originalText ?? ''))}), 'D'))`
-          ),
+          batch.map((row) => {
+            const expanded = expandForIndex(row.originalText ?? '');
+            const stemmed = stemGreekTokens(expanded);
+            if (stemmed !== expanded) {
+              return Prisma.sql`(${row.id}::text, setweight(to_tsvector('simple', ${expanded}), 'A')
+                || setweight(to_tsvector('simple', ${stemmed}), 'D'))`;
+            }
+            return Prisma.sql`(${row.id}::text, setweight(to_tsvector('simple', ${expanded}), 'A'))`;
+          }),
           ','
         )}
       ) AS v(id, tsv)

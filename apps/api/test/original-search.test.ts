@@ -122,8 +122,10 @@ describe('original-language search', () => {
      * stemmed one, so widening is free when the exact form is present and still
      * finds the sibling forms when it is not.
      */
-    expect(code(backfill)).toContain("setweight(to_tsvector('simple', ${expandForIndex(row.originalText ?? '')}), 'A')");
-    expect(code(backfill)).toContain("|| setweight(to_tsvector('simple', ${stemGreekTokens(expandForIndex(row.originalText ?? ''))}), 'D')");
+    expect(code(backfill)).toContain("const expanded = expandForIndex(row.originalText ?? '')");
+    expect(code(backfill)).toContain('const stemmed = stemGreekTokens(expanded)');
+    expect(code(backfill)).toContain("setweight(to_tsvector('simple', ${expanded}), 'A')");
+    expect(code(backfill)).toContain("|| setweight(to_tsvector('simple', ${stemmed}), 'D')");
   });
 
   it('stems Greek once, and only Greek', () => {

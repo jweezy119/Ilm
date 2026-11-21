@@ -30,7 +30,6 @@ model Text {
   passages     Passage[]
   translations Translation[]
 
-  @@index([textId])
   @@map("texts")
 }
 
@@ -114,7 +113,6 @@ model Passage {
 
   @@index([textId, verseOrder])
   @@index([textId, bookSlug, chapterNum, verseNum])
-  @@index([passageKey])
   @@map("passages")
 }
 
