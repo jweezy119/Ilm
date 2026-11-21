@@ -40,10 +40,11 @@ describe('the translation rides with the verse', () => {
     // The handoff is the whole point. A reader who cannot read Arabic is played the
     // verse and then told what it means.
     expect(player).toContain('<audio');
-    // The element ending is what carries the player on, so no second press.
-    expect(player).toMatch(/onEnded=\{\(\) => proceed\(index\)\}/);
-    // And the recording is played before the translation is spoken, in one function.
-    expect(player).toMatch(/await el\.play\(\);[\s\S]{0,600}await english\.speak\(\{/);
+    // Await the audio element's `ended` event after `el.play()` — `el.play()`
+    // resolves as soon as playback *starts*, so waiting for `ended` is what keeps
+    // the Arabic recitation and English translation from talking over each other.
+    expect(player).toContain("addEventListener('ended'");
+    expect(player).toMatch(/await el\.play\(\);[\s\S]{0,200}await endedPromise;[\s\S]{0,900}await english\.speak\(\{/);
   });
 
   it('resolves a voice only once the Arabic has finished', () => {
@@ -56,7 +57,7 @@ describe('the translation rides with the verse', () => {
     // The synthesiser lives in useEnglishVoice and is only reached after the
     // recording has been played, so a passage with audio costs no voice load.
     const handoff = player.slice(player.indexOf('await el.play()'));
-    expect(handoff.slice(0, 900)).toContain('await english.speak(');
+    expect(handoff.slice(0, 1200)).toContain('await english.speak(');
     expect(player).not.toMatch(/createSpeechEngine/);
     expect(voice).toContain('recordedFor');
   });
@@ -83,9 +84,9 @@ describe('when it goes wrong', () => {
 
   it('repeats the Arabic alone when asked to repeat one verse', () => {
     // Someone who asks for the verse again wants the verse, not the explanation.
-    const tail = player.slice(player.indexOf("if (repeat === 'one')"));
-    expect(tail.slice(0, 400)).toContain('el.play()');
-    expect(tail.slice(0, 400)).not.toContain('speakTranslation');
+    const tail = player.slice(player.indexOf("if (repeatRef.current === 'one')"));
+    expect(tail.slice(0, 900)).toContain('el.play()');
+    expect(tail.slice(0, 900)).not.toContain('speakTranslation');
   });
 });
 

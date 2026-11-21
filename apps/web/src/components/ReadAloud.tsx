@@ -126,30 +126,18 @@ export function ReadAloud({
    * fallback is only built when there is genuinely nothing to use.
    */
   const english = useEnglishVoice();
+  const stopEnglish = english.stop;
   const [preparing, setPreparing] = useState(false);
 
-  /*
-   * Voices are read when the button is pressed, not on mount.
-   *
-   * `getVoices()` returns an empty list on Chrome until it has finished loading,
-   * which it signals with `voiceschanged` a moment later — so a copy taken on
-   * mount is usually the empty one, and caching it would make the control
-   * permanently deaf on exactly the browsers most likely to have the voices.
-   * Reading at press time cannot be stale.
-   *
-   * There is deliberately no "is this browser supported" flag either: a browser
-   * without a speech engine still renders the button, and pressing it explains
-   * that it cannot read. Hiding it would leave a reader wondering whether the
-   * page is broken.
-   */
-
   // Stop if the component goes away, or the passage changes underneath it.
+  // Depend on stable `stopEnglish` rather than `english` so `english.source`
+  // updates do not trigger cleanup mid-playback.
   useEffect(() => {
     return () => {
       cancelled.current = true;
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+      stopEnglish();
     };
-  }, [textId, text]);
+  }, [textId, text, stopEnglish]);
 
 
   /**
@@ -184,18 +172,19 @@ export function ReadAloud({
   const stop = useCallback(() => {
     cancelled.current = true;
     english.stop();
+    setPreparing(false);
     setSpeaking(false);
   }, [english]);
 
   /*
-   * Read aloud: a recording for this passage if there is one, otherwise whatever
-   * voice the device can offer. The resolution of that — including the wait for
-   * the voice list to arrive, the language check, the built-in fallback and every
-   * failure path — lives in useEnglishVoice, because the bilingual Quran player
-   * needs exactly the same behaviour and two copies would drift.
+   * Read aloud: a recording for this passage if there is one, otherwise Cloud TTS
+   * or whatever voice the device can offer. The resolution of that — including
+   * the wait for the voice list to arrive, the language check, the built-in
+   * fallback and every failure path — lives in useEnglishVoice, because the
+   * bilingual Quran player needs exactly the same behaviour and two copies would drift.
    */
   const speak = useCallback(async () => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (typeof window === 'undefined') {
       setNotice(t('unsupported'));
       return;
     }
@@ -220,8 +209,11 @@ export function ReadAloud({
 
     await english.speak({
       audioUrl: recorded,
-      text: recorded ? '' : joined,
+      text: joined,
       rate,
+      onStart: () => {
+        if (!cancelled.current) setPreparing(false);
+      },
       onDone: () => {
         setSpeaking(false);
         setPreparing(false);

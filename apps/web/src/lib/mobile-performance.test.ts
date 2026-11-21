@@ -50,14 +50,13 @@ describe('mobile performance', () => {
     expect(read('src/lib/idle.ts')).toContain('requestIdleCallback');
   });
 
-  it('stops audio when the tab is hidden', () => {
-    expect(read('src/lib/usePauseOnHidden.ts')).toContain("visibilityState === 'hidden'");
+  it('supports background tab playback via Media Session while keeping fixed controls clear', () => {
     // The composer yields to both fixed controls, not just the tray.
     expect(search).toContain("passageKeys.length > 0 && podcastSegments.length > 0");
     expect(search).toContain("'bottom-44'");
-    for (const file of ['src/components/PodcastPlayer.tsx', 'src/components/RecitationPlayer.tsx']) {
-      expect(read(file), `${file} keeps playing in a hidden tab`).toContain('usePauseOnHidden(');
-    }
+    const podcastPlayer = read('src/components/PodcastPlayer.tsx');
+    expect(podcastPlayer).toContain('mediaSession');
+    expect(podcastPlayer).not.toContain('usePauseOnHidden(');
   });
 
   it('does not run diagnostics before a reader asks for them', () => {

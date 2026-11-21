@@ -11,9 +11,11 @@ import {
   ChevronRight,
   Languages,
   Loader2,
+  Pause,
+  Play,
   Search,
+  Volume2,
   X,
-  Podcast as PodcastIcon,
 } from 'lucide-react';
 import { getTextLabel, getLanguageDirection, getScriptFont, TEXT_IDS, cn } from '@/lib/utils';
 import { useTextBooks } from '@/lib/useTextBooks';
@@ -21,9 +23,8 @@ import { useInBookSearch } from '@/lib/useInBookSearch';
 import { useInView } from '@/lib/useInView';
 import { runWhenIdle } from '@/lib/idle';
 import { Page } from '@/components/Shell';
-import { RecitationPlayer } from '@/components/RecitationPlayer';
 import { usePodcast } from '@/components/PodcastContext';
-import { ayahAudioUrl, verseLabel, DEFAULT_RECITER } from '@/lib/reciters';
+import { verseLabel } from '@/lib/reciters';
 import type { BookMetadata, TextId } from '@ilm/shared';
 
 /**
@@ -430,36 +431,92 @@ function ReadingPane({
   const [error, setError] = useState<string | null>(null);
   const [visibleVerses, setVisibleVerses] = useState(20);
   const { ref: moreVersesRef, inView: moreVersesInView } = useInView<HTMLDivElement>();
-  const { playQueue, setNavigationUrls } = usePodcast();
+  const {
+    queueId: activeQueueId,
+    activeIndex: activePlayerIndex,
+    isPlaying: playerIsPlaying,
+    playQueue,
+    togglePlayback,
+    syncChapter,
+    setNavigationUrls,
+  } = usePodcast();
 
-  const speechSegments = useMemo(
-    () =>
-      (data?.verses ?? [])
-        .filter((v) => (v.text ?? '').trim().length > 0)
-        .map((v) => ({ label: `${v.chapter}:${v.verse}`, text: v.text })),
-    [data]
-  );
+  const currentQueueId = data ? `${textId}:${bookId}:${data.chapter}:${data.translationId}` : null;
+  const chapterTitle = data
+    ? data.chapterCount > 1
+      ? `${data.bookName} · Chapter ${data.chapter}`
+      : data.bookName
+    : '';
+  const isThisChapterLoaded = Boolean(currentQueueId && activeQueueId === currentQueueId);
+  const isThisChapterPlaying = isThisChapterLoaded && playerIsPlaying;
 
-  /*
-   * Every verse with its translation, not just the Quran ayat.
-   *
-   * The player used to filter on there being a recording, which left every
-   * corpus but the Quran with no audio control at all. It has an English mode
-   * now, and that is what makes the Torah, the Talmud and the Testaments
-   * hearable — so the verses are handed over whole and the player decides which
-   * voices it can actually offer.
-   */
-  const recitationVerses = useMemo(
+  const chapterSegments = useMemo(
     () =>
       (data?.verses ?? [])
         .filter((v) => (v.text ?? '').trim().length > 0)
         .map((v) => ({
           passageKey: v.passageKey,
           label: verseLabel(v.passageKey) ?? `${v.chapter}:${v.verse}`,
-          translation: v.text,
+          text: v.text,
         })),
     [data]
   );
+
+  const chapterNavUrls = useCallback(() => {
+    if (!data || typeof window === 'undefined') return { nextUrl: null, prevUrl: null };
+    const searchParams = new URLSearchParams(window.location.search);
+    const baseUrl = window.location.pathname;
+    let nextUrl: string | null = null;
+    let prevUrl: string | null = null;
+
+    if (data.chapter < data.chapterCount) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('chapter', String(data.chapter + 1));
+      nextUrl = `${baseUrl}?${nextParams.toString()}`;
+    } else if (data.next) {
+      nextUrl = `${baseUrl}?text=${textId}&book=${encodeURIComponent(data.next.bookId)}`;
+    }
+
+    if (data.chapter > 1) {
+      const prevParams = new URLSearchParams(searchParams);
+      prevParams.set('chapter', String(data.chapter - 1));
+      prevUrl = `${baseUrl}?${prevParams.toString()}`;
+    } else if (data.previous) {
+      prevUrl = `${baseUrl}?text=${textId}&book=${encodeURIComponent(data.previous.bookId)}`;
+    }
+
+    return { nextUrl, prevUrl };
+  }, [data, textId]);
+
+  // Keep the persistent media player synced when advancing to a DIFFERENT chapter
+  // while open; `syncChapter` no-ops if `currentQueueId` is already loaded.
+  useEffect(() => {
+    if (!data || !currentQueueId || chapterSegments.length === 0 || !activeQueueId) return;
+    const { nextUrl, prevUrl } = chapterNavUrls();
+    syncChapter(currentQueueId, chapterTitle, chapterSegments, textId, nextUrl, prevUrl);
+  }, [data, currentQueueId, chapterTitle, chapterSegments, activeQueueId, textId, chapterNavUrls, syncChapter]);
+
+  const startFromVerse = useCallback(
+    (verseIndex: number) => {
+      if (!currentQueueId || chapterSegments.length === 0) return;
+      const { nextUrl, prevUrl } = chapterNavUrls();
+      setNavigationUrls(nextUrl, prevUrl);
+      playQueue(chapterSegments, textId, {
+        queueId: currentQueueId,
+        title: chapterTitle,
+        startIndex: verseIndex,
+      });
+    },
+    [currentQueueId, chapterSegments, chapterNavUrls, setNavigationUrls, playQueue, textId, chapterTitle]
+  );
+
+  const handleHeaderListen = useCallback(() => {
+    if (isThisChapterLoaded) {
+      togglePlayback();
+      return;
+    }
+    startFromVerse(0);
+  }, [isThisChapterLoaded, togglePlayback, startFromVerse]);
 
   useEffect(() => {
     let cancelled = false;
@@ -591,56 +648,37 @@ function ReadingPane({
           </span>
         </div>
 
-        {/*
-          Recitation, when this corpus has any. One player for the whole
-          chapter rather than a button per verse: a surah is hundreds of
-          verses, and a reader who wants to listen is reading along rather than
-          hunting for the right row. Declines to render where there is no audio.
-        */}
-        {recitationVerses.length ? (
-          <RecitationPlayer
-            verses={recitationVerses}
-            className="mt-4 rounded-xl border border-line bg-panel/50 p-3"
-          />
-        ) : null}
-
-        {/*
-          Podcast Mode: Continuous reading for every corpus, using client-side
-          Speech Synthesis.
-        */}
-        {speechSegments.length ? (
-          <div className="mt-3">
+        {/* Single unified Listen trigger — opens and controls the persistent bottom media player. */}
+        {chapterSegments.length ? (
+          <div className="mt-4">
             <button
-              onClick={() => {
-                const searchParams = new URLSearchParams(window.location.search);
-                const baseUrl = window.location.pathname;
-                
-                let nextUrl = null;
-                let prevUrl = null;
-
-                if (data.chapter < data.chapterCount) {
-                  const nextParams = new URLSearchParams(searchParams);
-                  nextParams.set('chapter', String(data.chapter + 1));
-                  nextUrl = `${baseUrl}?${nextParams.toString()}`;
-                } else if (data.next) {
-                  nextUrl = `${baseUrl}?text=${textId}&book=${encodeURIComponent(data.next.bookId)}`;
-                }
-
-                if (data.chapter > 1) {
-                  const prevParams = new URLSearchParams(searchParams);
-                  prevParams.set('chapter', String(data.chapter - 1));
-                  prevUrl = `${baseUrl}?${prevParams.toString()}`;
-                } else if (data.previous) {
-                  prevUrl = `${baseUrl}?text=${textId}&book=${encodeURIComponent(data.previous.bookId)}`;
-                }
-
-                setNavigationUrls(nextUrl, prevUrl);
-                playQueue(speechSegments, textId);
-              }}
-              className="flex items-center gap-2 rounded-xl border border-line bg-panel/50 px-4 py-3 text-sm font-medium hover:bg-panel transition-colors w-full"
+              type="button"
+              onClick={handleHeaderListen}
+              aria-pressed={isThisChapterPlaying}
+              className={cn(
+                'inline-flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors',
+                isThisChapterPlaying
+                  ? 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/15'
+                  : 'border-line bg-panel/60 text-fg hover:bg-panel'
+              )}
             >
-              <PodcastIcon className="w-5 h-5 text-accent" />
-              Listen in Podcast Mode
+              {isThisChapterPlaying ? (
+                <Pause className="h-4 w-4 fill-current" aria-hidden />
+              ) : (
+                <Play className="h-4 w-4 fill-current" aria-hidden />
+              )}
+              <span>
+                {isThisChapterPlaying
+                  ? `Pause · ${chapterSegments[activePlayerIndex]?.label ?? ''}`
+                  : isThisChapterLoaded
+                    ? `Resume · ${chapterSegments[activePlayerIndex]?.label ?? ''}`
+                    : textId === 'quran'
+                      ? 'Listen (Arabic & English)'
+                      : 'Listen to chapter'}
+              </span>
+              <span className="ms-1 text-xs font-normal text-fg-muted">
+                {chapterSegments.length} verses
+              </span>
             </button>
           </div>
         ) : null}
@@ -672,8 +710,17 @@ function ReadingPane({
         {data.verses.slice(0, visibleVerses).map((verse) => {
           // The original reads in its own script's direction, not its corpus's.
           const direction = getLanguageDirection(verse.language);
+          const segIndex = chapterSegments.findIndex((s) => s.passageKey === verse.passageKey);
+          const isCurrentVerse = isThisChapterLoaded && segIndex !== -1 && segIndex === activePlayerIndex;
           return (
-            <div key={verse.passageKey} id={`v-${verse.verse}`} className="border-b border-line-soft py-3 last:border-b-0">
+            <div
+              key={verse.passageKey}
+              id={`v-${verse.verse}`}
+              className={cn(
+                'border-b border-line-soft py-3 last:border-b-0 transition-colors',
+                isCurrentVerse && ' -mx-2 rounded-lg bg-accent/5 px-2 ring-1 ring-accent/20'
+              )}
+            >
               {showOriginal && verse.originalText && verse.originalText !== verse.text ? (
                 <p
                   dir={direction}
@@ -689,6 +736,26 @@ function ReadingPane({
                 reads as a rendering fault rather than as a translation.
               */}
               <p dir="ltr" className="text-[15px] leading-relaxed">
+                {segIndex !== -1 ? (
+                  <button
+                    type="button"
+                    onClick={() => (isCurrentVerse && isThisChapterPlaying ? togglePlayback() : startFromVerse(segIndex))}
+                    aria-label={isCurrentVerse && isThisChapterPlaying ? `Pause verse ${verse.verse}` : `Play from verse ${verse.verse}`}
+                    title={isCurrentVerse && isThisChapterPlaying ? `Pause verse ${verse.verse}` : `Play from verse ${verse.verse}`}
+                    className={cn(
+                      'mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full align-text-bottom transition-colors',
+                      isCurrentVerse
+                        ? 'bg-accent text-accent-fg'
+                        : 'text-fg-faint hover:bg-panel hover:text-accent'
+                    )}
+                  >
+                    {isCurrentVerse && isThisChapterPlaying ? (
+                      <Volume2 className="h-3 w-3" aria-hidden />
+                    ) : (
+                      <Play className="h-2.5 w-2.5 fill-current" aria-hidden />
+                    )}
+                  </button>
+                ) : null}
                 <sup className="mr-2 select-none font-mono text-[11px] text-fg-faint tabular-nums">{verse.verse}</sup>
                 {verse.text}
               </p>

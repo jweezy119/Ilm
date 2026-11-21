@@ -8,14 +8,14 @@ import { SaveButton } from '@/components/SaveButton';
 import { AddToJourney } from '@/components/AddToJourney';
 import { CopyCitation } from '@/components/CopyCitation';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, ArrowRight, Compass, Loader2, Scale, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Compass, Loader2, Pause, Play, Scale, Sparkles } from 'lucide-react';
 import type { CrossRef, Passage } from '@ilm/shared';
 import { api, ApiError, type RecommendationExplanation } from '@/lib/api';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { LookupableText, LEXICON_LANGUAGES } from '@/components/LexiconPanel';
 import { GlossableText } from '@/components/GlossableText';
-import { RecitationPlayer, useRecitationVerse } from '@/components/RecitationPlayer';
-import { ReadAloud } from '@/components/ReadAloud';
+import { usePodcast } from '@/components/PodcastContext';
+import { verseLabel } from '@/lib/reciters';
 import { GLOSSARY_TEXTS } from '@/lib/glossary';
 import { SourceBadge, SOURCE_SENTENCE } from '@/components/SourceBadge';
 import { ScoreExplainer } from '@/components/ScoreExplainer';
@@ -85,15 +85,10 @@ export default function PassagePage() {
   const translation = useTranslationChoice(passage);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const recitationVerse = useRecitationVerse(passage?.passageKey ?? '');
-  // Attached once the translation is known, so the recitation can read the
-  // meaning after the Arabic rather than the reader assembling two players.
-  const recitationWithTranslation = useMemo(
-    // `active` is undefined until the passage has loaded, and this runs on the
-    // first render rather than inside the JSX that already guards for it.
-    () => recitationVerse.map((v) => ({ ...v, translation: translation.active?.text })),
-    [recitationVerse, translation.active?.text]
-  );
+  const { queueId: activeQueueId, isPlaying: playerIsPlaying, playQueue, togglePlayback, setNavigationUrls } = usePodcast();
+  const passageQueueId = passage ? `passage:${passage.passageKey}:${translation.active.name}` : null;
+  const isThisPassageLoaded = Boolean(passageQueueId && activeQueueId === passageQueueId);
+  const isThisPassagePlaying = isThisPassageLoaded && playerIsPlaying;
 
   useEffect(() => {
     if (!passageKey) return;
@@ -230,33 +225,44 @@ export default function PassagePage() {
               />
             </section>
 
-            {/*
-              Two different things, labelled as two different things.
-
-              The recitation player is a human voice and only the Quran has one
-              here, so it renders for Quran passages and nothing else. The read
-              aloud control is a voice the reader's device already has, and it
-              works for every corpus. Putting them under one heading called
-              "Audio" would let a synthetic voice pass for a recitation, which is
-              the one claim this library must not blur.
-            */}
-            <div className="mt-5 flex flex-wrap items-start gap-6 border-t border-ink-200 pt-4 dark:border-ink-800">
-              <div>
-                <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('recitationHeading')}</h2>
-                {/* One control, and it does both: the recording, then the
-                    meaning. Two buttons would make a reader who cannot read Arabic
-                    put the two halves in the right order themselves. */}
-                <RecitationPlayer verses={recitationWithTranslation} />
-                {recitationVerse.length === 0 ? (
-                  <p className="max-w-xs text-[11px] text-ink-500">{speechT('noRecitation')}</p>
-                ) : null}
-              </div>
-              {passage.textId === 'quran' ? null : (
-                <div>
-                  <h2 className="mb-1 text-xs uppercase tracking-wide text-ink-500">{speechT('readAloudHeading')}</h2>
-                  <ReadAloud text={translation.active.text} textId={passage.textId} compact />
-                </div>
-              )}
+            {/* Single unified Listen button — opens this passage in the persistent media player. */}
+            <div className="mt-5 border-t border-ink-200 pt-4 dark:border-ink-800">
+              <h2 className="mb-2 text-xs uppercase tracking-wide text-ink-500">{speechT('listenHeading')}</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isThisPassageLoaded) {
+                    togglePlayback();
+                    return;
+                  }
+                  const label = verseLabel(passage.passageKey) || `${passage.book} ${passage.chapter}:${passage.verse}`;
+                  setNavigationUrls(null, null);
+                  playQueue(
+                    [{ passageKey: passage.passageKey, label, text: translation.active.text }],
+                    passage.textId,
+                    {
+                      queueId: passageQueueId ?? `passage:${passage.passageKey}`,
+                      title: `${passage.book} ${passage.chapter}:${passage.verse}`,
+                      startIndex: 0,
+                    }
+                  );
+                }}
+                aria-pressed={isThisPassagePlaying}
+                className={cn(
+                  'btn',
+                  isThisPassagePlaying ? 'bg-accent/15 text-accent border-accent/40' : 'btn-secondary'
+                )}
+              >
+                {isThisPassagePlaying ? (
+                  <Pause className="h-4 w-4 fill-current" aria-hidden />
+                ) : (
+                  <Play className="h-4 w-4 fill-current" aria-hidden />
+                )}
+                <span>{isThisPassagePlaying ? speechT('pause') : speechT('play')}</span>
+              </button>
+              {passage.textId === 'quran' ? (
+                <p className="mt-1.5 text-[11px] text-ink-500">{speechT('sequenceNote')}</p>
+              ) : null}
             </div>
           </article>
 

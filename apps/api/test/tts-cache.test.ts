@@ -100,4 +100,29 @@ describe('tts cache', () => {
     expect(upstream).toHaveBeenCalledTimes(1);
     expect(results.every((result) => result.audio.length === 3)).toBe(true);
   });
+
+  it('splits text longer than Google TTS 200-char limit into <=180-char chunks and caches one combined MP3', async () => {
+    const upstream = stubUpstream(200, [7, 8, 9]);
+    vi.stubGlobal('fetch', upstream);
+
+    const { synthesise, splitTtsText } = await import('../src/services/tts');
+
+    const longVerse =
+      'And they shall bless and glorify the Lord of Spirits, and say: ‘Blessed is the Lord of Spirits and the Lord of kings, And the Lord of the mighty and the Lord of the rich, And the Lord of glory and the Lord of wisdom,';
+    expect(longVerse.length).toBeGreaterThan(200);
+
+    const chunks = splitTtsText(longVerse);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((c) => c.length <= 180)).toBe(true);
+
+    const first = await synthesise(longVerse, 'en');
+    const second = await synthesise(longVerse, 'en');
+
+    expect(first.cached).toBe(false);
+    expect(second.cached).toBe(true);
+    expect(upstream).toHaveBeenCalledTimes(chunks.length);
+    expect(first.audio.length).toBe(chunks.length * 3);
+    expect(second.audio.equals(first.audio)).toBe(true);
+    expect(await readdir(dir)).toHaveLength(1);
+  });
 });

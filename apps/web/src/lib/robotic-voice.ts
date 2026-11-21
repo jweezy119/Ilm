@@ -145,17 +145,26 @@ export async function createRoboticVoice(): Promise<RoboticVoice> {
   if (!context) throw new Error('robotic voice: no Web Audio in this browser');
 
   let current: AudioBufferSourceNode | null = null;
+  let activeResolve: (() => void) | null = null;
+  let runId = 0;
 
   const stop = () => {
-    if (!current) return;
-    try {
-      current.onended = null;
-      current.stop();
-    } catch {
-      // Already stopped, which is the state being asked for.
+    runId += 1;
+    if (current) {
+      try {
+        current.onended = null;
+        current.stop();
+      } catch {
+        // Already stopped, which is the state being asked for.
+      }
+      current = null;
+      void context.suspend().catch(() => undefined);
     }
-    current = null;
-    void context.suspend().catch(() => undefined);
+    if (activeResolve) {
+      const done = activeResolve;
+      activeResolve = null;
+      done();
+    }
   };
 
   return {
@@ -167,16 +176,35 @@ export async function createRoboticVoice(): Promise<RoboticVoice> {
       return new Promise<void>((resolve, reject) => {
         try {
           stop();
+          const myRun = runId;
+          const finish = () => {
+            if (activeResolve === finish) activeResolve = null;
+            resolve();
+          };
+          activeResolve = finish;
           void context.resume();
 
           const wav = engine.generate(trimmed, wpmFor(options?.rate));
           if (!wav) {
+            activeResolve = null;
             reject(new Error('robotic voice: nothing generated'));
             return;
           }
 
+          // Modern browsers invoke BOTH the callback AND resolve the returned
+          // Promise from `decodeAudioData`, so guard with `settled` to avoid
+          // playing two overlapping AudioBufferSourceNodes.
+          let settled = false;
+
           const onDecoded = (buffer: AudioBuffer) => {
+            if (settled) return;
+            settled = true;
+            if (myRun !== runId) {
+              finish();
+              return;
+            }
             if (!buffer || buffer.length === 0) {
+              activeResolve = null;
               reject(new Error('robotic voice: empty audio'));
               return;
             }
@@ -185,13 +213,21 @@ export async function createRoboticVoice(): Promise<RoboticVoice> {
             current.connect(context.destination);
             current.onended = () => {
               current = null;
-              resolve();
+              finish();
             };
             current.start(0);
           };
 
-          const failed = (error: unknown) =>
+          const failed = (error: unknown) => {
+            if (settled) return;
+            settled = true;
+            activeResolve = null;
+            if (myRun !== runId) {
+              resolve();
+              return;
+            }
             reject(error instanceof Error ? error : new Error('robotic voice: could not decode'));
+          };
 
           // Safari only has the callback form, so both shapes are handled rather
           // than assuming the promise.
@@ -200,6 +236,7 @@ export async function createRoboticVoice(): Promise<RoboticVoice> {
             (maybe as Promise<AudioBuffer>).then(onDecoded, failed);
           }
         } catch (error) {
+          activeResolve = null;
           reject(error instanceof Error ? error : new Error('robotic voice: failed to speak'));
         }
       });

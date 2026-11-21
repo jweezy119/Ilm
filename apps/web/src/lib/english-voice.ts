@@ -29,6 +29,7 @@ export interface SpeakEnglishOptions {
   /** The passage's text, for when there is no recording or it fails. */
   text: string;
   rate?: number;
+  onStart?: () => void;
   onSource?: (source: EnglishSource) => void;
   onDone?: () => void;
   onError?: (error: unknown) => void;
@@ -61,6 +62,8 @@ export function useEnglishVoice(): EnglishVoice {
       el.onended = null;
       el.onerror = null;
       el.pause();
+      el.removeAttribute('src');
+      audioRef.current = null;
     }
     engineRef.current?.stop();
     setSource('none');
@@ -68,19 +71,42 @@ export function useEnglishVoice(): EnglishVoice {
 
   useEffect(() => stop, [stop]);
 
-  const speakWithDevice = useCallback(async (text: string, rate: number | undefined) => {
-    let engine = engineRef.current;
-    if (!engine) {
-      engine = await createSpeechEngine('en');
-      engineRef.current = engine;
-    }
-    setSource('device');
-    await engine.speakQueue(toSpeechPieces(undefined, text), { rate });
-  }, []);
+  const speakWithDevice = useCallback(
+    async (text: string, rate: number | undefined, onStart?: () => void, onSource?: (source: EnglishSource) => void) => {
+      const pieces = toSpeechPieces(undefined, text);
+      if (pieces.length === 0) return;
+      let engine = engineRef.current;
+      if (!engine) {
+        engine = await createSpeechEngine('en');
+        engineRef.current = engine;
+      }
+      if (stoppedRef.current) return;
+      setSource('device');
+      onSource?.('device');
+      let engineError: unknown = null;
+      let started = false;
+      await engine.speakQueue(pieces, {
+        rate,
+        onPiece: () => {
+          if (!started) {
+            started = true;
+            onStart?.();
+          }
+        },
+        onError: (err) => {
+          engineError = err;
+        },
+      });
+      if (engineError && !stoppedRef.current) {
+        throw engineError;
+      }
+    },
+    []
+  );
 
   const speak = useCallback(
     async (options: SpeakEnglishOptions) => {
-      const { audioUrl, text, rate, onSource, onDone, onError } = options;
+      const { audioUrl, text, rate, onStart, onSource, onDone, onError } = options;
       stoppedRef.current = false;
 
       const url = audioUrl ?? null;
@@ -93,7 +119,11 @@ export function useEnglishVoice(): EnglishVoice {
             el.playbackRate = rate ?? 1;
             el.onended = () => resolve();
             el.onerror = () => reject({ code: el.error?.code ?? 4 });
-            el.play().catch(reject);
+            el.play()
+              .then(() => {
+                if (!stoppedRef.current) onStart?.();
+              })
+              .catch(reject);
           });
           if (stoppedRef.current) return;
           setSource('recorded');
@@ -111,7 +141,7 @@ export function useEnglishVoice(): EnglishVoice {
       }
 
       try {
-        await speakWithDevice(text, rate);
+        await speakWithDevice(text, rate, onStart, onSource);
       } catch (error) {
         if (!stoppedRef.current) onError?.(error);
         return;

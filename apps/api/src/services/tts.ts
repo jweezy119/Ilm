@@ -38,6 +38,83 @@ const PRUNE_TRIGGER = 256 * 1024 * 1024;
 
 const UPSTREAM = 'https://translate.google.com/translate_tts';
 
+/**
+ * Google Translate TTS returns HTTP 400 for queries longer than ~200 characters.
+ * Chunking at 180 characters on natural boundaries lets `/api/tts` serve any
+ * valid request (up to 500 chars) as one concatenated, cached MP3.
+ */
+const MAX_UPSTREAM_CHARS = 180;
+const UPSTREAM_TIMEOUT_MS = 15_000;
+
+export function splitTtsText(text: string, maxChars = MAX_UPSTREAM_CHARS): string[] {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  if (clean.length <= maxChars) return [clean];
+
+  const sentences = clean.match(/[^.!?؟۔。]+[.!?؟۔。]*\s*/g) ?? [clean];
+  const chunks: string[] = [];
+  let buffer = '';
+
+  const flush = () => {
+    if (buffer) {
+      chunks.push(buffer);
+      buffer = '';
+    }
+  };
+
+  const pushOversized = (segment: string) => {
+    const clauses = segment.match(/[^,;:،؛—–]+[,;:،؛—–]?\s*/g) ?? [segment];
+    for (const rawClause of clauses) {
+      const clause = rawClause.trim();
+      if (!clause) continue;
+      if (clause.length <= maxChars) {
+        if (buffer && buffer.length + clause.length + 1 <= maxChars) {
+          buffer = `${buffer} ${clause}`;
+        } else {
+          flush();
+          buffer = clause;
+        }
+        continue;
+      }
+      flush();
+      const words = clause.split(/\s+/);
+      let line = '';
+      for (const word of words) {
+        if (word.length > maxChars) {
+          if (line) {
+            chunks.push(line);
+            line = '';
+          }
+          for (let i = 0; i < word.length; i += maxChars) {
+            chunks.push(word.slice(i, i + maxChars));
+          }
+        } else if (line && line.length + word.length + 1 > maxChars) {
+          chunks.push(line);
+          line = word;
+        } else {
+          line = line ? `${line} ${word}` : word;
+        }
+      }
+      if (line) chunks.push(line);
+    }
+  };
+
+  for (const rawSentence of sentences) {
+    const sentence = rawSentence.trim();
+    if (!sentence) continue;
+    if (sentence.length > maxChars) {
+      pushOversized(sentence);
+    } else if (buffer && buffer.length + sentence.length + 1 > maxChars) {
+      flush();
+      buffer = sentence;
+    } else {
+      buffer = buffer ? `${buffer} ${sentence}` : sentence;
+    }
+  }
+  flush();
+  return chunks;
+}
+
 let writtenSincePrune = 0;
 
 /** In-flight synthesises, so ten simultaneous requests for one verse cost one upstream call. */
@@ -101,20 +178,39 @@ function fetchOnce(text: string, lang: string): Promise<Buffer> {
   return created;
 }
 
-async function fetchUpstream(text: string, lang: string): Promise<Buffer> {
+async function fetchChunk(chunk: string, lang: string): Promise<Buffer> {
   const url =
     `${UPSTREAM}?ie=UTF-8&tl=${encodeURIComponent(lang)}&client=tw-ob` +
-    `&q=${encodeURIComponent(text)}`;
+    `&q=${encodeURIComponent(chunk)}`;
 
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0',
       Referer: 'https://translate.google.com/',
     },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
 
   if (!response.ok) throw new Error(`upstream returned ${response.status}`);
+  const contentType = response.headers.get('content-type') ?? '';
+  if (contentType.includes('text/html')) {
+    throw new Error('upstream returned html instead of audio');
+  }
   return Buffer.from(await response.arrayBuffer());
+}
+
+async function fetchUpstream(text: string, lang: string): Promise<Buffer> {
+  const chunks = splitTtsText(text, MAX_UPSTREAM_CHARS);
+  if (chunks.length === 0) return Buffer.alloc(0);
+  if (chunks.length === 1) return fetchChunk(chunks[0], lang);
+
+  const buffers: Buffer[] = [];
+  for (const chunk of chunks) {
+    const part = await fetchChunk(chunk, lang);
+    if (part.length === 0) throw new Error('upstream returned no audio');
+    buffers.push(part);
+  }
+  return Buffer.concat(buffers);
 }
 
 /**

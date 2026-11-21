@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import { RECITERS, DEFAULT_RECITER, RECITATION_SPEEDS, ayahAudioUrl, verseLabel } from '@/lib/reciters';
 import { useEnglishVoice, recordedFor } from '@/lib/english-voice';
 import { useWakeLock } from '@/lib/useWakeLock';
-import { usePauseOnHidden } from '@/lib/usePauseOnHidden';
 
 /**
  * The English option in the voice selector.
@@ -90,25 +89,33 @@ export function RecitationPlayer({
   const [phase, setPhase] = useState<'arabic' | 'english' | null>(null);
   const [englishNotice, setEnglishNotice] = useState<string | null>(null);
   const stopped = useRef(false);
+  const sessionRef = useRef(0);
+  const abortArabicRef = useRef<(() => void) | null>(null);
+  const repeatRef = useRef<RepeatMode>(repeat);
+  const speedRef = useRef<number>(speed);
+  const playingRef = useRef<boolean>(playing);
+  repeatRef.current = repeat;
+  speedRef.current = speed;
+  playingRef.current = playing;
+
   /**
    * The English half: a recording where one exists, the reader's own voice
    * otherwise. One hook for both, because the reader should not be able to tell
    * which they got by anything except being told.
    */
   const english = useEnglishVoice();
-
-  // Switching tabs must not leave a chapter reading to itself. The same stop
-  // path as the pause button, so a hidden tab and a pressed pause agree.
-  const pauseOnHidden = useCallback(() => {
-    if (!playing) return;
-    stopped.current = true;
-    audioRef.current?.pause();
-    english.stop();
-    setPlaying(false);
-    setPhase(null);
-  }, [playing, english]);
-  usePauseOnHidden(pauseOnHidden);
+  const stopEnglish = english.stop;
   const [englishSource, setEnglishSource] = useState<'recorded' | 'device' | 'none'>('none');
+
+  const stopAll = useCallback(() => {
+    sessionRef.current += 1;
+    stopped.current = true;
+    abortArabicRef.current?.();
+    abortArabicRef.current = null;
+    const el = audioRef.current;
+    if (el) el.pause();
+    english.stop();
+  }, [english]);
 
   const current = verses[index];
 
@@ -137,132 +144,121 @@ export function RecitationPlayer({
   /*
    * Stop the speech when the component goes away, or when the passage changes.
    *
-   * There was no cleanup here at all, so navigating away mid-verse left the
-   * translation still being read on a page the reader had left.
-   *
-   * Only the engine is stopped. The audio element is removed with the component
-   * and the browser stops it by itself; reaching into a ref during cleanup is
-   * both unnecessary and the thing the hooks lint warns about, because the ref
-   * may already have been cleared.
+   * Depend on `stopEnglish` (stable) rather than `english`: `useEnglishVoice`
+   * updates `english.source` from 'none' to 'device' as soon as playback starts,
+   * and depending on the whole `english` object ran this cleanup mid-playback and
+   * immediately silenced the voice that had just begun.
    */
   useEffect(() => {
+    setIndex(0);
+    setPlaying(false);
+    setPhase(null);
     return () => {
+      sessionRef.current += 1;
       stopped.current = true;
+      abortArabicRef.current?.();
+      abortArabicRef.current = null;
       english.stop();
     };
-    // `english` is stable apart from its stop handler, which is a useCallback
-    // with no dependencies, so this fires when the passage changes and on unmount.
-  }, [verses, english]);
-
-  // A new source has to be played deliberately; browsers reject it otherwise,
-  // and a rejection here would be an unhandled promise rather than a message.
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el || !src) return;
-    setError(null);
-    if (playing) {
-      el.play().catch(() => {
-        setPlaying(false);
-        setError(t('blocked'));
-      });
-    }
-    // `t` is stable enough for this and re-running on a locale change would
-    // restart audio the reader is in the middle of.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src]);
-
-  const go = useCallback(
-    (next: number) => {
-      // Skipping while the English is speaking would otherwise leave the two
-      // halves talking over each other.
-      english.stop();
-      setPhase(null);
-      const clamped = Math.max(0, Math.min(verses.length - 1, next));
-      setIndex(clamped);
-      setAnnouncement(t('nowPlaying', { label: verses[clamped]?.label ?? '' }));
-    },
-    [verses, t, english]
-  );
+  }, [verses, stopEnglish]);
 
   /**
-   * Carry on after verse `from` has been heard.
+   * Play an HTMLAudioElement from start to finish, resolving only once the
+   * `ended` event fires (or early if playback is aborted/paused).
    *
-   * Shared by both modes, because what follows a verse — repeat it, move on, or
-   * stop — does not depend on how it was played.
+   * `el.play()` resolves as soon as playback *starts*, not when the track ends.
+   * Awaiting `ended` here is what keeps the Arabic recitation and English
+   * translation strictly sequential instead of talking over each other.
    */
-  const proceed = useCallback(
-    (from: number) => {
-      setPhase(null);
+  const waitForAudioEnd = useCallback((el: HTMLAudioElement, mySession: number): Promise<'ended' | 'stopped' | 'error'> => {
+    return new Promise((resolve) => {
+      let settled = false;
+      const cleanup = () => {
+        el.removeEventListener('ended', onEnded);
+        el.removeEventListener('error', onErr);
+        if (abortArabicRef.current === onAbort) abortArabicRef.current = null;
+      };
+      const done = (outcome: 'ended' | 'stopped' | 'error') => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(outcome);
+      };
+      const onEnded = () => done('ended');
+      const onErr = () => done('error');
+      const onAbort = () => done('stopped');
 
-      if (repeat === 'one') {
-        if (englishMode) {
-          void speakOne(from);
-          return;
-        }
-        const el = audioRef.current;
-        if (el) {
-          el.currentTime = 0;
-          el.play().catch(() => setPlaying(false));
-        }
-        setAnnouncement(t('repeating', { label: verses[from]?.label ?? '' }));
-        return;
+      abortArabicRef.current = onAbort;
+      el.addEventListener('ended', onEnded);
+      el.addEventListener('error', onErr);
+
+      if (stopped.current || sessionRef.current !== mySession) {
+        done('stopped');
       }
-      if (from < verses.length - 1) {
-        go(from + 1);
-        return;
-      }
-      if (repeat === 'all') {
-        go(0);
-        return;
-      }
-      setPlaying(false);
-      setAnnouncement(t('finished'));
-    },
-    // speakOne is deliberately omitted: it is recreated when the mode or the
-    // speed changes, and re-running proceed on those would only matter if a
-    // repeat were in flight at that exact moment.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [repeat, englishMode, verses.length, go, t]
-  );
+    });
+  }, []);
 
   /**
    * Speak one verse in the current mode, and report whether anything was spoken.
    *
-   * In Arabic mode this plays the recording and then reads the translation after
-   * it — the handoff is the feature, because a reader who cannot read Arabic is
-   * the one this is for and making them assemble the sequence would be the work.
-   * In English mode the translation is the whole of it.
+   * In Arabic mode this plays the recording to completion and then reads the
+   * translation after it — the handoff is the feature, because a reader who
+   * cannot read Arabic is the one this is for and making them assemble the
+   * sequence would be the work. In English mode the translation is the whole of it.
    */
   const speakOne = useCallback(
-    async (from: number): Promise<boolean> => {
+    async (from: number, mySession: number): Promise<boolean> => {
       const verse = verses[from];
-      if (!verse) return false;
+      if (!verse || stopped.current || sessionRef.current !== mySession) return false;
 
       if (englishMode) {
         if (!verse.translation?.trim()) return false;
         setPhase('english');
         setEnglishNotice(null);
         setAnnouncement(`${verse.label}: ${s('phaseEnglish')}`);
+        let failed = false;
         await english.speak({
           audioUrl: recordedFor(verse.passageKey),
           text: verse.translation,
-          rate: speed,
+          rate: speedRef.current,
           onSource: setEnglishSource,
-          onError: () => setEnglishNotice(s('englishFailed')),
+          onError: () => {
+            failed = true;
+            setEnglishNotice(s('englishFailed'));
+          },
         });
-        return true;
+        return !failed;
       }
 
       const el = audioRef.current;
       if (!el || !ayahAudioUrl(verse.passageKey, reciterId)) return false;
 
+      const url = ayahAudioUrl(verse.passageKey, reciterId)!;
       setPhase('arabic');
+      setError(null);
       setAnnouncement(t('nowPlaying', { label: verse.label }));
       try {
+        if (el.src !== url) {
+          el.src = url;
+        }
+        el.playbackRate = speedRef.current;
         el.currentTime = 0;
+        const endedPromise = waitForAudioEnd(el, mySession);
         await el.play();
+        const outcome = await endedPromise;
+        if (outcome === 'stopped' || stopped.current || sessionRef.current !== mySession) {
+          return false;
+        }
+        if (outcome === 'error') {
+          setError(t('unavailable'));
+          return false;
+        }
       } catch {
-        setError(t('blocked'));
+        abortArabicRef.current?.();
+        if (!stopped.current && sessionRef.current === mySession) {
+          setError(t('blocked'));
+        }
         return false;
       }
 
@@ -277,24 +273,137 @@ export function RecitationPlayer({
         if (recorded) setEnglishNotice(null);
         setPhase('english');
         setAnnouncement(`${verse.label}: ${s('phaseEnglish')}`);
+        let englishFailed = false;
         await english.speak({
           audioUrl: recorded,
           text: verse.translation,
-          rate: speed,
+          rate: speedRef.current,
           onSource: setEnglishSource,
-          onError: () => setEnglishNotice(s('englishFailed')),
+          onError: () => {
+            englishFailed = true;
+            setEnglishNotice(s('englishFailed'));
+          },
         });
+        if (stopped.current || sessionRef.current !== mySession) return false;
+        if (englishFailed) return false;
       }
       return true;
     },
-    [verses, englishMode, reciterId, speed, s, t, english]
+    [verses, englishMode, reciterId, s, t, english, waitForAudioEnd]
+  );
+
+  /**
+   * Drive playback sequentially from `startAt`, advancing through the chapter
+   * in both Arabic+English and English-only modes.
+   */
+  const playLoop = useCallback(
+    async (startAt: number) => {
+      stopAll();
+      const mySession = sessionRef.current;
+      stopped.current = false;
+      setError(null);
+      setEnglishNotice(null);
+      setPlaying(true);
+
+      let cursor = startAt;
+      while (!stopped.current && sessionRef.current === mySession) {
+        setIndex(cursor);
+        const spoke = await speakOne(cursor, mySession);
+        if (stopped.current || sessionRef.current !== mySession) return;
+
+        if (englishMode && !spoke) {
+          setPlaying(false);
+          setPhase(null);
+          setEnglishNotice(s('englishFailed'));
+          return;
+        }
+
+        /*
+         * A translation that could not be spoken is not a reason to stop. The
+         * recording is the passage; the explanation is a courtesy, and skipping the
+         * courtesy keeps the reader inside the passage they asked for.
+         */
+        if (!spoke && verses[index]?.translation) {
+          setEnglishNotice(s('englishFailed'));
+        }
+
+        setPhase(null);
+
+        // Repeat this verse (in Arabic mode, repeat the Arabic recitation alone).
+        if (repeatRef.current === 'one') {
+          if (englishMode) {
+            setAnnouncement(t('repeating', { label: verses[cursor]?.label ?? '' }));
+            continue;
+          }
+          const el = audioRef.current;
+          const url = verses[cursor] ? ayahAudioUrl(verses[cursor].passageKey, reciterId) : null;
+          if (!el || !url) {
+            setPlaying(false);
+            return;
+          }
+          setPhase('arabic');
+          setAnnouncement(t('repeating', { label: verses[cursor]?.label ?? '' }));
+          try {
+            if (el.src !== url) el.src = url;
+            el.playbackRate = speedRef.current;
+            el.currentTime = 0;
+            const endedPromise = waitForAudioEnd(el, mySession);
+            await el.play();
+            const outcome = await endedPromise;
+            if (outcome !== 'ended' || stopped.current || sessionRef.current !== mySession) {
+              if (outcome === 'error') setError(t('unavailable'));
+              setPlaying(false);
+              setPhase(null);
+              return;
+            }
+          } catch {
+            setPlaying(false);
+            setPhase(null);
+            return;
+          }
+          continue;
+        }
+
+        if (cursor < verses.length - 1) {
+          cursor += 1;
+          continue;
+        }
+
+        if (repeatRef.current === 'all') {
+          cursor = 0;
+          continue;
+        }
+
+        setPlaying(false);
+        setPhase(null);
+        setAnnouncement(t('finished'));
+        return;
+      }
+    },
+    [stopAll, speakOne, englishMode, verses, index, reciterId, s, t, waitForAudioEnd]
+  );
+
+  const go = useCallback(
+    (next: number) => {
+      // Skipping while the English is speaking would otherwise leave the two
+      // halves talking over each other.
+      const wasPlaying = playingRef.current;
+      stopAll();
+      english.stop();
+      setPhase(null);
+      const clamped = Math.max(0, Math.min(verses.length - 1, next));
+      setIndex(clamped);
+      setAnnouncement(t('nowPlaying', { label: verses[clamped]?.label ?? '' }));
+      if (wasPlaying) {
+        void playLoop(clamped);
+      }
+    },
+    [verses, t, english, stopAll, playLoop]
   );
 
   const toggle = useCallback(async () => {
     if (playing) {
-      stopped.current = true;
-      audioRef.current?.pause();
-      english.stop();
+      stopAll();
       setPlaying(false);
       setPhase(null);
       setAnnouncement(t('paused'));
@@ -307,39 +416,27 @@ export function RecitationPlayer({
         setEnglishNotice(s('nothingToRead'));
         return;
       }
-      setError(null);
-      setEnglishNotice(null);
-      stopped.current = false;
-      setPlaying(true);
-      const spoke = await speakOne(index);
-      if (stopped.current) return;
-      if (!spoke) {
-        setPlaying(false);
-        setEnglishNotice(s('englishFailed'));
-        return;
-      }
-      proceed(index);
+      await playLoop(index);
       return;
     }
 
     const el = audioRef.current;
     if (!el || !src) return;
 
-    setError(null);
-    stopped.current = false;
-    setPlaying(true);
-    const spoke = await speakOne(index);
-    if (stopped.current) return;
-    /*
-     * A translation that could not be spoken is not a reason to stop. The
-     * recording is the passage; the explanation is a courtesy, and skipping the
-     * courtesy keeps the reader inside the passage they asked for.
-     */
-    if (!spoke && verses[index]?.translation) {
-      setEnglishNotice(s('englishFailed'));
-    }
-    proceed(index);
-  }, [playing, englishMode, verses, index, src, speakOne, proceed, s, t, english]);
+    await playLoop(index);
+  }, [playing, stopAll, englishMode, verses, index, src, playLoop, s, t]);
+
+  const onReciterChange = useCallback(
+    (nextReciter: string) => {
+      if (playingRef.current) {
+        stopAll();
+        setPlaying(false);
+        setPhase(null);
+      }
+      setReciterId(nextReciter);
+    },
+    [stopAll]
+  );
 
   const cycleRepeat = useCallback(() => {
     setRepeat((mode) => (mode === 'off' ? 'one' : mode === 'one' ? 'all' : 'off'));
@@ -366,8 +463,6 @@ export function RecitationPlayer({
           ref={audioRef}
           src={src ?? undefined}
           preload="none"
-          onEnded={() => proceed(index)}
-          onError={() => setError(t('unavailable'))}
         />
       ) : null}
 
@@ -412,7 +507,7 @@ export function RecitationPlayer({
         <select
           id="recitation-reciter"
           value={reciterId}
-          onChange={(e) => setReciterId(e.target.value)}
+          onChange={(e) => onReciterChange(e.target.value)}
           className="rounded-lg border border-line bg-panel px-2 py-1 text-sm"
         >
           {voices.map((id) => (
@@ -436,9 +531,9 @@ export function RecitationPlayer({
           onChange={(e) => setSpeed(Number(e.target.value))}
           className="rounded-lg border border-line bg-panel px-2 py-1 text-sm"
         >
-          {RECITATION_SPEEDS.map((s) => (
-            <option key={s} value={String(s)}>
-              {s}×
+          {RECITATION_SPEEDS.map((r) => (
+            <option key={r} value={String(r)}>
+              {r}×
             </option>
           ))}
         </select>
@@ -457,7 +552,7 @@ export function RecitationPlayer({
         {autoLabel ? (
           <span className="text-sm text-fg-muted">
             <Volume2 className="me-1 inline h-3.5 w-3.5" aria-hidden />
-            {current.label}
+            {current?.label}
             {phaseLabel ? <span className="ms-1.5 text-xs">{phaseLabel}</span> : null}
           </span>
         ) : null}
