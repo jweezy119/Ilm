@@ -113,6 +113,21 @@ interface SearchState {
   clearRecent: () => void;
 }
 
+export function partializeSearchState(state: SearchState) {
+  return {
+    activeTexts: state.activeTexts,
+    recent: state.recent,
+  };
+}
+
+export function migrateSearchState(persisted: unknown) {
+  const old = (persisted ?? {}) as Partial<SearchState>;
+  return {
+    activeTexts: Array.isArray(old.activeTexts) && old.activeTexts.length > 0 ? old.activeTexts : ALL_TEXTS,
+    recent: Array.isArray(old.recent) ? old.recent : [],
+  };
+}
+
 export const useSearchStore = create<SearchState>()(
   persist(
     (set) => ({
@@ -144,7 +159,15 @@ export const useSearchStore = create<SearchState>()(
 
       clearRecent: () => set({ recent: [] }),
     }),
-    { name: 'ilm-search' }
+    {
+      name: 'ilm-search',
+      version: 2,
+      // Only persist user preferences and recent search history — never the
+      // active query/response, so opening `/` always starts on the landing page
+      // instead of trapping the reader on a stale previous search.
+      partialize: partializeSearchState,
+      migrate: migrateSearchState,
+    }
   )
 );
 

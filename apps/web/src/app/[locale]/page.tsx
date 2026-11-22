@@ -141,7 +141,7 @@ function SearchInner() {
   // be checkable against: "45,453 passages" is answerable, "the texts" is not.
   const [searched, setSearched] = useState<number | null>(null);
 
-  const { query, response, activeTexts, recent, setQuery, setResponse, setActiveTexts, toggleText, allTexts, remember } = useSearchStore();
+  const { query, response, activeTexts, recent, setQuery, setResponse, setActiveTexts, toggleText, allTexts, clear, remember } = useSearchStore();
   const [narrowOpen, setNarrowOpen] = useState(false);
   // A search covering fewer than every text is a narrower claim, so it is named
   // rather than left for the reader to infer from a result count.
@@ -175,7 +175,7 @@ function SearchInner() {
    */
   const searchSeq = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const lastDeepLink = useRef('');
+  const lastDeepLink = useRef<string | null>(null);
 
   const runSearch = useCallback(
     async (term: string, texts: TextId[], useSemantic = effectiveSemantic) => {
@@ -204,8 +204,18 @@ function SearchInner() {
         // The scope is part of the answer: "these texts do not address it" is a
         // weaker claim when only one corpus was searched. Put it in the URL so a
         // shared link carries the same claim the reader is looking at.
-        const scope = isNarrow(texts) ? `&texts=${texts.map(encodeURIComponent).join(',')}` : '';
-        router.replace(`/?q=${encodeURIComponent(trimmed)}${useSemantic ? '' : '&literal=1'}${scope}`, { scroll: false });
+        const textsValue = isNarrow(texts) ? texts.join(',') : '';
+        const literalValue = useSemantic ? '' : '1';
+        const scope = textsValue ? `&texts=${texts.map(encodeURIComponent).join(',')}` : '';
+        const nextUrl = `/?q=${encodeURIComponent(trimmed)}${literalValue ? '&literal=1' : ''}${scope}`;
+        lastDeepLink.current = `${trimmed}|${textsValue}|${literalValue}`;
+        // Push when transitioning from the landing page so browser Back returns
+        // to the main page; replace when refining an already-active search.
+        if (typeof window !== 'undefined' && !new URLSearchParams(window.location.search).get('q')) {
+          router.push(nextUrl, { scroll: false });
+        } else {
+          router.replace(nextUrl, { scroll: false });
+        }
       } catch (caught) {
         if (isStale()) return;
         setError(caught instanceof ApiError ? caught.message : 'Search failed.');
@@ -218,6 +228,16 @@ function SearchInner() {
     },
     [setQuery, setResponse, remember, router, effectiveSemantic]
   );
+
+  const resetToHome = useCallback(() => {
+    searchSeq.current += 1;
+    lastDeepLink.current = '||';
+    clear();
+    setInput('');
+    setError(null);
+    setLoading(false);
+    router.push('/', { scroll: false });
+  }, [clear, router]);
 
   /*
    * Widen a narrow verdict to every text and re-run the search, so the answer
@@ -300,6 +320,14 @@ function SearchInner() {
         setSemantic(semanticFromLink);
       }
       void runSearch(candidate, scope, semanticFromLink ?? effectiveSemantic);
+    } else {
+      // Clean `/` URL with no query parameters: always return to the main
+      // landing page instead of leaving stale results on screen.
+      searchSeq.current += 1;
+      clear();
+      setInput('');
+      setError(null);
+      setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -570,7 +598,7 @@ function SearchInner() {
                 h1 rather than adding to it: without it a screen reader arriving
                 here meets an h2 with no h1 above it, and the page has no name
                 in the document outline. The styling is unchanged. */}
-            <div className="flex items-start gap-3 pt-8">
+            <div className="flex items-start gap-2 pt-8">
               <h1 className="bubble text-[15px] font-normal">{query}</h1>
               <button
                 type="button"
@@ -583,6 +611,15 @@ function SearchInner() {
                 title="Search again"
               >
                 <Search className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={resetToHome}
+                className="icon-btn mt-1"
+                aria-label={t('clear')}
+                title={t('clear')}
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -642,7 +679,9 @@ function SearchInner() {
                       information about the results rather than a control on them.
                   */}
                   <span className="text-xs text-fg-faint">
-                    {response?.rerankSource === 'jev' ? t('rankedByMeaning') : t('literalRanking')}
+                    {response?.rerankSource === 'jev' || response?.rerankSource === 'local'
+                      ? t('rankedByMeaning')
+                      : t('literalRanking')}
                   </span>
                   {response?.matchMode === 'relaxed' ? <RelaxedChip /> : null}
                   <span className="text-xs text-fg-faint tabular-nums">{response?.tookMs}ms</span>

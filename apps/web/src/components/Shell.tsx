@@ -143,6 +143,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const trayCount = useComparisonStore((s) => s.passageKeys.length);
   const recent = useSearchStore((s) => s.recent);
   const clearRecent = useSearchStore((s) => s.clearRecent);
+  const clearSearch = useSearchStore((s) => s.clear);
 
   // The rail's width is a preference, not layout: it survives navigation, and it
   // survives a reload, which is the whole reason to store it at all.
@@ -219,7 +220,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
           <Link
             href="/"
-            onClick={() => setMobileOpen(false)}
+            onClick={() => {
+              clearSearch();
+              setMobileOpen(false);
+            }}
             className={['btn btn-secondary justify-start', collapsed ? 'px-0' : ''].join(' ')}
             title={t('newSearch')}
           >
@@ -238,7 +242,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   title={collapsed ? label : undefined}
-                  onClick={() => setMobileOpen(false)}
+                  onClick={() => {
+                    if (item.href === '/') clearSearch();
+                    setMobileOpen(false);
+                  }}
                   className={`rail-item ${active ? 'rail-item-active' : ''} ${collapsed ? 'justify-center px-0' : ''}`}
                 >
                   <Icon className="h-[18px] w-[18px] shrink-0" />
@@ -390,7 +397,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             <PanelLeftOpen className="h-5 w-5" />
           </button>
-          <Link href="/" className="flex items-center gap-2" aria-label={t('home')}>
+          <Link
+            href="/"
+            onClick={() => clearSearch()}
+            className="flex items-center gap-2"
+            aria-label={t('home')}
+          >
             {/*
                 The name in all three of the languages the corpus is read in, with
                 the reader's own script carrying the weight and the other two quiet.
