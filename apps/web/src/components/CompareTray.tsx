@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, usePathname } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowLeftRight, Trash2, X } from 'lucide-react';
+import { AddToJourney } from '@/components/AddToJourney';
 import { useComparisonStore } from '@/store';
 import { cn } from '@/lib/utils';
 
@@ -92,6 +93,8 @@ export function CompareTray() {
         {dropActive ? (
           <span className="shrink-0 text-xs font-medium text-accent">{t('dropHere')}</span>
         ) : null}
+
+        <AddToJourney passageKeys={keys} compact align="end" />
 
         <button
           type="button"

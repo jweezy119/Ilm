@@ -108,6 +108,7 @@ export async function listJourneys(userId: string): Promise<JourneySummary[]> {
     description: j.description,
     nodeCount: j.nodes.length,
     corpora: [...new Set(j.nodes.map((n) => corporaByKey.get(n.passageKey)).filter((t): t is TextId => Boolean(t)))],
+    nodeKeys: j.nodes.map((n) => n.passageKey),
     createdAt: j.createdAt.toISOString(),
     updatedAt: j.updatedAt.toISOString(),
   }));
@@ -148,6 +149,7 @@ export async function createJourney(
     description: journey.description,
     nodeCount: 0,
     corpora: [],
+    nodeKeys: [],
     createdAt: journey.createdAt.toISOString(),
     updatedAt: journey.updatedAt.toISOString(),
   };
@@ -178,7 +180,7 @@ export async function renameJourney(
       ...(name ? { name } : {}),
       ...(input.description !== undefined ? { description: trimmed(input.description) || null } : {}),
     },
-    include: { nodes: { select: { passageKey: true } } },
+    include: { nodes: { orderBy: { position: 'asc' }, select: { passageKey: true } } },
   });
 
   const corporaByKey = await corporaForKeys(journey.nodes.map((n) => n.passageKey));
@@ -189,6 +191,7 @@ export async function renameJourney(
     description: journey.description,
     nodeCount: journey.nodes.length,
     corpora: [...new Set(journey.nodes.map((n) => corporaByKey.get(n.passageKey)).filter((t): t is TextId => Boolean(t)))],
+    nodeKeys: journey.nodes.map((n) => n.passageKey),
     createdAt: journey.createdAt.toISOString(),
     updatedAt: journey.updatedAt.toISOString(),
   };
@@ -239,6 +242,73 @@ export async function addJourneyNode(
   });
   await touch(owned.id);
   return { added: true, position: node.position };
+}
+
+/**
+ * Append many passages to a journey in one request (for importing from Library,
+ * Comparison Tray, Themed Journey groups, or shared journey links).
+ *
+ * Unknown or duplicate keys are skipped rather than failing the whole batch,
+ * while respecting `JOURNEY_LIMITS.maxNodes`.
+ */
+export async function addJourneyNodesBatch(
+  userId: string,
+  journeyId: string,
+  passageKeys: string[],
+  notes?: Record<string, string | null>
+): Promise<{ added: string[]; skipped: number }> {
+  const owned = await ownedJourney(userId, journeyId);
+
+  const uniqueParsed: string[] = [];
+  const seenInput = new Set<string>();
+  for (const raw of passageKeys) {
+    const parsed = PassageKeySchema.safeParse(raw);
+    if (!parsed.success || seenInput.has(parsed.data)) continue;
+    seenInput.add(parsed.data);
+    uniqueParsed.push(parsed.data);
+  }
+  if (uniqueParsed.length === 0) return { added: [], skipped: passageKeys.length };
+
+  const [existingPassages, existingNodes] = await Promise.all([
+    prisma.passage.findMany({
+      where: { passageKey: { in: uniqueParsed } },
+      select: { passageKey: true },
+    }),
+    prisma.journeyNode.findMany({
+      where: { journeyId: owned.id },
+      select: { passageKey: true },
+    }),
+  ]);
+
+  const corpusSet = new Set(existingPassages.map((p) => p.passageKey));
+  const alreadyIn = new Set(existingNodes.map((n) => n.passageKey));
+  const availableSlots = Math.max(0, JOURNEY_LIMITS.maxNodes - existingNodes.length);
+
+  const toInsert = uniqueParsed
+    .filter((k) => corpusSet.has(k) && !alreadyIn.has(k))
+    .slice(0, availableSlots);
+
+  if (toInsert.length === 0) {
+    return { added: [], skipped: passageKeys.length };
+  }
+
+  const startPos = existingNodes.length;
+  await prisma.journeyNode.createMany({
+    data: toInsert.map((passageKey, idx) => {
+      const rawNote = notes?.[passageKey];
+      const cleanNote = trimmed(rawNote);
+      return {
+        journeyId: owned.id,
+        passageKey,
+        position: startPos + idx,
+        note: cleanNote ? cleanNote.slice(0, JOURNEY_LIMITS.noteLength) : null,
+      };
+    }),
+    skipDuplicates: true,
+  });
+  await touch(owned.id);
+
+  return { added: toInsert, skipped: passageKeys.length - toInsert.length };
 }
 
 export async function removeJourneyNode(userId: string, journeyId: string, passageKey: string): Promise<{ removed: boolean }> {
@@ -368,6 +438,7 @@ export async function getJourneyGraph(userId: string, journeyId: string): Promis
       description: journey.description,
       nodeCount: nodes.length,
       corpora,
+      nodeKeys: keys,
       createdAt: journey.createdAt.toISOString(),
       updatedAt: journey.updatedAt.toISOString(),
     },
@@ -396,7 +467,11 @@ async function deriveEdges(
   keys: string[],
   passageIdsFor: Map<string, string>
 ): Promise<{ edges: JourneyEdge[]; suggestions: JourneySuggestion[] }> {
-  if (keys.length < 2) return { edges: [], suggestions: [] };
+  if (keys.length === 0) return { edges: [], suggestions: [] };
+  if (keys.length === 1) {
+    const reach = await deriveSuggestions([...passageIdsFor.keys()], passageIdsFor, new Set(), new Set(keys));
+    return { edges: [], suggestions: reach.slice(0, MAX_SUGGESTIONS) };
+  }
 
   const keySet = new Set(keys);
   const edges: JourneyEdge[] = [];
@@ -512,26 +587,24 @@ if (!keySet.has(from) || !keySet.has(to) || from === to) return;
 
   edges.sort((a, b) => b.strength - a.strength);
   const drawn = new Set(edges.map((e) => [e.from, e.to].sort().join(' ')));
-  const reach = await deriveSuggestions(ids, idToKey, drawn);
+  const reach = await deriveSuggestions(ids, idToKey, drawn, keySet);
   return { edges: edges.slice(0, MAX_EDGES), suggestions: reach.slice(0, MAX_SUGGESTIONS) };
 }
 
 /**
  * What the journey's passages connect to that it does not contain.
  *
- * The section is headed "relations between passages you have not included", so
- * this has to be relations leading *out*. Listing a pair already drawn there —
- * which is what the first version did — reads as a connection the reader has
- * missed when they can see it on the graph beside them.
- *
- * Cross-references only. A shared theme with a passage outside the journey is
- * almost always noise, because nearly every passage shares a theme with
- * something; a quotation or an allusion is worth acting on.
+ * Cross-references come first (quotations and allusions). When fewer than 6
+ * cross-reference suggestions exist (for instance, on a brand-new 1-2 passage
+ * journey), we supplement with high-scoring cross-corpus shared-theme bridges
+ * so the reader always has concrete next passages to explore — honestly labelled
+ * as `shared-theme` with `derived` provenance.
  */
 async function deriveSuggestions(
   ids: string[],
   idToKey: Map<string, string>,
-  drawnPairs: Set<string>
+  drawnPairs: Set<string>,
+  includedKeys: Set<string>
 ): Promise<JourneySuggestion[]> {
   if (ids.length === 0) return [];
 
@@ -547,7 +620,7 @@ async function deriveSuggestions(
       strength: true,
       detectedBy: true,
       notes: true,
-      targetPassage: { select: { passageKey: true } },
+      targetPassage: { select: { passageKey: true, textId: true, primaryTranslation: true } },
     },
     orderBy: { strength: 'desc' },
     take: 60,
@@ -555,16 +628,19 @@ async function deriveSuggestions(
 
   const out: JourneySuggestion[] = [];
   const seenPairs = new Set<string>();
+  const seenTargets = new Set<string>(includedKeys);
 
   for (const ref of candidates) {
     const from = idToKey.get(ref.sourcePassageId);
     const to = ref.targetPassage.passageKey;
-    if (!from || !to || from === to) continue;
+    if (!from || !to || from === to || seenTargets.has(to)) continue;
 
     const pairKey = [from, to].sort().join(' ');
     if (drawnPairs.has(pairKey) || seenPairs.has(pairKey)) continue;
     seenPairs.add(pairKey);
+    seenTargets.add(to);
 
+    const parsedText = TextIdSchema.safeParse(ref.targetPassage.textId);
     out.push({
       from,
       to,
@@ -572,7 +648,70 @@ async function deriveSuggestions(
       strength: ref.strength,
       provenance: ref.detectedBy === 'manual' ? 'manual' : ref.detectedBy === 'jev' ? 'jev' : 'derived',
       ...(ref.notes ? { sharedText: ref.notes } : {}),
+      preview: ref.targetPassage.primaryTranslation.slice(0, 180),
+      ...(parsedText.success ? { targetTextId: parsedText.data } : {}),
     });
+  }
+
+  // Supplement with top cross-corpus theme bridges when cross-refs are sparse.
+  if (out.length < 6) {
+    const sourceThemes = await prisma.passageTheme.findMany({
+      where: { passageId: { in: ids }, score: { gte: 0.25 } },
+      select: { passageId: true, themeId: true, score: true },
+      orderBy: { score: 'desc' },
+      take: 15,
+    });
+    const topThemes = [...new Set(sourceThemes.map((t) => t.themeId))].slice(0, 4);
+    const sourceByTheme = new Map<string, string>();
+    for (const st of sourceThemes) {
+      if (!sourceByTheme.has(st.themeId)) {
+        const key = idToKey.get(st.passageId);
+        if (key) sourceByTheme.set(st.themeId, key);
+      }
+    }
+
+    if (topThemes.length > 0) {
+      const themeMatches = await prisma.passageTheme.findMany({
+        where: {
+          themeId: { in: topThemes },
+          passageId: { notIn: ids },
+          score: { gte: 0.35 },
+        },
+        select: {
+          themeId: true,
+          score: true,
+          source: true,
+          passage: { select: { passageKey: true, textId: true, primaryTranslation: true } },
+        },
+        orderBy: { score: 'desc' },
+        take: 40,
+      });
+
+      const usedCorpora = new Set<string>();
+      for (const m of themeMatches) {
+        if (out.length >= MAX_SUGGESTIONS) break;
+        const from = sourceByTheme.get(m.themeId);
+        const to = m.passage.passageKey;
+        if (!from || !to || seenTargets.has(to)) continue;
+        // Prefer breadth across corpora so suggestions span traditions
+        const fromCorpus = from.split(':')[0];
+        if (m.passage.textId === fromCorpus && usedCorpora.size < 3 && out.length >= 2) continue;
+
+        seenTargets.add(to);
+        usedCorpora.add(m.passage.textId);
+        const parsedText = TextIdSchema.safeParse(m.passage.textId);
+        out.push({
+          from,
+          to,
+          kind: 'shared-theme',
+          strength: m.score,
+          provenance: m.source === 'jev' ? 'jev' : m.source === 'manual' ? 'manual' : 'derived',
+          theme: m.themeId,
+          preview: m.passage.primaryTranslation.slice(0, 180),
+          ...(parsedText.success ? { targetTextId: parsedText.data } : {}),
+        });
+      }
+    }
   }
 
   return out.sort((a, b) => b.strength - a.strength);

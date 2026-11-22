@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Compass, ArrowLeft, Layers } from 'lucide-react';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { SourceBadge, type DisplaySource } from '@/components/SourceBadge';
+import { AddToJourney } from '@/components/AddToJourney';
 import { Link, useRouter } from '@/i18n/navigation';
 import { api } from '@/lib/api';
 import { TEXT_IDS, getTextLabel } from '@/lib/utils';
@@ -45,22 +46,25 @@ function JourneySkeleton() {
 
 function MemberRow({ member }: { member: JourneyGroup['members'][number] }) {
   return (
-    <Link
-      href={`/passage/${member.passageKey.split(':').map(encodeURIComponent).join('/')}`}
-      className="block rounded-xl border border-line bg-panel/40 px-4 py-3 transition-colors hover:border-accent/50 hover:bg-panel"
-    >
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent">
-          {getTextLabel(member.textId)}
-        </span>
-        <span className="font-medium text-fg">
-          {member.book} {member.chapter}:{member.verse}
-        </span>
-        <SourceBadge source={member.source as DisplaySource} />
-        <span className="ms-auto tabular-nums text-fg-muted">{percent(member.score)}</span>
-      </div>
-      <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-fg-muted">{member.preview}</p>
-    </Link>
+    <div className="flex items-start gap-2 rounded-xl border border-line bg-panel/40 px-4 py-3 transition-colors hover:border-accent/50 hover:bg-panel">
+      <Link
+        href={`/passage/${member.passageKey.split(':').map(encodeURIComponent).join('/')}`}
+        className="min-w-0 flex-1"
+      >
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent">
+            {getTextLabel(member.textId)}
+          </span>
+          <span className="font-medium text-fg">
+            {member.book} {member.chapter}:{member.verse}
+          </span>
+          <SourceBadge source={member.source as DisplaySource} />
+          <span className="ms-auto tabular-nums text-fg-muted">{percent(member.score)}</span>
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-fg-muted">{member.preview}</p>
+      </Link>
+      <AddToJourney passageKey={member.passageKey} compact align="end" className="mt-0.5 shrink-0" />
+    </div>
   );
 }
 
@@ -68,13 +72,15 @@ function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function GroupSection({ group }: { group: JourneyGroup }) {
+function GroupSection({ group, sourceKey }: { group: JourneyGroup; sourceKey: string }) {
   const t = useTranslations('journey');
+  const groupKeys = [sourceKey, ...group.members.map((m) => m.passageKey)];
+  const themeLabel = group.theme.replace(/_/g, ' ');
 
   return (
     <section className="mb-10">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-medium capitalize tracking-tight">{group.theme.replace(/_/g, ' ')}</h2>
+        <h2 className="text-lg font-medium capitalize tracking-tight">{themeLabel}</h2>
 
         {/*
          * How many of the reader's own themes this is worth, and how far it
@@ -97,6 +103,14 @@ function GroupSection({ group }: { group: JourneyGroup }) {
             {t('singleCorpus')}
           </span>
         )}
+
+        <div className="ms-auto">
+          <AddToJourney
+            passageKeys={groupKeys}
+            defaultNewName={`${themeLabel.charAt(0).toUpperCase()}${themeLabel.slice(1)} across traditions`}
+            align="end"
+          />
+        </div>
       </div>
 
       {group.category ? <p className="mb-2 text-xs uppercase tracking-wider text-fg-faint">{group.category.replace(/_/g, ' ')}</p> : null}
@@ -230,7 +244,7 @@ function JourneyView() {
       ) : null}
 
       {!loading && journey
-        ? journey.groups.map((group) => <GroupSection key={group.theme} group={group} />)
+        ? journey.groups.map((group) => <GroupSection key={group.theme} group={group} sourceKey={journey.passageKey} />)
         : null}
     </Page>
   );

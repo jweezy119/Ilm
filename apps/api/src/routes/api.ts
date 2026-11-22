@@ -57,6 +57,7 @@ import {
   renameJourney,
   deleteJourney,
   addJourneyNode,
+  addJourneyNodesBatch,
   removeJourneyNode,
   setJourneyNodeNote,
   reorderJourney,
@@ -652,6 +653,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return journeyFail(reply, error);
     }
   });
+
+  app.post(
+    '/api/journeys/:id/nodes/batch',
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Body: { passageKeys?: unknown; notes?: Record<string, string | null> };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const userId = identityOf(request, reply);
+      const passageKeys = request.body?.passageKeys;
+      if (!Array.isArray(passageKeys) || passageKeys.length === 0) {
+        return fail(reply, 400, 'INVALID_INPUT', 'passageKeys must be a non-empty array');
+      }
+      const strings = passageKeys.filter((k): k is string => typeof k === 'string');
+      try {
+        return ok(await addJourneyNodesBatch(userId, request.params.id, strings, request.body?.notes));
+      } catch (error) {
+        return journeyFail(reply, error);
+      }
+    }
+  );
 
   app.delete('/api/journeys/:id/nodes/:passageKey', async (request: FastifyRequest<{ Params: { id: string; passageKey: string } }>, reply: FastifyReply) => {
     const userId = identityOf(request, reply);

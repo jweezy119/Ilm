@@ -24,6 +24,7 @@ import { useInView } from '@/lib/useInView';
 import { runWhenIdle } from '@/lib/idle';
 import { Page } from '@/components/Shell';
 import { usePodcast } from '@/components/PodcastContext';
+import { AddToJourney } from '@/components/AddToJourney';
 import { verseLabel } from '@/lib/reciters';
 import type { BookMetadata, TextId } from '@ilm/shared';
 
@@ -759,19 +760,26 @@ function ReadingPane({
                 <sup className="mr-2 select-none font-mono text-[11px] text-fg-faint tabular-nums">{verse.verse}</sup>
                 {verse.text}
               </p>
-              {verse.themes.length > 0 ? (
-                <p className="mt-1.5 flex flex-wrap gap-1">
-                  {verse.themes.map((theme) => (
-                    <Link
-                      key={theme}
-                      href={`/explore?theme=${encodeURIComponent(theme)}`}
-                      className="rounded bg-panel px-1.5 py-0.5 text-[11px] text-fg-muted transition-colors hover:bg-accent-soft hover:text-accent"
-                    >
-                      {theme}
-                    </Link>
-                  ))}
-                </p>
-              ) : null}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {verse.themes.map((theme) => (
+                  <Link
+                    key={theme}
+                    href={`/explore?theme=${encodeURIComponent(theme)}`}
+                    className="rounded bg-panel px-1.5 py-0.5 text-[11px] text-fg-muted transition-colors hover:bg-accent-soft hover:text-accent"
+                  >
+                    {theme}
+                  </Link>
+                ))}
+                <div className="ms-auto flex items-center gap-1.5">
+                  <Link
+                    href={`/passage/${verse.passageKey.split(':').map(encodeURIComponent).join('/')}`}
+                    className="text-[11px] text-fg-faint hover:text-accent hover:underline"
+                  >
+                    {data.bookName} {verse.chapter}:{verse.verse}
+                  </Link>
+                  <AddToJourney passageKey={verse.passageKey} compact align="end" />
+                </div>
+              </div>
             </div>
           );
         })}

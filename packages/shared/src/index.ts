@@ -476,6 +476,8 @@ export const JourneySummarySchema = z.object({
   description: z.string().nullable(),
   nodeCount: z.number().int(),
   corpora: z.array(TextIdSchema),
+  /** Ordered passage keys currently in this journey, for instant membership checks in the UI. */
+  nodeKeys: z.array(z.string()).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -514,6 +516,10 @@ export const JourneySuggestionSchema = z.object({
   theme: z.string().optional(),
   /** The quoted words, for a quotation or an allusion. */
   sharedText: z.string().optional(),
+  /** Short English preview of the suggested target passage so readers can decide before adding. */
+  preview: z.string().optional(),
+  /** Corpus of the suggested target passage. */
+  targetTextId: TextIdSchema.optional(),
 });
 export type JourneySuggestion = z.infer<typeof JourneySuggestionSchema>;
 

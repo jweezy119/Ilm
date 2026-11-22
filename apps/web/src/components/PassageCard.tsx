@@ -2,6 +2,7 @@
 
 import { Link } from '@/i18n/navigation';
 import { SaveButton } from '@/components/SaveButton';
+import { AddToJourney } from '@/components/AddToJourney';
 import { useTranslations } from 'next-intl';
 import { Plus, Check, Scale } from 'lucide-react';
 import type { Passage, SearchResult } from '@ilm/shared';
@@ -135,6 +136,7 @@ export function PassageCard({
       */}
       <div className="absolute end-0 top-2.5 flex items-center gap-1">
         <SaveButton passageKey={passage.passageKey} />
+        <AddToJourney passageKey={passage.passageKey} compact align="end" />
         {onToggleCompare ? (
           <button
             type="button"

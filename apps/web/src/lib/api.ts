@@ -359,6 +359,12 @@ export const api = {
   addJourneyNode: (id: string, passageKey: string) =>
     post<{ added: boolean; position: number }>(`/api/journeys/${encodeURIComponent(id)}/nodes`, { passageKey }),
 
+  addJourneyNodesBatch: (id: string, passageKeys: string[], notes?: Record<string, string | null>) =>
+    post<{ added: string[]; skipped: number }>(`/api/journeys/${encodeURIComponent(id)}/nodes/batch`, {
+      passageKeys,
+      ...(notes ? { notes } : {}),
+    }),
+
   removeJourneyNode: (id: string, passageKey: string) =>
     del<{ removed: boolean }>(
       `/api/journeys/${encodeURIComponent(id)}/nodes/${encodeURIComponent(passageKey)}`

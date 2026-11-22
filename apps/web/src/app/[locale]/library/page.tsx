@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { Bookmark, Trash2, ExternalLink } from 'lucide-react';
 import { Page, PageHeader, Empty } from '@/components/Shell';
 import { CopyCitation } from '@/components/CopyCitation';
+import { AddToJourney } from '@/components/AddToJourney';
 import { api } from '@/lib/api';
 import { useLibraryStore } from '@/store';
 import { getTextLabel } from '@/lib/utils';
@@ -68,9 +69,16 @@ function LibraryView() {
     <Page wide>
       <PageHeader title={t('title')} description={t('description')} />
 
-      <p className="mb-8 rounded-lg border border-line bg-panel/40 px-3 py-2 text-xs leading-relaxed text-fg-muted">
-        {t('noAccount')}
-      </p>
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-panel/40 px-3 py-2">
+        <p className="text-xs leading-relaxed text-fg-muted">{t('noAccount')}</p>
+        {entries && entries.some((e) => e.passage) ? (
+          <AddToJourney
+            passageKeys={entries.filter((e) => e.passage).map((e) => e.passageKey)}
+            defaultNewName={t('title')}
+            align="end"
+          />
+        ) : null}
+      </div>
 
       {error ? <p className="text-sm text-fg-muted">{t('loadFailed')}</p> : null}
       {!entries && !error ? <p className="text-sm text-fg-muted">{t('loading')}</p> : null}
@@ -127,6 +135,7 @@ function LibraryView() {
               <div className="mt-3 flex flex-wrap items-start gap-3">
                 <CopyCitation passage={passage} className="min-w-0 flex-1" />
                 <div className="flex items-center gap-1.5">
+                  <AddToJourney passageKey={entry.passageKey} compact align="end" />
                   <Link
                     href={href}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs text-fg-muted hover:bg-panel"

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import {
   MAX_COMPARISON_PASSAGES,
   DEFAULT_WEIGHTS as SHARED_DEFAULT_WEIGHTS,
+  type JourneySummary,
   type Passage,
   type RecommendationWeights,
   type SearchResponse,
@@ -261,4 +262,165 @@ export const useLibraryStore = create<LibraryState>()((set, get) => ({
   },
 
   has: (passageKey) => get().keys.includes(passageKey),
+}));
+
+const ACTIVE_JOURNEY_KEY = 'ilm-active-journey';
+
+function readStoredActiveJourney(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(ACTIVE_JOURNEY_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredActiveJourney(id: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (id) window.localStorage.setItem(ACTIVE_JOURNEY_KEY, id);
+    else window.localStorage.removeItem(ACTIVE_JOURNEY_KEY);
+  } catch {
+    // Storage unavailable (private mode, quota); harmless.
+  }
+}
+
+interface JourneysState {
+  journeys: JourneySummary[];
+  loaded: boolean;
+  loading: boolean;
+  activeJourneyId: string | null;
+  load: (force?: boolean) => Promise<void>;
+  setActiveJourney: (id: string | null) => void;
+  create: (
+    name: string,
+    description?: string,
+    initialKeys?: string[],
+    notes?: Record<string, string | null>
+  ) => Promise<JourneySummary>;
+  togglePassage: (journeyId: string, passageKey: string) => Promise<boolean>;
+  addBatch: (
+    journeyId: string,
+    passageKeys: string[],
+    notes?: Record<string, string | null>
+  ) => Promise<{ added: string[]; skipped: number }>;
+  removeJourney: (journeyId: string) => Promise<void>;
+  hasPassage: (passageKey: string) => boolean;
+}
+
+export const useJourneysStore = create<JourneysState>()((set, get) => ({
+  journeys: [],
+  loaded: false,
+  loading: false,
+  activeJourneyId: readStoredActiveJourney(),
+
+  load: async (force = false) => {
+    const state = get();
+    if (!force && (state.loaded || state.loading)) return;
+    set({ loading: true });
+    try {
+      const { journeys } = await api.journeys();
+      const storedActive = get().activeJourneyId ?? readStoredActiveJourney();
+      const validActive =
+        storedActive && journeys.some((j) => j.id === storedActive)
+          ? storedActive
+          : journeys[0]?.id ?? null;
+      writeStoredActiveJourney(validActive);
+      set({ journeys, loaded: true, loading: false, activeJourneyId: validActive });
+    } catch {
+      set({ loaded: true, loading: false });
+    }
+  },
+
+  setActiveJourney: (id) => {
+    writeStoredActiveJourney(id);
+    set({ activeJourneyId: id });
+  },
+
+  create: async (name, description, initialKeys, notes) => {
+    const { journey } = await api.createJourney(name, description);
+    let finalJourney: JourneySummary = { ...journey, nodeKeys: journey.nodeKeys ?? [] };
+    if (initialKeys && initialKeys.length > 0) {
+      const batch = await api.addJourneyNodesBatch(journey.id, initialKeys, notes);
+      finalJourney = {
+        ...finalJourney,
+        nodeKeys: batch.added,
+        nodeCount: batch.added.length,
+      };
+    }
+    writeStoredActiveJourney(finalJourney.id);
+    set((state) => ({
+      journeys: [finalJourney, ...state.journeys.filter((j) => j.id !== finalJourney.id)],
+      loaded: true,
+      activeJourneyId: finalJourney.id,
+    }));
+    return finalJourney;
+  },
+
+  togglePassage: async (journeyId, passageKey) => {
+    const target = get().journeys.find((j) => j.id === journeyId);
+    const alreadyIn = Boolean(target?.nodeKeys?.includes(passageKey));
+    writeStoredActiveJourney(journeyId);
+
+    // Optimistic update
+    set((state) => ({
+      activeJourneyId: journeyId,
+      journeys: state.journeys.map((j) => {
+        if (j.id !== journeyId) return j;
+        const nextKeys = alreadyIn
+          ? (j.nodeKeys ?? []).filter((k) => k !== passageKey)
+          : [...(j.nodeKeys ?? []), passageKey];
+        return { ...j, nodeKeys: nextKeys, nodeCount: nextKeys.length };
+      }),
+    }));
+
+    try {
+      if (alreadyIn) {
+        await api.removeJourneyNode(journeyId, passageKey);
+        return false;
+      }
+      await api.addJourneyNode(journeyId, passageKey);
+      return true;
+    } catch (error) {
+      // Rollback on failure
+      set((state) => ({
+        journeys: state.journeys.map((j) => {
+          if (j.id !== journeyId) return j;
+          const reverted = alreadyIn
+            ? [...(j.nodeKeys ?? []), passageKey]
+            : (j.nodeKeys ?? []).filter((k) => k !== passageKey);
+          return { ...j, nodeKeys: reverted, nodeCount: reverted.length };
+        }),
+      }));
+      throw error;
+    }
+  },
+
+  addBatch: async (journeyId, passageKeys, notes) => {
+    const res = await api.addJourneyNodesBatch(journeyId, passageKeys, notes);
+    writeStoredActiveJourney(journeyId);
+    set((state) => ({
+      activeJourneyId: journeyId,
+      journeys: state.journeys.map((j) => {
+        if (j.id !== journeyId) return j;
+        const merged = [...new Set([...(j.nodeKeys ?? []), ...res.added])];
+        return { ...j, nodeKeys: merged, nodeCount: merged.length };
+      }),
+    }));
+    return res;
+  },
+
+  removeJourney: async (journeyId) => {
+    await api.deleteJourney(journeyId);
+    set((state) => {
+      const remaining = state.journeys.filter((j) => j.id !== journeyId);
+      const nextActive =
+        state.activeJourneyId === journeyId ? remaining[0]?.id ?? null : state.activeJourneyId;
+      writeStoredActiveJourney(nextActive);
+      return { journeys: remaining, activeJourneyId: nextActive };
+    });
+  },
+
+  hasPassage: (passageKey) =>
+    get().journeys.some((j) => (j.nodeKeys ?? []).includes(passageKey)),
 }));

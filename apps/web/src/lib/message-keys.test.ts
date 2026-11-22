@@ -22,6 +22,8 @@ const LOCALES = ['en', 'he', 'ar'] as const;
 const FILES = [
   'src/components/JourneyGraphView.tsx',
   'src/components/AddToJourney.tsx',
+  'src/components/JourneyPassageFinder.tsx',
+  'src/components/JourneySharePanel.tsx',
   'src/components/GlobalAiSidebar.tsx',
   'src/components/ShareButton.tsx',
   'src/components/CompareTray.tsx',

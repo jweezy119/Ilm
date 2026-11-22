@@ -3,11 +3,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
-import type { JourneyGraph } from '@ilm/shared';
+import { Loader2, PenLine, Play, Plus } from 'lucide-react';
+import type { JourneyEdgeKind, JourneyGraph } from '@ilm/shared';
 import { layoutJourney, neighbourKeys, describeEdge } from '@/lib/journey-layout';
-import { getTextLabel } from '@/lib/utils';
-import { cn } from '@/lib/utils';
+import { getTextLabel, cn } from '@/lib/utils';
+import { passageReference } from '@/lib/passage-ref';
 import { ReadAloud } from '@/components/ReadAloud';
+
+const EDGE_KINDS: JourneyEdgeKind[] = ['quotation', 'allusion', 'alignment', 'shared-theme'];
 
 /**
  * The journey, drawn.
@@ -16,42 +19,61 @@ import { ReadAloud } from '@/components/ReadAloud';
  * ring. The lines between them are relations this app detected — a quotation
  * because something found a quotation — and each family is drawn differently so
  * a line never means only "something".
- *
- * Two things make it operable rather than merely visible:
- *
- * The drawing is not the only description of it. Every node is a real focusable
- * control in the tab order, the arrow keys walk around the ring in the reader's
- * own order, and every edge is written out in a list underneath. A line in an SVG
- * is invisible to a screen reader, so a graph that relied on it would be a
- * picture of a knowledge graph rather than a knowledge graph.
- *
- * And nothing animates. The layout is fixed, so it is correct on the first paint
- * and identical on every visit — a reader who learned where their second passage
- * sits is not asked to relearn it, and there is no motion to switch off.
  */
-export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
+export function JourneyGraphView({
+  graph,
+  activePlayingKey,
+  onAddSuggested,
+  onSaveNote,
+  onPlayFromNode,
+}: {
+  graph: JourneyGraph;
+  activePlayingKey?: string | null;
+  onAddSuggested?: (passageKey: string) => Promise<void>;
+  onSaveNote?: (passageKey: string, note: string | null) => Promise<void>;
+  onPlayFromNode?: (passageKey: string) => void;
+}) {
   const t = useTranslations('journeys');
   const [active, setActive] = useState<string | null>(graph.nodes[0]?.passageKey ?? null);
+  const [edgeFilter, setEdgeFilter] = useState<JourneyEdgeKind | 'all'>('all');
+  const [highlightedEdge, setHighlightedEdge] = useState<string | null>(null);
+  const [addingSuggested, setAddingSuggested] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState(false);
+  const [draftNote, setDraftNote] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const layout = useMemo(() => layoutJourney({ nodes: graph.nodes, edges: graph.edges }), [graph]);
+  const visibleEdges = useMemo(
+    () => (edgeFilter === 'all' ? graph.edges : graph.edges.filter((e) => e.kind === edgeFilter)),
+    [graph.edges, edgeFilter]
+  );
+
+  const layout = useMemo(
+    () => layoutJourney({ nodes: graph.nodes, edges: visibleEdges }),
+    [graph.nodes, visibleEdges]
+  );
   const byKey = useMemo(() => new Map(graph.nodes.map((n) => [n.passageKey, n] as const)), [graph.nodes]);
-  /** "2:255", falling back to the raw key for a node the layout does not know. */
+
   const labelFor = useCallback(
-    (key: string) => layout.nodes.find((n) => n.passageKey === key)?.label ?? key,
+    (key: string) => layout.nodes.find((n) => n.passageKey === key)?.label ?? passageReference(key),
     [layout.nodes]
   );
 
-  /** Move focus to a node's control, so the keyboard and the ring stay in step. */
   const focusNode = useCallback((passageKey: string) => {
     setActive(passageKey);
+    setEditingNote(false);
     const el = svgRef.current?.querySelector<SVGGElement>(`[data-node="${cssEscape(passageKey)}"]`);
     el?.focus();
   }, []);
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<SVGGElement>, passageKey: string) => {
-      const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+      const step =
+        event.key === 'ArrowRight' || event.key === 'ArrowDown'
+          ? 1
+          : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+            ? -1
+            : 0;
       if (step === 0) {
         if (event.key === 'Home') {
           event.preventDefault();
@@ -67,19 +89,86 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
     [layout, focusNode]
   );
 
-  const activeNode = active ? byKey.get(active) : undefined;
+  const highlightedPair = useMemo(() => {
+    if (!highlightedEdge) return null;
+    const found = visibleEdges.find((e) => `${e.from}->${e.to}:${e.kind}` === highlightedEdge);
+    return found ? new Set([found.from, found.to]) : null;
+  }, [highlightedEdge, visibleEdges]);
+
+  const edgeCounts = useMemo(() => {
+    const counts: Record<JourneyEdgeKind, number> = {
+      quotation: 0,
+      allusion: 0,
+      alignment: 0,
+      'shared-theme': 0,
+    };
+    for (const e of graph.edges) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
+    return counts;
+  }, [graph.edges]);
+
+  const activeNode = active ? byKey.get(active) ?? graph.nodes[0] : graph.nodes[0];
   const corpora = new Set(graph.nodes.filter((n) => !n.missing).map((n) => n.textId));
 
+  const handleAddSuggestion = async (key: string) => {
+    if (!onAddSuggested) return;
+    setAddingSuggested(key);
+    try {
+      await onAddSuggested(key);
+    } finally {
+      setAddingSuggested(null);
+    }
+  };
+
+  const handleSaveInlineNote = async () => {
+    if (!onSaveNote || !activeNode) return;
+    setSavingNote(true);
+    try {
+      await onSaveNote(activeNode.passageKey, draftNote.trim() || null);
+      setEditingNote(false);
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
       <div>
-        {/*
-          The SVG is aria-hidden as a whole and the node list below carries the
-          same content in words. Hiding a decorative twin of something already
-          described is fine; leaving both in the tree means a screen reader
-          announces the graph twice and the labels twice, which is worse than
-          either alone.
-        */}
+        {graph.edges.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center gap-1.5" role="group" aria-label={t('filterRelationsLabel')}>
+            <button
+              type="button"
+              onClick={() => {
+                setEdgeFilter('all');
+                setHighlightedEdge(null);
+              }}
+              aria-pressed={edgeFilter === 'all'}
+              className={cn(
+                'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                edgeFilter === 'all' ? 'bg-accent text-accent-fg' : 'bg-panel text-fg-muted hover:text-fg'
+              )}
+            >
+              {t('filterAll')} ({graph.edges.length})
+            </button>
+            {EDGE_KINDS.filter((k) => edgeCounts[k] > 0).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => {
+                  setEdgeFilter(edgeFilter === kind ? 'all' : kind);
+                  setHighlightedEdge(null);
+                }}
+                aria-pressed={edgeFilter === kind}
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  edgeFilter === kind ? 'bg-accent text-accent-fg' : 'bg-panel text-fg-muted hover:text-fg'
+                )}
+              >
+                {describeEdge({ kind }, t)} ({edgeCounts[kind]})
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <svg
           ref={svgRef}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
@@ -90,22 +179,30 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
           <title>{t('graphLabel', { count: graph.nodes.length })}</title>
 
           <g aria-hidden="true">
-            {layout.edges.map((e) => (
-              <path
-                key={`${e.from}->${e.to}:${e.kind}`}
-                d={e.path}
-                fill="none"
-                className={EDGE_COLOUR[e.kind]}
-                strokeWidth={e.width}
-                strokeOpacity={0.25 + e.strength * 0.55}
-                strokeLinecap="round"
-                {...(e.dash ? { strokeDasharray: e.dash } : {})}
-              />
-            ))}
+            {layout.edges.map((e) => {
+              const id = `${e.from}->${e.to}:${e.kind}`;
+              const isHighlighted = highlightedEdge === id;
+              const isDimmed = highlightedEdge !== null && !isHighlighted;
+              return (
+                <path
+                  key={id}
+                  d={e.path}
+                  fill="none"
+                  className={EDGE_COLOUR[e.kind]}
+                  strokeWidth={isHighlighted ? e.width + 1.5 : e.width}
+                  strokeOpacity={isDimmed ? 0.1 : isHighlighted ? 0.95 : 0.25 + e.strength * 0.55}
+                  strokeLinecap="round"
+                  {...(e.dash ? { strokeDasharray: e.dash } : {})}
+                />
+              );
+            })}
           </g>
 
           {layout.nodes.map((n) => {
-            const isActive = active === n.passageKey;
+            const isActive = activeNode?.passageKey === n.passageKey;
+            const isPlaying = activePlayingKey === n.passageKey;
+            const isLinked = highlightedPair?.has(n.passageKey) ?? false;
+            const isDimmed = highlightedPair !== null && !isLinked;
             return (
               <g
                 key={n.passageKey}
@@ -119,24 +216,30 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
                   corpus: getTextLabel(n.textId as never),
                   reference: n.label,
                 })}
-                onClick={() => setActive(n.passageKey)}
+                onClick={() => {
+                  setActive(n.passageKey);
+                  setEditingNote(false);
+                }}
                 onKeyDown={(e) => onKeyDown(e, n.passageKey)}
                 className="cursor-pointer outline-none focus-visible:opacity-100"
-                opacity={n.missing ? 0.55 : 1}
+                opacity={isDimmed ? 0.35 : n.missing ? 0.55 : 1}
               >
-                {isActive ? <circle cx={n.x} cy={n.y} r={n.r + 5} fill="none" stroke="currentColor" strokeWidth={1.5} opacity={0.5} /> : null}
+                {isActive || isPlaying || isLinked ? (
+                  <circle
+                    cx={n.x}
+                    cy={n.y}
+                    r={n.r + 5}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={isPlaying ? 2 : 1.5}
+                    opacity={isPlaying ? 0.9 : 0.55}
+                  />
+                ) : null}
                 <circle
                   cx={n.x}
                   cy={n.y}
                   r={n.r}
                   className={n.missing ? 'fill-bg' : 'fill-panel'}
-                  // Tailwind colour utilities rather than CSS variables: the
-                  // palette is emerald/sky/amber/rose/violet, and inventing a
-                  // --quran variable for one component would leave the next one
-                  // guessing which palette it is in. Note the tokens are the
-                  // semantic set — panel, bg — because there is no 
-                  // colour, and fill-surface compiles to nothing, which leaves
-                  // the circle filled solid black.
                   {...(n.missing ? {} : { stroke: EDGE_CORPUS[n.textId] ?? 'stroke-line' })}
                   strokeWidth={2}
                   strokeDasharray={n.missing ? '3 3' : undefined}
@@ -158,24 +261,15 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
           })}
         </svg>
 
-        {/*
-          The drawing, in words. This is the accessible half and it is not
-          optional: the reader who cannot see the ring needs the order, and the
-          reader who can needs to know which line is which.
-        */}
         <section aria-labelledby="journey-order-heading" className="mt-6">
           <h2 id="journey-order-heading" className="text-sm font-medium text-fg-muted">
             {t('orderHeading')}
           </h2>
           <ol className="mt-2 space-y-1.5">
-            {/*
-              Iterated over the laid-out nodes rather than graph.nodes: the ring
-              is what establishes the order, and reading it from here means the
-              list and the drawing can never disagree about what comes next.
-            */}
             {layout.nodes.map((laid) => {
               const passage = byKey.get(laid.passageKey);
-              const isActive = active === laid.passageKey;
+              const isActive = activeNode?.passageKey === laid.passageKey;
+              const isPlaying = activePlayingKey === laid.passageKey;
               return (
                 <li key={laid.passageKey}>
                   <button
@@ -184,7 +278,7 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
                     aria-pressed={isActive}
                     className={cn(
                       'flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-start text-sm transition-colors',
-                      isActive ? 'border-accent bg-accent-soft/40' : 'border-line hover:bg-panel'
+                      isActive || isPlaying ? 'border-accent bg-accent-soft/40' : 'border-line hover:bg-panel'
                     )}
                   >
                     <span className="mt-px w-5 shrink-0 text-center font-mono text-xs text-fg-faint tabular-nums">
@@ -224,63 +318,127 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
               </p>
             ) : null}
             {activeNode.preview ? <p className="mt-2 text-sm leading-relaxed">{activeNode.preview}</p> : null}
-            {/*
-              Reading the passage a reader has selected on their own journey.
-              Same control as the passage page and the reader, so hearing it is
-              one click from anywhere it appears — which is the point of a
-              feature that exists to be used, not to be found.
-            */}
-            {activeNode.preview ? (
-              <div className="mt-3">
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {onPlayFromNode && activeNode.preview ? (
+                <button
+                  type="button"
+                  onClick={() => onPlayFromNode(activeNode.passageKey)}
+                  className="btn btn-secondary px-2.5 py-1.5 text-xs"
+                >
+                  <Play className="h-3.5 w-3.5 fill-current" aria-hidden />
+                  {t('playFromHere')}
+                </button>
+              ) : activeNode.preview ? (
                 <ReadAloud text={activeNode.preview} textId={activeNode.textId} compact />
+              ) : null}
+
+              {onSaveNote ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingNote((v) => !v);
+                    setDraftNote(activeNode.note ?? '');
+                  }}
+                  className="btn btn-secondary px-2.5 py-1.5 text-xs"
+                >
+                  <PenLine className="h-3.5 w-3.5" aria-hidden />
+                  {activeNode.note ? t('editNote') : t('note')}
+                </button>
+              ) : null}
+
+              {!activeNode.missing ? (
+                <Link
+                  href={`/passage/${activeNode.passageKey.split(':').map(encodeURIComponent).join('/')}`}
+                  className="btn btn-secondary px-2.5 py-1.5 text-xs"
+                >
+                  {t('openPassage')}
+                </Link>
+              ) : null}
+            </div>
+
+            {activeNode.note && !editingNote ? (
+              <p className="mt-3 border-s-2 border-accent ps-2 text-sm italic text-fg-muted">{activeNode.note}</p>
+            ) : null}
+
+            {editingNote && onSaveNote ? (
+              <div className="mt-3">
+                <label htmlFor="active-node-note" className="mb-1 block text-xs font-medium text-fg-muted">
+                  {t('noteLabel')}
+                </label>
+                <textarea
+                  id="active-node-note"
+                  value={draftNote}
+                  onChange={(e) => setDraftNote(e.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  className="w-full rounded-lg border border-line bg-surface p-2 text-sm text-fg"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={savingNote}
+                    onClick={() => void handleSaveInlineNote()}
+                    className="btn btn-primary px-3 py-1 text-xs"
+                  >
+                    {savingNote ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : t('save')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingNote(false)}
+                    className="btn btn-secondary px-3 py-1 text-xs"
+                  >
+                    {t('cancel')}
+                  </button>
+                </div>
               </div>
             ) : null}
-            {activeNode.note ? <p className="mt-2 border-s-2 border-accent ps-2 text-sm italic text-fg-muted">{activeNode.note}</p> : null}
+
             {activeNode.missing ? (
               <p className="mt-2 text-xs text-red-700 dark:text-red-300">{t('missingBody')}</p>
-            ) : (
-              <Link
-                href={`/passage/${activeNode.passageKey.split(':').map(encodeURIComponent).join('/')}`}
-                className="btn btn-secondary mt-3"
-              >
-                {t('openPassage')}
-              </Link>
-            )}
+            ) : null}
           </section>
         ) : null}
 
         <section aria-labelledby="journey-edges-heading">
           <h2 id="journey-edges-heading" className="text-sm font-medium text-fg-muted">
-            {t('relationsHeading', { count: graph.edges.length })}
+            {t('relationsHeading', { count: visibleEdges.length })}
           </h2>
 
-          {graph.edges.length === 0 ? (
+          {visibleEdges.length === 0 ? (
             <p className="mt-2 text-sm text-fg-muted">{t('noEdges')}</p>
           ) : (
             <ul className="mt-2 space-y-1.5">
-              {graph.edges.map((e) => {
+              {visibleEdges.map((e) => {
+                const edgeId = `${e.from}->${e.to}:${e.kind}`;
+                const isSelected = highlightedEdge === edgeId;
                 const from = labelFor(e.from);
                 const to = labelFor(e.to);
                 return (
-                  <li key={`${e.from}->${e.to}:${e.kind}`} className="rounded-lg border border-line px-2.5 py-1.5 text-xs">
-                    <span className="font-mono text-fg-muted">
-                      {from} ↔ {to}
-                    </span>
-                    <span className="ms-2 text-fg">{describeEdge(e, t)}</span>
-                    <span className="ms-1.5 text-fg-faint">{t('provenance', { source: e.provenance })}</span>
+                  <li key={edgeId}>
+                    <button
+                      type="button"
+                      onClick={() => setHighlightedEdge(isSelected ? null : edgeId)}
+                      aria-pressed={isSelected}
+                      className={cn(
+                        'w-full rounded-lg border px-2.5 py-1.5 text-start text-xs transition-colors',
+                        isSelected ? 'border-accent bg-accent-soft/40' : 'border-line hover:bg-panel'
+                      )}
+                    >
+                      <span className="font-mono text-fg-muted">
+                        {from} ↔ {to}
+                      </span>
+                      <span className="ms-2 text-fg">{describeEdge(e, t)}</span>
+                      <span className="ms-1.5 text-fg-faint">{t('provenance', { source: e.provenance })}</span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
           )}
 
-          {/*
-            The edge families as a key. A reader looking at the ring needs to know
-            that a solid line is a quotation and a dotted one is a shared theme,
-            and that none of them is a connection anyone invented.
-          */}
           <ul className="mt-3 space-y-1 text-[11px] text-fg-muted">
-            {(['quotation', 'allusion', 'alignment', 'shared-theme'] as const).map((kind) => (
+            {EDGE_KINDS.map((kind) => (
               <li key={kind} className="flex items-center gap-2">
                 <svg width="22" height="6" aria-hidden="true" className="shrink-0">
                   <line
@@ -305,13 +463,49 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
               {t('suggestedHeading')}
             </h2>
             <p className="mt-1 text-xs text-fg-muted">{t('suggestedBody')}</p>
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-2 space-y-2">
               {graph.suggested.map((s, i) => (
-                <li key={`${s.from}->${s.to}:${i}`} className="rounded-lg border border-dashed border-line px-2.5 py-1.5 text-xs">
-                  <span className="font-mono text-fg-muted">
-                    {labelFor(s.from)} ↔ {labelFor(s.to)}
-                  </span>
-                  <span className="ms-2">{describeEdge(s, t)}</span>
+                <li
+                  key={`${s.from}->${s.to}:${i}`}
+                  className="rounded-xl border border-dashed border-line bg-surface/60 p-2.5 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/passage/${s.to.split(':').map(encodeURIComponent).join('/')}`}
+                        className="font-medium text-fg hover:text-accent hover:underline"
+                      >
+                        {passageReference(s.to)}
+                      </Link>
+                      {s.targetTextId ? (
+                        <span className="ms-1.5 text-[11px] text-fg-muted">
+                          {getTextLabel(s.targetTextId as never, true)}
+                        </span>
+                      ) : null}
+                      <p className="mt-0.5 text-[11px] text-fg-faint">
+                        {labelFor(s.from)} ↔ {describeEdge(s, t)} · {t('provenance', { source: s.provenance })}
+                      </p>
+                    </div>
+                    {onAddSuggested ? (
+                      <button
+                        type="button"
+                        disabled={addingSuggested !== null}
+                        onClick={() => void handleAddSuggestion(s.to)}
+                        aria-label={t('addSuggestedNamed', { reference: passageReference(s.to) })}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-line bg-panel px-2 py-1 text-[11px] font-medium text-fg transition-colors hover:border-accent hover:text-accent disabled:opacity-60"
+                      >
+                        {addingSuggested === s.to ? (
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                        ) : (
+                          <Plus className="h-3 w-3" aria-hidden />
+                        )}
+                        {t('add')}
+                      </button>
+                    ) : null}
+                  </div>
+                  {s.preview ? (
+                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-fg-muted">{s.preview}</p>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -319,34 +513,24 @@ export function JourneyGraphView({ graph }: { graph: JourneyGraph }) {
         ) : null}
 
         {corpora.size > 1 ? (
-          <p className="text-xs text-fg-muted">
-            {t('corporaNote', { count: corpora.size })}
-          </p>
+          <p className="text-xs text-fg-muted">{t('corporaNote', { count: corpora.size })}</p>
         ) : null}
       </aside>
     </div>
   );
 }
 
-/**
- * Node rings, by corpus — the same palette as TEXT_STYLES, so a dot and a text
- * chip mean the same thing.
- */
 const EDGE_CORPUS: Record<string, string> = {
   quran: 'stroke-emerald-600',
   torah: 'stroke-sky-600',
   talmud: 'stroke-amber-600',
   ot: 'stroke-rose-600',
   nt: 'stroke-violet-600',
+  bukhari: 'stroke-teal-600',
+  muslim: 'stroke-cyan-600',
   enoch: 'stroke-stone-600',
 };
 
-/**
- * Line colours by relation, not by corpus.
- *
- * Corpus is already carried by each node's ring, so colour is free to carry the
- * relation — which is the thing a reader cannot work out from the shape alone.
- */
 const EDGE_COLOUR: Record<string, string> = {
   quotation: 'stroke-violet-600',
   allusion: 'stroke-sky-600',
@@ -362,7 +546,6 @@ const EDGE_DASH: Record<string, string | undefined> = {
   'shared-theme': '1 4',
 };
 
-/** CSS.escape is not universally available; a passage key only needs colons escaped. */
 function cssEscape(value: string): string {
   return value.replace(/([:])/g, '\\$1');
 }
