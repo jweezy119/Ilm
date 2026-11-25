@@ -129,7 +129,7 @@ runtime, so set it in the build environment too. It is deliberately *not*
 3. **Web** — New → Web Service, pointing at this repo.
    - Build command: `npm ci && npm run build`
    - Start command: `npm run start -w @ilm/web`
-   - Environment: `NEXT_INTERNAL_API_URL` = the API's URL, `NEXT_PUBLIC_CONTACT_EMAIL` = a real address, and optionally `NEXT_PUBLIC_SUPPORT_URL` = an HTTPS donation link
+   - Environment: `NEXT_INTERNAL_API_URL` = the API's URL, `NEXT_PUBLIC_CONTACT_EMAIL` = a real address, and optionally `NEXT_PUBLIC_SUPPORT_URL` = an HTTPS donation link (the Square link is `https://square.link/u/QE4inlEt`)
 
 Then run ingestion once from a shell or a one-off job:
 
