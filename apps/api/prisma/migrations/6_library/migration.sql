@@ -10,9 +10,8 @@
 -- and can be corrected, re-translated or re-ingested; a duplicate copy here would
 -- be a second thing to keep in step, and it could disagree with the first.
 --
--- Applied by hand. The API's Render build step is `prisma generate && tsc
--- --noEmit`, which does not migrate — fine for schema-neutral deploys, not fine
--- for this one.
+-- Applied by hand. The API's build step is `prisma generate && tsc --noEmit`,
+-- which does not migrate — fine for schema-neutral deploys, not fine for this one.
 
 -- Collections first: saved_passages references it.
 CREATE TABLE IF NOT EXISTS collections (

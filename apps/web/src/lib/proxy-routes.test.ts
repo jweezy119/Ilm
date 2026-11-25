@@ -80,6 +80,14 @@ function clientPaths(): string[] {
 }
 
 describe('api proxy', () => {
+  it('keeps the health probe out of the locale middleware', () => {
+    // next-intl redirects /health to /en/health, and a 307 is not a health
+    // check. Fly and Docker both need the rewrite in next.config.js to win.
+    const middleware = readFileSync(join(__dirname, '../middleware.ts'), 'utf8');
+    expect(config).toContain("source: '/health'");
+    expect(middleware).toContain('(?!api|health|');
+  });
+
   it('proxies every path the client calls', () => {
     const prefixes = proxiedPrefixes();
     const missing = clientPaths().filter(

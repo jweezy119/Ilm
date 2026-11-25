@@ -6,7 +6,7 @@
  * roughly fifteen connections, and the host's connection pooler has a limit below
  * that. Exceeding it does not fail the query: connections queue, so requests hang
  * until the caller gives up. That presented as /health never responding, the
- * service failing its health check, and Render cycling instances.
+ * service failing its health check, and the host cycling instances.
  *
  * One client, one pool, sized to the instance.
  *

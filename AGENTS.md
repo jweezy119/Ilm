@@ -94,5 +94,5 @@ looks like the new code broke the API when the migration did. If you need a
 migration applied to production out of band, delete it from `_prisma_migrations` and
 drop what it created, and let the deploy do it.
 
-Render is otherwise not involved: it builds and runs, and the migration happens as
-part of starting up.
+The deploy platform is otherwise not involved: it builds and runs, and the
+migration happens as part of starting up.

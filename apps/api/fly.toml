@@ -1,0 +1,51 @@
+# Ilm API on Fly.io. Run from the repository root:
+#   fly deploy -c apps/api/fly.toml
+#
+# App names are global on Fly. If either name below is taken, rename it here and
+# update the web app's NEXT_INTERNAL_API_URL to match.
+app = "ilm-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/api/Dockerfile"
+
+[env]
+  PORT = "4000"
+  HOST = "0.0.0.0"
+  NODE_ENV = "production"
+  CORS_ORIGIN = "https://ilm-web.fly.dev"
+  SEARCH_ENGINE = "postgres"
+  API_HEAP_MB = "512"
+  SEFARIA_DELAY_MS = "750"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  # The search index is built at boot; keep one machine warm rather than
+  # paying that cost on every first request.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 150
+    hard_limit = 200
+
+  [[http_service.checks]]
+    grace_period = "90s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+# The compact engine reloads from Postgres quickly, but the Orama cache and the
+# TTS cache need somewhere writable that survives a machine restart.
+[mounts]
+  source = "ilm_api_data"
+  destination = "/app/data"
+  initial_size = "1gb"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -26,6 +26,9 @@ ENV NEXT_PUBLIC_CONTACT_EMAIL=$NEXT_PUBLIC_CONTACT_EMAIL
 # Optional donation link shown by the support page. HTTPS only.
 ARG NEXT_PUBLIC_SUPPORT_URL=
 ENV NEXT_PUBLIC_SUPPORT_URL=$NEXT_PUBLIC_SUPPORT_URL
+# Marks a real deploy so next.config.js refuses to ship without its required env.
+ARG ILM_DEPLOY=
+ENV ILM_DEPLOY=$ILM_DEPLOY
 # Optional Basic gate for a quick tunnel. Both values must be set to enable it.
 ARG ILM_BASIC_USER=
 ENV ILM_BASIC_USER=$ILM_BASIC_USER

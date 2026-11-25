@@ -51,8 +51,10 @@ export default function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except API routes, Next internals, and anything with a file
-  // extension. The API is matched by exact prefix: /api/health is a real route,
-  // and prefixing it would make the browser ask the API for /en/api/health.
-  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)'],
+  // Everything except API routes, the health probe, Next internals, and anything
+  // with a file extension. /api and /health are matched exactly: prefixing them
+  // would make the browser ask the API for /en/api/health, and a redirected
+  // /health is not a health check — Fly and Docker both need a 200 from the
+  // rewrite to the API, not a 307 to /en/health.
+  matcher: ['/((?!api|health|_next|_vercel|.*\\..*).*)'],
 };

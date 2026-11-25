@@ -758,8 +758,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
    * took 53.6 seconds on its own, measured against production: a full scan that
    * evaluates a JSON function over all 45,453 rows, every one of which carries an
    * embedding vector. It sat on this route unguarded and unmemoised, so every
-   * page load paid it, and at 61 seconds the whole request crossed Render's 60
-   * second limit and came back as a 500 through the web proxy.
+   * page load paid it, and at 61 seconds the whole request crossed the host's
+   * 60 second limit and came back as a 500 through the web proxy.
    *
    * Which meant `fetchCoverage()` had been failing silently in production for as
    * long as this route existed: the unindexed markers on the search filters, the

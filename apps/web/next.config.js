@@ -12,15 +12,16 @@ const createNextIntlPlugin = require('next-intl/plugin');
 // nothing, because the proxy is still aimed at localhost.
 //
 // `next build` sets NODE_ENV=production itself, so NODE_ENV cannot distinguish a
-// deploy from a local production build. Render and CI both mark themselves, so
-// that is what the hard failure keys off; elsewhere it warns.
+// deploy from a local production build. ILM_DEPLOY is set by the deploy config
+// (Fly's build args, the Docker compose files) and CI marks CI builds, so those
+// are what the hard failure keys off; elsewhere it warns.
 const configured = (process.env.NEXT_INTERNAL_API_URL || '').trim();
-const isDeploy = process.env.RENDER === 'true' || process.env.CI === 'true';
+const isDeploy = process.env.ILM_DEPLOY === 'true' || process.env.CI === 'true';
 
 const MISSING =
   'NEXT_INTERNAL_API_URL is not set. It must point at the Ilm API, e.g. ' +
-  'https://ilm-api.onrender.com. Without it every /api/* request is proxied to ' +
-  'http://localhost:4000, so the app renders but returns no results.';
+  'http://ilm-api.internal:4000 on Fly.io. Without it every /api/* request is ' +
+  'proxied to http://localhost:4000, so the app renders but returns no results.';
 
 if (isDeploy && !configured) {
   throw new Error(MISSING);

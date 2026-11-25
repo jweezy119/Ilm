@@ -3,7 +3,7 @@
  *
  * ## Why this exists
  *
- * The API cannot fix these itself. Sefaria answers Render's egress with
+ * The API cannot fix these itself. Sefaria's egress filter answers with
  * `403 Forbidden` — a network-level refusal, not something a user agent or a
  * slower retry changes — so a self-repair that fetches at runtime can only ever
  * report that it is blocked. It now does exactly that, in ten requests and nine

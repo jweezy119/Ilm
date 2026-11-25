@@ -254,7 +254,7 @@ async function scoreThematicAffinity(passageA: string, passageB: string): Promis
 - [ ] All 5 texts loaded and indexed
 - [ ] End-to-end testing
 - [ ] Accessibility audit
-- [ ] Deployment (Vercel + Railway/Render)
+- [ ] Deployment (Fly.io API + web + managed Postgres)
 - [ ] Documentation
 
 ## Success Metrics

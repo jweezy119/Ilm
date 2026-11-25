@@ -40,8 +40,12 @@ const REPO_ROOT = join(WEB_ROOT, '..', '..');
 const ASSETLINKS = join(WEB_ROOT, 'src/app/.well-known/assetlinks.json/route.ts');
 const OUT_DIR = join(REPO_ROOT, 'android');
 
-/** The domain the wrapper loads. Must be the origin Play's verification will fetch. */
-const HOST = process.env.TWA_HOST ?? 'ilm-web.onrender.com';
+/**
+ * The domain the wrapper loads. Must be the origin Play's verification will
+ * fetch, so once the app is deployed set TWA_HOST to the real hostname (the
+ * default below is only a placeholder for a Fly app named `ilm-web`).
+ */
+const HOST = process.env.TWA_HOST ?? 'ilm-web.fly.dev';
 
 const DEFAULTS = {
   package: 'com.ilm.app',

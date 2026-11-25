@@ -261,7 +261,7 @@ export async function repairSefariaTranslations(
    * rows with a nested translation and passage each — and the API is started
    * with a capped heap (`--max-old-space-size=${API_HEAP_MB:-320}`). That is a
    * large allocation on a small budget, and the symptom is not a crash in the
-   * repair but the *process* being killed: Render restarts the API, the web's
+   * repair but the *process* being killed: the host restarts the API, the web's
    * proxy sees ECONNRESET and logs "socket hang up", and the repair starts over
    * from the beginning on the next boot. It never finishes, and it takes the
    * service down repeatedly on the way.

@@ -100,16 +100,16 @@ rebuild the search index from a shell, either set `ADMIN_TOKEN` or run
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `NEXT_INTERNAL_API_URL` | **yes on the web service** | API origin for the server-side rewrite, e.g. `https://ilm-api.onrender.com`. Must be set in the **build** environment, not just at runtime. |
+| `NEXT_INTERNAL_API_URL` | **yes on the web service** | API origin for the server-side rewrite, e.g. `http://ilm-api.internal:4000` on Fly.io. Must be set in the **build** environment, not just at runtime. |
 | `NEXT_PUBLIC_SITE_URL` | no | used for metadata URLs; defaults to `http://localhost:3000` |
-| `NEXT_PUBLIC_CONTACT_EMAIL` | **yes on a deployed web service** | a real address for corrections and search-log deletion requests. The privacy policy promises that mechanism, so a build with `RENDER=true` or `CI=true` fails if it is missing or still `hello@example.com`. Local development builds without it and the contact page says plainly that contact is not configured. |
+| `NEXT_PUBLIC_CONTACT_EMAIL` | **yes on a deployed web service** | a real address for corrections and search-log deletion requests. The privacy policy promises that mechanism, so a build with `ILM_DEPLOY=true` or `CI=true` fails if it is missing or still `hello@example.com`. Local development builds without it and the contact page says plainly that contact is not configured. |
 | `NEXT_PUBLIC_SUPPORT_URL` | no | HTTPS donation link (Square Payment Link, GitHub Sponsors, Ko-fi, Stripe…) shown by `/[locale]/support`. Optional: with no link the page says so plainly. Inlined at build time, so set it before building the web image. |
 
 `NEXT_INTERNAL_API_URL` is the one variable whose absence is silent: the pages
 render, and every search quietly returns nothing. It is not `NEXT_PUBLIC_*` so it
 stays out of the client bundle, which means the browser cannot report the
-misconfiguration. The web build therefore fails outright when `RENDER=true` or
-`CI=true` and the variable is missing or points at localhost. If the build stops
+misconfiguration. The web build therefore fails outright when `ILM_DEPLOY=true`
+or `CI=true` and the variable is missing or points at localhost. If the build stops
 with that message, set the variable on the **web** service and rebuild.
 
 `NEXT_INTERNAL_API_URL` is read by the Next config at build time as well as at
@@ -118,25 +118,74 @@ runtime, so set it in the build environment too. It is deliberately *not*
 
 ---
 
-## Render
+## Fly.io
 
-1. **Postgres** — New → Postgres. Copy the *Internal Database URL* into
-   `DATABASE_URL` on both services.
-2. **API** — New → Web Service, pointing at this repo.
-   - Build command: `npm ci && npm run build`
-   - Start command: `npm run start -w @ilm/api`
-   - Health check path: `/health`
-3. **Web** — New → Web Service, pointing at this repo.
-   - Build command: `npm ci && npm run build`
-   - Start command: `npm run start -w @ilm/web`
-   - Environment: `NEXT_INTERNAL_API_URL` = the API's URL, `NEXT_PUBLIC_CONTACT_EMAIL` = a real address, and optionally `NEXT_PUBLIC_SUPPORT_URL` = an HTTPS donation link (the Square link is `https://square.link/u/QE4inlEt`)
+Two apps and one Postgres cluster. The configs are committed as
+`apps/api/fly.toml` and `apps/web/fly.toml`; run `fly` from the repository root
+so the build context includes both apps and `@ilm/shared`. Fly app names are
+global — if `ilm-api` or `ilm-web` is taken, rename them in the toml files and
+in the URLs that refer to them.
 
-Then run ingestion once from a shell or a one-off job:
+1. **Create the apps and volume** (once):
 
-```bash
-DATABASE_URL=... npm run ingest
-DATABASE_URL=... npm run index
-```
+   ```bash
+   fly apps create ilm-api
+   fly apps create ilm-web
+   fly volume create ilm_api_data -a ilm-api --region iad
+   ```
+
+   The volume holds `/app/data` (the search-index cache and TTS cache). Without
+   it the API still works, but the cache is lost on every machine restart.
+
+2. **Postgres**:
+
+   ```bash
+   fly pg create --name ilm-db --region iad --vm-size shared-cpu-1x --volume-size 10
+   fly postgres attach ilm-db -a ilm-api
+   ```
+
+   `attach` sets `DATABASE_URL` as a secret on the API. The web app does not
+   need it: `/api/*` is proxied to the API on the same origin.
+
+3. **Secrets and settings**:
+
+   ```bash
+   fly secrets set -a ilm-api ADMIN_TOKEN="$(openssl rand -hex 32)"
+   # Optional AI keys; without them every score is labelled "derived":
+   # fly secrets set -a ilm-api TYPESAFE_API_KEY=...
+   ```
+
+   Edit `apps/web/fly.toml`: set `NEXT_PUBLIC_CONTACT_EMAIL` to a real address
+   (the build refuses an empty one), and update `CORS_ORIGIN` in
+   `apps/api/fly.toml` if you use a custom domain for the web app.
+
+4. **Deploy**:
+
+   ```bash
+   fly deploy -c apps/api/fly.toml
+   fly deploy -c apps/web/fly.toml
+   ```
+
+   The API applies Prisma migrations on boot and refuses to start if they fail,
+   so there is no separate migration step. Check both health probes:
+   `https://ilm-api.fly.dev/health` and `https://ilm-web.fly.dev/health`.
+
+5. **Ingest once**, against the API's database:
+
+   ```bash
+   fly ssh console -a ilm-api -C 'sh -c "cd /app && npx tsx apps/api/scripts/ingest.ts"'
+   fly ssh console -a ilm-api -C 'sh -c "cd /app && npx tsx apps/api/scripts/ingest-enoch.ts"'
+   fly ssh console -a ilm-api -C 'sh -c "cd /app && npx tsx apps/api/scripts/index-original-text.ts"'
+   fly ssh console -a ilm-api -C 'sh -c "cd /app && npx tsx apps/api/scripts/index.ts"'
+   ```
+
+   Ingestion is idempotent (every write upserts on the passage key), so a
+   re-run after a failure is safe. `index-original-text` is not optional:
+   without it every literal relevance score is zero.
+
+For Android, set `TWA_HOST` to the real web hostname when running
+`apps/web/scripts/build-android-twa.ts`, and commit the generated
+`assetlinks.json` fingerprint before uploading the bundle.
 
 ### Search: Postgres, not an in-process index
 
