@@ -17,6 +17,7 @@ const PAGES = [
   'src/app/[locale]/explore/page.tsx',
   'src/app/[locale]/settings/page.tsx',
   'src/app/[locale]/contact/page.tsx',
+  'src/app/[locale]/support/page.tsx',
   'src/app/[locale]/privacy/page.tsx',
   'src/app/[locale]/terms/page.tsx',
 ];
@@ -54,6 +55,7 @@ describe('reader-facing copy', () => {
       const messages = JSON.parse(read(`messages/${locale}.json`));
       expect(messages.explore.emptyBody, `${locale} has no explore empty state`).toBeTruthy();
       expect(messages.contact.addressNote, `${locale} has no unconfigured notice`).toBeTruthy();
+      expect(messages.support.notConfigured, `${locale} has no unconfigured support notice`).toBeTruthy();
     }
   });
 });

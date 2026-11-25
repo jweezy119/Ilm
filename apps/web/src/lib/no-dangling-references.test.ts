@@ -90,6 +90,7 @@ describe('nothing points at nothing', () => {
         'src/app/[locale]/privacy/page.tsx',
         'src/app/[locale]/terms/page.tsx',
         'src/app/[locale]/contact/page.tsx',
+        'src/app/[locale]/support/page.tsx',
         'src/app/[locale]/settings/page.tsx',
       ]) {
         const source = read(file);
@@ -121,9 +122,12 @@ describe('nothing points at nothing', () => {
     // they had, so the store listing would have passed while the app told nobody
     // anything — discoverability is not the same as availability.
     const settings = read('src/app/[locale]/settings/page.tsx');
-    for (const route of ['/privacy', '/terms', '/contact']) {
+    for (const route of ['/privacy', '/terms', '/contact', '/support']) {
       expect(settings, `settings does not link to ${route}`).toContain(`href="${route}"`);
     }
+    // Support also has to be visible without opening Settings: a donation link
+    // buried in a settings page is not a funding channel.
+    expect(read('src/components/Shell.tsx')).toContain('href="/support"');
   });
 
   it('gives the contact page a real address rather than a silent placeholder', () => {
@@ -139,5 +143,15 @@ describe('nothing points at nothing', () => {
 
     const config = read('next.config.js');
     expect(config).toContain('NEXT_PUBLIC_CONTACT_EMAIL must be a real address');
+  });
+
+  it('gives the support page a real destination rather than a fake button', () => {
+    // A support button that cannot reach a provider is worse than a sentence
+    // saying that this deployment has no link yet.
+    const page = read('src/app/[locale]/support/page.tsx');
+    expect(read('src/lib/support.ts')).toContain('NEXT_PUBLIC_SUPPORT_URL');
+    expect(page).toContain('supportUrl()');
+    expect(page).toContain('notConfigured');
+    expect(page).not.toContain('example.com');
   });
 });

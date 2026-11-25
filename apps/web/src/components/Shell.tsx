@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Activity,
+  Heart,
   Plus,
   Languages,
   Bookmark,
@@ -305,6 +306,15 @@ export function Shell({ children }: { children: React.ReactNode }) {
           >
             <Settings className="h-4 w-4 shrink-0" />
             {!collapsed ? t('settings') : null}
+          </Link>
+          <Link
+            href="/support"
+            onClick={() => setMobileOpen(false)}
+            className={['btn btn-secondary mb-2 w-full justify-start', collapsed ? 'px-0' : ''].join(' ')}
+            title={t('support')}
+          >
+            <Heart className="h-4 w-4 shrink-0" />
+            {!collapsed ? t('support') : null}
           </Link>
 
           <div className={['flex items-center gap-1', collapsed ? 'flex-col' : 'justify-between'].join(' ')}>

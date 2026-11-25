@@ -30,7 +30,8 @@
     "journeys": "Journeys",
     "terms": "Terms",
     "privacy": "Privacy",
-    "contact": "Contact"
+    "contact": "Contact",
+    "support": "Support"
   },
   "language": {
     "label": "Language",
@@ -410,6 +411,16 @@
     "responseTitle": "What to expect",
     "responseBody": "Corrections are the ones we can most often fix, and a confirmed wrong reference is usually fixed within days. Search-log deletions are done as soon as we read them. Security reports get a reply either way.",
     "addressNote": "This deployment has no contact address configured, so corrections and privacy requests cannot be sent from here. An installed deployment must provide one before it is published."
+  },
+  "support": {
+    "title": "Support Ilm",
+    "intro": "Ilm has no ads, no accounts and no paid AI key requirement. If it is useful to you, you can help pay for the servers that serve it.",
+    "whyTitle": "What the money pays for",
+    "whyBody": "Hosting for the API and the web app, the corpus database, and the space the search index needs. The app works without paid AI keys; support keeps it reachable rather than buying features.",
+    "whatTitle": "No strings",
+    "whatBody": "Supporting Ilm does not change your search results, add an account, or unlock different answers. Scores stay labelled with their source and passages stay checkable.",
+    "button": "Support Ilm",
+    "notConfigured": "This deployment has no support link configured, so there is nowhere to send money yet."
   },
   "journeys": {
     "title": "Journeys",

@@ -367,6 +367,9 @@ export default function SettingsPage() {
           <Link href="/contact" className="text-fg-muted underline underline-offset-4 hover:text-fg">
             {t('contact')}
           </Link>
+          <Link href="/support" className="text-fg-muted underline underline-offset-4 hover:text-fg">
+            {t('support')}
+          </Link>
         </div>
       </section>
     </Page>
