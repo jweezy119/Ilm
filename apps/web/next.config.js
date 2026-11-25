@@ -58,6 +58,13 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@ilm/shared'],
+  // Next blocks dev-only assets (including the HMR websocket at /_next/hmr)
+  // from any host other than localhost. A Cloudflare quick tunnel serves the
+  // dev server from a random *.trycloudflare.com hostname, so without this the
+  // page loads but HMR retries forever in the browser console. The wildcard
+  // covers the random name on every tunnel restart; see
+  // node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/allowedDevOrigins.md
+  allowedDevOrigins: ['*.trycloudflare.com'],
   async rewrites() {
     return [
       { source: '/api/search', destination: `${API_ORIGIN}/api/search` },

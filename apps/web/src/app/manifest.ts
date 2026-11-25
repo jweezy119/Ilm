@@ -39,6 +39,8 @@ export default function manifest(): MetadataRoute.Manifest {
     share_target: {
       action: '/en',
       method: 'GET',
+      // Chrome warns when a share target leaves enctype implicit, even for GET.
+      enctype: 'application/x-www-form-urlencoded',
       params: { title: 'title', text: 'text', url: 'url' },
     },
     orientation: 'portrait',
