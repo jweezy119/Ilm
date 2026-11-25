@@ -19,6 +19,25 @@ chasing revenue.
 | **Twitch** | Subs/Bits/emotes/badges/Channel Points are open to all eligible streamers since 13 May 2026, but **payouts require Affiliate or Partner** ($50 minimum). Affiliate: 25 followers, 4 hours, 4 different days, 3+ average concurrent viewers on 4 days ([announcement](https://blog.twitch.tv/en/2026/05/13/monetization-for-all/)) | Bigger audience, slower path to a payout. |
 | **pump.fun** | Livestreaming is 18+ only — streaming, watching *and* chatting — with a strict moderation policy ([policy](https://intercom.help/pumpfun-web/en/articles/11399886-livestream-moderation-policy)) | **Not recommended.** It is a memecoin launchpad; a coin attached to a scripture app is a legal and reputational risk, and the stream feature has been paused and reopened before. |
 
+## Funding the app directly
+
+The support page (`/[locale]/support`, linked from Settings and the sidebar) is
+where stream revenue turns into hosting money. With a Square account, use a
+hosted **Square Payment Link** — no API keys, no backend code, no card data in
+this repo:
+
+1. Square Dashboard → **Payments & orders → Payment links → Create link**.
+2. Choose **Accept a donation** so donors enter their own amount, and title it
+   "Ilm". Optionally redirect to the app after checkout.
+3. **Share → Copy link**, then set it as `NEXT_PUBLIC_SUPPORT_URL` on the web
+   service (before build, since `NEXT_PUBLIC_` values are inlined at build time).
+4. Square sends receipts and shows sales per link in Dashboard. Online card
+   processing is 3.3% + 30¢ for new US accounts, with no monthly fee for links;
+   check the rate for your region.
+
+A Square "donation" is not automatically tax-deductible unless you are a
+registered charity — treat it as revenue for accounting purposes.
+
 ## What to stream
 
 - Build in public: implement a feature, explain a search ranking decision, or

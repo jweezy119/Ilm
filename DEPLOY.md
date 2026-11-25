@@ -103,7 +103,7 @@ rebuild the search index from a shell, either set `ADMIN_TOKEN` or run
 | `NEXT_INTERNAL_API_URL` | **yes on the web service** | API origin for the server-side rewrite, e.g. `https://ilm-api.onrender.com`. Must be set in the **build** environment, not just at runtime. |
 | `NEXT_PUBLIC_SITE_URL` | no | used for metadata URLs; defaults to `http://localhost:3000` |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | **yes on a deployed web service** | a real address for corrections and search-log deletion requests. The privacy policy promises that mechanism, so a build with `RENDER=true` or `CI=true` fails if it is missing or still `hello@example.com`. Local development builds without it and the contact page says plainly that contact is not configured. |
-| `NEXT_PUBLIC_SUPPORT_URL` | no | HTTPS donation link (GitHub Sponsors, Ko-fi, Stripe…) shown by `/[locale]/support`. Optional: with no link the page says so plainly. Inlined at build time, so set it before building the web image. |
+| `NEXT_PUBLIC_SUPPORT_URL` | no | HTTPS donation link (Square Payment Link, GitHub Sponsors, Ko-fi, Stripe…) shown by `/[locale]/support`. Optional: with no link the page says so plainly. Inlined at build time, so set it before building the web image. |
 
 `NEXT_INTERNAL_API_URL` is the one variable whose absence is silent: the pages
 render, and every search quietly returns nothing. It is not `NEXT_PUBLIC_*` so it
