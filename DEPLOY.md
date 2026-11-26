@@ -122,30 +122,38 @@ runtime, so set it in the build environment too. It is deliberately *not*
 
 Two apps and one Postgres cluster. The configs are committed as
 `apps/api/fly.toml` and `apps/web/fly.toml`; run `fly` from the repository root
-so the build context includes both apps and `@ilm/shared`. Fly app names are
-global — if `ilm-api` or `ilm-web` is taken, rename them in the toml files and
-in the URLs that refer to them.
+so the build context includes both apps and `@ilm/shared`. Fly resolves each
+`build.dockerfile` relative to its `fly.toml`, which is why both say just
+`Dockerfile`. Fly app names are global — if `ilm-api` or `ilm-web` is taken,
+rename them in the toml files and in the URLs that refer to them.
+
+Use an account/org-scoped token, not an app-scoped deploy token: creating apps,
+volumes and Postgres needs org-level permissions.
 
 1. **Create the apps and volume** (once):
 
    ```bash
    fly apps create ilm-api
    fly apps create ilm-web
-   fly volume create ilm_api_data -a ilm-api --region iad
+   fly volume create ilm_api_data -a ilm-api --region iad --size 1 -y
    ```
 
    The volume holds `/app/data` (the search-index cache and TTS cache). Without
    it the API still works, but the cache is lost on every machine restart.
 
-2. **Postgres**:
+2. **Postgres** — Managed Postgres, which works non-interactively and is
+   supported by Fly (the older unmanaged `fly pg create` prompts and needs a
+   terminal). The Basic plan was $38/month at the time of writing:
 
    ```bash
-   fly pg create --name ilm-db --region iad --vm-size shared-cpu-1x --volume-size 10
-   fly postgres attach ilm-db -a ilm-api
+   fly mpg create --name ilm-db --region iad --plan Basic --pg-major-version 16 --volume-size 10
+   fly mpg attach <cluster-id> -a ilm-api
    ```
 
    `attach` sets `DATABASE_URL` as a secret on the API. The web app does not
-   need it: `/api/*` is proxied to the API on the same origin.
+   need it: `/api/*` is proxied to the API on the same origin. The managed
+   cluster's generated user/database are fine; Prisma migrations create the
+   schema in whatever database the URL names.
 
 3. **Secrets and settings**:
 
@@ -159,11 +167,18 @@ in the URLs that refer to them.
    (the build refuses an empty one), and update `CORS_ORIGIN` in
    `apps/api/fly.toml` if you use a custom domain for the web app.
 
+   The `NEXT_PUBLIC_*` values must appear in **both** `[build.args]` and `[env]`.
+   Next inlines them into the bundle at build time, but `next.config.js` is
+   evaluated again by `next start`, so a value missing at runtime makes the
+   deployed web machine exit. The API's `HOST` must be `::`: Fly's private DNS
+   resolves `ilm-api.internal` to IPv6, and an IPv4-only bind gives the web
+   proxy `ECONNREFUSED`.
+
 4. **Deploy**:
 
    ```bash
    fly deploy -c apps/api/fly.toml
-   fly deploy -c apps/web/fly.toml
+   fly deploy -c apps/web/fly.toml --ha=false   # one web machine; drop for two
    ```
 
    The API applies Prisma migrations on boot and refuses to start if they fail,

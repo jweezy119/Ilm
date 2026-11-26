@@ -7,11 +7,14 @@ app = "ilm-api"
 primary_region = "iad"
 
 [build]
-  dockerfile = "apps/api/Dockerfile"
+  # Resolved relative to this fly.toml, not the repository root.
+  dockerfile = "Dockerfile"
 
 [env]
   PORT = "4000"
-  HOST = "0.0.0.0"
+  # Fly's private DNS resolves app names to IPv6. Binding only to IPv4 makes
+  # the web app's internal proxy fail with ECONNREFUSED.
+  HOST = "::"
   NODE_ENV = "production"
   CORS_ORIGIN = "https://ilm-web.fly.dev"
   SEARCH_ENGINE = "postgres"
