@@ -355,12 +355,19 @@ whether Jev is configured:
 
 ```json
 {"success":true,"data":{"status":"ok",
-  "search":{"ready":true,"passagesIndexed":45453},
-  "jev":{"configured":true,"reason":"configured"}}}
+  "search":{"ready":true,"engine":"postgres"},
+  "jev":{"configured":true,"reason":"configured",
+         "latency":{"calls":3,"avgMs":812,"maxMs":1402,"lastMs":540}},
+  "judges":[{"id":"jev","label":"Jev","available":true,"reason":"configured"}],
+  "budget":{"spentUsd":0.0021,"limitUsd":2,"exhausted":false,"refused":0}}}
 ```
 
-If `passagesIndexed` is 0 the corpus has not been ingested into that database, and
-if `jev.configured` is false the search box is running in literal mode.
+Corpus counts live on `/api/corpus`, not `/health`: counting them used to take
+about two seconds and got the service restarted by its own health check. If
+`search.ready` is false the index has not been built. If `jev.configured` is
+false, every score is labelled derived or local and nothing is billed. `latency`
+is zero until the first hosted call; `budget` shows spend against the ceiling and
+how many calls were refused after it was reached.
 
 ## Self-hosted / Oracle Always Free
 

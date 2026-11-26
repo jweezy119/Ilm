@@ -172,7 +172,12 @@ export interface Health {
     /** 'postgres' searches the scripture; 'orama' matches theme names and book slugs. */
     engine?: 'postgres' | 'orama';
   };
-  jev: { configured: boolean; reason: string };
+  jev: {
+    configured: boolean;
+    reason: string;
+    /** Hosted round-trips since the process started; zero until a key is used. */
+    latency?: { calls: number; avgMs: number; maxMs: number; lastMs: number };
+  };
   /** Every engine in the order it is tried. */
   judges: Array<{ id: string; label: string; available: boolean; reason: string }>;
   /** What this process has spent on the hosted judge, and the ceiling it will not pass. */

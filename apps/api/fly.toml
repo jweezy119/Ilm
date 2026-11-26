@@ -23,6 +23,14 @@ primary_region = "iad"
   # Default budget is 4 GB; this volume is 1 GB. Keep the audio cache well
   # inside it so a busy deployment cannot fill the disk.
   TTS_CACHE_MAX_BYTES = "512000000"
+  # Judge caps. Spend is per process and resets on restart; /health reports both
+  # the dollars and the round-trip timings. With no TYPESAFE_API_KEY set these
+  # are inert — nothing is called, nothing is spent.
+  JEV_BUDGET_USD = "2"
+  TYPESAFE_TIMEOUT_MS = "4000"
+  TYPESAFE_MAX_RETRIES = "0"
+  SEARCH_JUDGE_BUDGET_MS = "1500"
+  SEARCH_RERANK_LIMIT = "12"
 
 [http_service]
   internal_port = 4000

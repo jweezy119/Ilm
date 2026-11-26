@@ -13,10 +13,11 @@ import { TypeSafeClient, choice, noul, score } from '@typesafe-ai/sdk';
 import type { ChoiceCriteria, EntryType, Questions, ScoreCriteria } from '@typesafe-ai/sdk';
 import type { ScoreSource } from '@ilm/shared';
 import { judgeBudget, recordJudgeUsage, reserveJudgeCall } from './judge-budget';
+import { judgeLatency, recordJudgeLatency } from './judge-latency';
 import { LocalNeuralJudge } from './local-judge';
 
 export type { ChoiceCriteria, EntryType, Questions, ScoreCriteria };
-export { judgeBudget };
+export { judgeBudget, judgeLatency };
 
 export interface JevAnswer {
   /** Probability-weighted 0-1 value for score/noul questions. */
@@ -182,7 +183,16 @@ class SdkJudge implements JevJudge {
       throw new Error(`Judge budget reached (${judgeBudget().spentUsd.toFixed(4)} spent)`);
     }
 
-    const { answers, usage } = await this.client.systemOne({ state, questions: payload as unknown as Questions });
+    const startedAt = Date.now();
+    let response;
+    try {
+      response = await this.client.systemOne({ state, questions: payload as unknown as Questions });
+    } finally {
+      // Failed round-trips are real latency too: a timeout is exactly what an
+      // operator needs to see when deciding whether to enable a key.
+      recordJudgeLatency(Date.now() - startedAt);
+    }
+    const { answers, usage } = response;
 
     if (usage) recordJudgeUsage(usage.input_tokens, usage.output_tokens);
 

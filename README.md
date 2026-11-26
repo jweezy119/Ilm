@@ -192,11 +192,16 @@ order worth reaching for:
 | `JEV_BUDGET_USD` | Hard ceiling on what one process spends. Checked before every request; at the limit nothing is called and every result falls back to local scoring, labelled as such. `0` disables it. Reset on restart. |
 | `RECOMMEND_SHORTLIST` | Candidates scored per relations request, five dimensions each — the largest single request the app makes. Default 12, down from 20. |
 | `THEME_CRITERIA=bare` | Drops the per-theme descriptions in classification, which restate the option label. Measured: identical scores, 2.3x fewer tokens. |
+| `SEARCH_JUDGE_BUDGET_MS` | Wall-clock allowance for judging one search (default 2500 ms). When it runs out, the remaining steps use local scoring and say so. |
+| `SEARCH_RERANK_LIMIT` | Shortlisted passages re-ranked per query (default 24). One request carries all of them, so this is the whole per-search token cost. |
 
 Intent, theme expansion, affinities, comparisons, cross-references and lexicon
 lookups are all cached, so a repeated query or a revisited passage costs nothing.
-`/health` reports what the process has spent, its ceiling, and how many calls were
-refused.
+`/health` reports what the process has spent, its ceiling, how many calls were
+refused, and the average/last/worst hosted round-trip in milliseconds. The
+numbers are per process and reset on restart — they are current state, not
+history. The Fly deployment sets a $2 ceiling, a 4 s SDK timeout with no retries,
+a 1500 ms per-search judge budget and a 12-passage rerank limit.
 
 ### Cost per interaction
 

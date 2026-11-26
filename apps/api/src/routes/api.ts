@@ -66,7 +66,7 @@ import {
 } from '../services/journey-graph';
 import { lookupWord } from '../services/lexicon';
 import { classifySearchIntent } from '../services/typesafe';
-import { getJevJudge, describeJudgeChain, judgeBudget } from '../services/typesafe-client';
+import { getJevJudge, describeJudgeChain, judgeBudget, judgeLatency } from '../services/typesafe-client';
 import { isIndexReady, invalidateOramaIndex, indexedTextIds, engineName, compactIndexStats } from '../search/engine';
 import { isPackStorageEnabled } from '../lib/pack-store';
 import { getEmbeddingConfig } from '../services/embeddings';
@@ -253,7 +253,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       storage: isPackStorageEnabled() ? 'pack' : 'postgres',
       // Kept for compatibility with anything already reading `jev`, but the chain
       // below is the real answer: `configured` is true only if some engine can run.
-      jev: { configured: judge.available, reason: judge.reason },
+      jev: {
+        configured: judge.available,
+        reason: judge.reason,
+        // What a hosted judgment costs in wall-clock time. Zero calls when no
+        // key is configured, which is the honest reading rather than an error.
+        latency: judgeLatency(),
+      },
       // Every engine in the order it is tried, so a reader can see whether a result
       // was judged by the hosted model, by something running locally, or not at all.
       judges: describeJudgeChain(),

@@ -307,10 +307,21 @@ export default function SettingsPage() {
                         <dd className="font-mono tabular-nums text-amber-700">{health.budget.refused}</dd>
                       </div>
                     ) : null}
+                    <div className="flex items-center justify-between">
+                      <dt className="text-fg-muted">Jev round-trips</dt>
+                      <dd className="font-mono tabular-nums">
+                        {health.jev.latency && health.jev.latency.calls > 0
+                          ? `${health.jev.latency.calls} · ${health.jev.latency.avgMs}/${health.jev.latency.lastMs}/${health.jev.latency.maxMs} ms`
+                          : 'none'}
+                      </dd>
+                    </div>
                   </dl>
                 ) : (
                   <p className="text-[11px] text-fg-faint">No reading — the API is unreachable.</p>
                 )}
+                <p className="mt-2 text-[10px] text-fg-faint">
+                  Round-trips · average / last / maximum ms, for this process only.
+                </p>
                 <p className="mt-3 text-[11px] leading-relaxed text-fg-faint">
                   {health?.budget.exhausted
                     ? 'The cap is reached. Results are still returned, ranked by local rules and labelled as such, but no model is being called.'
