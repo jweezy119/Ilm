@@ -4,8 +4,9 @@
 > compares, and traces themes across five sacred corpora, and explains every
 > connection it draws as a **weighted score** rather than a generated claim.
 
-**Live app:** <https://ilm-web.fly.dev> · API health:
-<https://ilm-api.fly.dev/health> · Support the hosting via `/en/support`.
+**Live app:** <https://ilm-web.fly.dev> (custom domain `ilm.pabandi.com` pending
+DNS) · API health: <https://ilm-api.fly.dev/health> · Support the hosting via
+`/en/support`.
 
 The repository is a small monorepo:
 

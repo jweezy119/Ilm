@@ -1,0 +1,34 @@
+name: CI
+
+# Pre-commit checks used to be run by hand. Every push and pull request now
+# proves that the shared package, API and web app still typecheck, test and
+# build together. The env values below are build-time configuration only:
+# next.config.js fails a deployed build without a real API origin and contact
+# address, and CI builds are treated as deployed builds.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ilm?schema=public
+      NEXT_INTERNAL_API_URL: http://ilm-api.internal:4000
+      NEXT_PUBLIC_SITE_URL: https://ilm.pabandi.com
+      NEXT_PUBLIC_CONTACT_EMAIL: ci@invalid.test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

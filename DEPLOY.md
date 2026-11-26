@@ -185,7 +185,33 @@ volumes and Postgres needs org-level permissions.
    so there is no separate migration step. Check both health probes:
    `https://ilm-api.fly.dev/health` and `https://ilm-web.fly.dev/health`.
 
-5. **Ingest once**, against the API's database:
+5. **Custom domain** (optional until you have a name you control). The committed
+   config uses `https://ilm.pabandi.com`:
+
+   ```bash
+   fly certs create ilm.pabandi.com -a ilm-web
+   fly certs show ilm.pabandi.com -a ilm-web
+   ```
+
+   Add the DNS records the command prints (`A 66.241.125.196`,
+   `AAAA 2a09:8280:1::224:1b31:0`) at your registrar, then check with
+   `fly certs check ilm.pabandi.com -a ilm-web`. Until the certificate is issued,
+   `https://ilm-web.fly.dev` still works. The hostname also feeds
+   `NEXT_PUBLIC_SITE_URL`, `CORS_ORIGIN`, the sitemap and `TWA_HOST` for Android.
+
+6. **Backups.** Managed Postgres takes an automatic full backup daily and
+   incremental/differential backups hourly; verify with
+   `fly mpg backup list <cluster-id>`. A manual full backup before a risky
+   migration is cheap:
+
+   ```bash
+   fly mpg backup create <cluster-id>
+   ```
+
+   The corpus can be re-ingested, but saved passages, journeys and search logs
+   cannot — those are what the backups protect.
+
+7. **Ingest once**, against the API's database:
 
    ```bash
    fly ssh console -a ilm-api -C 'sh -c "cd /app && npx tsx apps/api/scripts/ingest.ts"'

@@ -326,7 +326,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/themes', async () => ok({ themes: await listThemes() }));
 
   // ---------------------------------------------------------------- tts
-  app.get('/api/tts', async (request: FastifyRequest<{ Querystring: { text?: string; lang?: string } }>, reply: FastifyReply) => {
+  /*
+   * The default voice is an unofficial free endpoint with no published quota.
+   * One reader replaying a chapter is fine; a crawler hammering /api/tts would
+   * get that endpoint blocked for everyone. Cap this route independently of the
+   * global 600/60s limit — 30 a minute is still a chapter at normal speed.
+   */
+  app.get('/api/tts', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request: FastifyRequest<{ Querystring: { text?: string; lang?: string } }>, reply: FastifyReply) => {
     const text = (request.query.text ?? '').trim();
     const lang = (request.query.lang ?? 'en').trim();
     if (!text) return fail(reply, 400, 'INVALID_INPUT', 'Text is required');

@@ -13,7 +13,7 @@ primary_region = "iad"
 
   [build.args]
     NEXT_INTERNAL_API_URL = "http://ilm-api.internal:4000"
-    NEXT_PUBLIC_SITE_URL = "https://ilm-web.fly.dev"
+    NEXT_PUBLIC_SITE_URL = "https://ilm.pabandi.com"
     NEXT_PUBLIC_CONTACT_EMAIL = "jay@pabandi.com"
     NEXT_PUBLIC_SUPPORT_URL = "https://square.link/u/QE4inlEt"
     ILM_DEPLOY = "true"
@@ -23,7 +23,7 @@ primary_region = "iad"
   NEXT_INTERNAL_API_URL = "http://ilm-api.internal:4000"
   # These are inlined into the bundle at build time, but next.config.js also
   # reads them when `next start` loads it, so they must exist at runtime too.
-  NEXT_PUBLIC_SITE_URL = "https://ilm-web.fly.dev"
+  NEXT_PUBLIC_SITE_URL = "https://ilm.pabandi.com"
   NEXT_PUBLIC_CONTACT_EMAIL = "jay@pabandi.com"
   NEXT_PUBLIC_SUPPORT_URL = "https://square.link/u/QE4inlEt"
   ILM_DEPLOY = "true"

@@ -45,7 +45,7 @@ const OUT_DIR = join(REPO_ROOT, 'android');
  * fetch, so once the app is deployed set TWA_HOST to the real hostname (the
  * default below is only a placeholder for a Fly app named `ilm-web`).
  */
-const HOST = process.env.TWA_HOST ?? 'ilm-web.fly.dev';
+const HOST = process.env.TWA_HOST ?? 'ilm.pabandi.com';
 
 const DEFAULTS = {
   package: 'com.ilm.app',

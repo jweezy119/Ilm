@@ -16,7 +16,7 @@ primary_region = "iad"
   # the web app's internal proxy fail with ECONNREFUSED.
   HOST = "::"
   NODE_ENV = "production"
-  CORS_ORIGIN = "https://ilm-web.fly.dev"
+  CORS_ORIGIN = "https://ilm.pabandi.com"
   SEARCH_ENGINE = "postgres"
   API_HEAP_MB = "512"
   SEFARIA_DELAY_MS = "750"
