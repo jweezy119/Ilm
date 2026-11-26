@@ -86,6 +86,9 @@ describe('api proxy', () => {
     const middleware = readFileSync(join(__dirname, '../middleware.ts'), 'utf8');
     expect(config).toContain("source: '/health'");
     expect(middleware).toContain('(?!api|health|');
+    // Generated OG images have no file extension, so they need an explicit
+    // exclusion too or next-intl redirects them to /en/opengraph-image.
+    expect(middleware).toContain('opengraph-image|');
   });
 
   it('proxies every path the client calls', () => {

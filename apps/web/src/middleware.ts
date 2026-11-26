@@ -56,5 +56,5 @@ export const config = {
   // would make the browser ask the API for /en/api/health, and a redirected
   // /health is not a health check — Fly and Docker both need a 200 from the
   // rewrite to the API, not a 307 to /en/health.
-  matcher: ['/((?!api|health|_next|_vercel|.*\\..*).*)'],
+  matcher: ['/((?!api|health|opengraph-image|twitter-image|_next|_vercel|.*\\..*).*)'],
 };
