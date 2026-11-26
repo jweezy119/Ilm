@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import { Search, X, Loader2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Search, X, Loader2, AlertTriangle, ArrowRight, BookOpen, FileText, Route } from 'lucide-react';
 import { parseCitation, TextIdSchema, THEME_TAXONOMY, type TextId, type Topic } from '@ilm/shared';
 import { api, ApiError } from '@/lib/api';
 import { CitationJump } from '@/components/CitationJump';
@@ -466,16 +466,47 @@ function SearchInner() {
         {!hasSearched ? (
           <div className="flex flex-1 flex-col justify-center py-10">
             {/* Leads with the two things a competitor cannot copy: one search
-                across five traditions in their own languages, and a refusal to
-                write the interpretation. It used to open "What do the texts say?",
+                across the corpora in their own languages, and a refusal to write
+                the interpretation. It used to open "What do the texts say?",
                 which is a friendlier line but says nothing about either, and it
                 used to be hardcoded English on a page served in three locales. */}
             <h1 className="text-[28px] font-medium tracking-tight sm:text-3xl">{t('heroTitle')}</h1>
             <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-fg-muted">{t('heroSubtitle')}</p>
+            <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-fg-faint">{t('heroPromise')}</p>
 
             <InstallApp />
 
             <div className="mt-8">{composer}</div>
+
+            {/*
+                The reading contract, below the one input rather than beside it.
+                A reader arrives to search, so the composer stays first; these
+                three cards say what the results are and are not, and give the
+                journey its own way in without competing for the first click.
+            */}
+            <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-line bg-raised p-4">
+                <BookOpen className="h-4 w-4 text-accent" />
+                <h2 className="mt-2 text-[13px] font-medium">{t('principleSourceTitle')}</h2>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-fg-muted">{t('principleSourceBody')}</p>
+              </div>
+              <div className="rounded-xl border border-line bg-raised p-4">
+                <FileText className="h-4 w-4 text-accent" />
+                <h2 className="mt-2 text-[13px] font-medium">{t('principleEvidenceTitle')}</h2>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-fg-muted">{t('principleEvidenceBody')}</p>
+              </div>
+              <div className="rounded-xl border border-line bg-raised p-4">
+                <Route className="h-4 w-4 text-accent" />
+                <h2 className="mt-2 text-[13px] font-medium">{t('principleJourneyTitle')}</h2>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-fg-muted">{t('principleJourneyBody')}</p>
+                <Link
+                  href="/journeys"
+                  className="mt-2 inline-block text-[11px] text-accent underline underline-offset-2"
+                >
+                  {t('journeyLink')}
+                </Link>
+              </div>
+            </div>
 
             {/*
                 Silence by default, explicit when narrowed.
