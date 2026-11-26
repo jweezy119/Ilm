@@ -4,17 +4,22 @@
 > compares, and traces themes across five sacred corpora, and explains every
 > connection it draws as a **weighted score** rather than a generated claim.
 
+**Live app:** <https://ilm-web.fly.dev> · API health:
+<https://ilm-api.fly.dev/health> · Support the hosting via `/en/support`.
+
 The repository is a small monorepo:
 
 | Package | What it is |
 | --- | --- |
-| `apps/web` | Next.js 14 App Router frontend |
+| `apps/web` | Next.js App Router frontend |
 | `apps/api` | Fastify API: search, comparison, recommendations, theme exploration |
 | `packages/shared` | Zod schemas and types shared by both |
 
-Postgres is the only datastore. Full-text search runs **in-process** with
-OramaJS, and the semantic layer calls **Jev** (TypeSafe's System One model) over
-HTTP. There is no Meilisearch, Qdrant, or Redis to run.
+Postgres is the only datastore. Full-text search and retrieval run **in the
+database**; an in-process Orama index is still available as an alternative, and
+the local dev config uses a compact in-process engine. The semantic layer calls
+**Jev** (TypeSafe's System One model) over HTTP, with a deterministic fallback
+when no key is configured. There is no Meilisearch, Qdrant, or Redis to run.
 
 ---
 
@@ -306,9 +311,20 @@ the background, which is handy for scripted checks.
 
 ## Deploying
 
-See [DEPLOY.md](./DEPLOY.md) for Fly.io and other managed hosts. For a local
-Docker stack exposed through a free Cloudflare quick tunnel (no domain and no
-open ports), see [deploy/README.md](./deploy/README.md#local-docker--a-free-cloudflare-tunnel) and run `./deploy/tunnel.sh --bootstrap`.
+The production deployment is on Fly.io: `apps/api/fly.toml` and
+`apps/web/fly.toml` build from the repository root, with a Managed Postgres
+cluster attached to the API. See [DEPLOY.md](./DEPLOY.md) for the exact setup and
+one-time ingestion steps. The repository does not use Render.
+
+For a local Docker stack exposed through a free Cloudflare quick tunnel (no
+domain and no open ports), see
+[deploy/README.md](./deploy/README.md#local-docker--a-free-cloudflare-tunnel)
+and run `./deploy/tunnel.sh --bootstrap`.
+
+To fund hosting, the app has a localized support page at `/[locale]/support`
+driven by `NEXT_PUBLIC_SUPPORT_URL` (currently a Square payment link). Platform
+rules, compliance notes and a streaming playbook are in
+[STREAMING.md](./STREAMING.md).
 
 ---
 
