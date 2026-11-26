@@ -20,6 +20,9 @@ primary_region = "iad"
   SEARCH_ENGINE = "postgres"
   API_HEAP_MB = "512"
   SEFARIA_DELAY_MS = "750"
+  # Default budget is 4 GB; this volume is 1 GB. Keep the audio cache well
+  # inside it so a busy deployment cannot fill the disk.
+  TTS_CACHE_MAX_BYTES = "512000000"
 
 [http_service]
   internal_port = 4000
